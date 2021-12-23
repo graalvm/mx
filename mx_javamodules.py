@@ -24,8 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import os
 import re
 import pickle
@@ -39,12 +37,8 @@ from zipfile import ZipFile
 import mx
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-import sys
 import itertools
-if sys.version_info[0] < 3:
-    from StringIO import StringIO
-else:
-    from io import StringIO
+from io import StringIO
 
 class JavaModuleDescriptor(mx.Comparable):
     """

@@ -26,7 +26,7 @@
 #
 """
 Entry point for mx shell launchers that will test Python version requirements before
-calling the mx module. The latter assumes a compatible python interpreter is being used.
+calling mx.py. The latter assumes a compatible python interpreter is being used.
 """
 import sys, os
 if sys.version_info < (3, 8):

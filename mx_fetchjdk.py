@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-from __future__ import print_function
+
 import os, shutil, json, re
 from os.path import join, exists, abspath, dirname, isdir, basename, isabs
 from argparse import ArgumentParser
@@ -332,7 +332,7 @@ def _get_json_attr(json_object, name, expect_type, source):
 
 def _parse_jdk_versions(path):
     obj = _parse_json(path)
-    return {jdk_id: _get_json_attr(jdk_obj, 'version', mx._unicode, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
+    return {jdk_id: _get_json_attr(jdk_obj, 'version', str, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
 
 def _parse_jdk_binaries(paths, jdk_versions):
     jdk_binaries = {}
@@ -346,8 +346,8 @@ def _parse_jdk_binaries(paths, jdk_versions):
             source = '{} -> "jdk-binaries" -> "{}"'.format(path, qualified_jdk_id)
             def get_entry(name):
                 value = config.get(name) or mx.abort('{}: missing "{}" attribute'.format(source, name))
-                if not isinstance(value, mx._unicode):
-                    mx.abort('{} -> "{}": value ({}) must be a {}, not a {}'.format(source, name, value, mx._unicode.__name__, value.__class__.__name__))
+                if not isinstance(value, str):
+                    mx.abort('{} -> "{}": value ({}) must be a {}, not a {}'.format(source, name, value, str.__name__, value.__class__.__name__))
                 return value
 
             jdk_id, qualifier = qualified_jdk_id.split(':', 1) if ':' in qualified_jdk_id else (qualified_jdk_id, '')
@@ -388,12 +388,6 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
     if quiet:
         return _get_jdk_binary_or_abort(jdk_binaries, _DEFAULT_JDK_ID)
 
-    import sys
-    if sys.version_info[0] < 3:
-        get_input = raw_input # pylint: disable=undefined-variable,redefined-builtin
-    else:
-        get_input = input # pylint: disable=undefined-variable,redefined-builtin
-
     index = 1
     default_choice = 1
     choices = sorted(jdk_binaries.items())
@@ -412,7 +406,7 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
     while True:
         try:
             try:
-                choice = get_input("Select JDK> ")
+                choice = input("Select JDK> ")
             except SyntaxError: # Empty line
                 choice = ""
 
@@ -424,12 +418,12 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
             if index < 0:
                 raise IndexError(choice)
             if index == len(choices):
-                choice = get_input("Select base JDK (1 .. {})> ".format(index))
+                choice = input("Select base JDK (1 .. {})> ".format(index))
                 base_index = int(choice) - 1
                 if base_index < 0 or base_index >= index:
                     raise IndexError(choice)
                 base_jdk = choices[base_index][1]
-                version = get_input("Enter version [{}]> ".format(base_jdk._version))
+                version = input("Enter version [{}]> ".format(base_jdk._version))
                 if version == "":
                     version = base_jdk._version
                 return base_jdk.with_version(version)

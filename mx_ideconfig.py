@@ -25,8 +25,6 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import print_function
-
 import os, zipfile
 import shutil
 from argparse import ArgumentParser, REMAINDER

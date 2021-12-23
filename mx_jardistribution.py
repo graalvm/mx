@@ -24,11 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-r"""
-mx is a command line tool for managing the development of Java code organized as suites of projects.
-
-"""
-from __future__ import print_function
 
 import os
 import shutil
@@ -829,7 +824,7 @@ class _ArchiveStager(object):
                 elif not is_sources_jar and arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                     service = arcname[len('META-INF/services/'):]
                     assert '/' not in service
-                    self.services.setdefault(service, []).extend(mx._decode(zf.read(arcname)).splitlines())
+                    self.services.setdefault(service, []).extend(zf.read(arcname).decode().splitlines())
                 else:
                     entry = _ArchiveEntry(dep, arcname, archive, jar_path + '!' + arcname)
                     with _StagingGuard(entry) as guard:

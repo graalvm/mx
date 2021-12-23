@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-import os, subprocess, math, signal, sys, time, re
+import os, subprocess, math, signal, time, re
 import mx
 from mx import VC
 from datetime import datetime
@@ -155,11 +155,6 @@ def mx_bisect(args):
     mx bisect --strategy bisect selfcheck
 
     """
-
-    if int(sys.version_info[0]) < 3:
-        mx.log('You are using Python {}'.format(sys.version))
-        mx.log('Please use Python 3 by setting the env variable: MX_PYTHON=python3')
-        return
 
     if not os.environ.get('JAVA_HOME'):
         mx.log('Please set env variable: JAVA_HOME')

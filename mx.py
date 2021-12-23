@@ -54,6 +54,7 @@ from xml.dom.minidom import parseString as minidomParseString
 import shutil, re
 import pipes
 import difflib
+import urllib
 import glob
 import filecmp
 import json
@@ -101,10 +102,10 @@ multiprocessing.Process = _DummyProcess
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
-    hashFile = _urllib_request.urlopen(url)
+    hashFile = urllib.request.urlopen(url)
     try:
         return hashFile.read()
-    except _urllib_error.URLError as e:
+    except urllib.error.URLError as e:
         _suggest_http_proxy_error(e)
         abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
     finally:
@@ -138,7 +139,7 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False)
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
-            o = _urllib_parse.urlparse(url)
+            o = urllib.parse.urlparse(url)
             if o.path == "/remotecontent" and o.query.startswith("filepath"):
                 path = o.query
             else:
@@ -174,8 +175,8 @@ def _urlopen(*args, **kwargs):
 
     while True:
         try:
-            return _urllib_request.urlopen(*args, **kwargs)
-        except (_urllib_error.HTTPError) as e:
+            return urllib.request.urlopen(*args, **kwargs)
+        except (urllib.error.HTTPError) as e:
             if e.code == 500:
                 if error500_attempts < error500_limit:
                     error500_attempts += 1
@@ -184,12 +185,12 @@ def _urlopen(*args, **kwargs):
                     time.sleep(0.2)
                     continue
             raise
-        except _urllib_error.URLError as e:
+        except urllib.error.URLError as e:
             if isinstance(e.reason, socket.error):
                 if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
                     warn("urlopen() failed with EINTR. Retrying without timeout.")
                     del kwargs['timeout']
-                    return _urllib_request.urlopen(*args, **kwargs)
+                    return urllib.request.urlopen(*args, **kwargs)
                 if e.reason.errno == errno.EINPROGRESS:
                     if on_timeout():
                         continue
@@ -273,12 +274,12 @@ def _function_code(f):
 
 def _check_output_str(*args, **kwargs):
     try:
-        return _decode(subprocess.check_output(*args, **kwargs))
+        return subprocess.check_output(*args, **kwargs).decode()
     except subprocess.CalledProcessError as e:
         if e.output:
-            e.output = _decode(e.output)
+            e.output = e.output.decode()
         if hasattr(e, 'stderr') and e.stderr:
-            e.stderr = _decode(e.stderr)
+            e.stderr = e.stderr.decode()
         raise e
 
 def _with_metaclass(meta, *bases):
@@ -304,7 +305,7 @@ def _with_metaclass(meta, *bases):
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
-    url = _urllib_parse.urlsplit(urlstr)
+    url = urllib.parse.urlsplit(urlstr)
     return url.scheme and (url.netloc or url.path)
 
 def _safe_path(path):
@@ -340,7 +341,7 @@ def _safe_path(path):
                     path = '\\\\?\\UNC' + path[1:]
             else:
                 path = '\\\\?\\' + path
-        path = _unicode(path)
+        path = str(path)
     return path
 
 def atomic_file_move_with_fallback(source_path, destination_path):
@@ -360,12 +361,6 @@ def atomic_file_move_with_fallback(source_path, destination_path):
         copy_function(source_path, destination_temp_path)
         os.rename(destination_temp_path, destination_path)
         remove_function(source_path)
-
-def _tarfile_chown(tf, tarinfo, targetpath):
-    if sys.version_info < (3, 5):
-        tf.chown(tarinfo, targetpath)
-    else:
-        tf.chown(tarinfo, targetpath, False) # extra argument in Python 3.5, False gives previous behavior
 
 ### ~~~~~~~~~~~~~ command
 
@@ -1020,7 +1015,7 @@ class SiblingSuiteModel(SuiteModel):
         for urlinfo in suite_import.urlinfos:
             if urlinfo.abs_kind() == 'source':
                 # 'https://github.com/graalvm/graal.git' -> 'graal'
-                base, _ = os.path.splitext(basename(_urllib_parse.urlparse(urlinfo.url).path))
+                base, _ = os.path.splitext(basename(urllib.parse.urlparse(urlinfo.url).path))
                 if base: break
         if base:
             path = join(SiblingSuiteModel.siblings_dir(importer_dir), base)
@@ -3254,7 +3249,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             # Try use the URL first so that a big repo is cloned to a local
             # directory whose named is based on the repo instead of a suite
             # nested in the big repo.
-            root, _ = os.path.splitext(basename(_urllib_parse.urlparse(url).path))
+            root, _ = os.path.splitext(basename(urllib.parse.urlparse(url).path))
             if root:
                 import_dir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
             else:
@@ -3917,12 +3912,11 @@ def relpath_or_absolute(path, start, prefix=""):
 
 def cpu_count():
     cpus = None
-    if sys.version_info[0] >= 3:
-        try:
-            # takes into account CPU affinity restrictions which is available on some unix platforms
-            cpus = len(os.sched_getaffinity(0))
-        except AttributeError:
-            cpus = None
+    try:
+        # takes into account CPU affinity restrictions which is available on some unix platforms
+        cpus = len(os.sched_getaffinity(0))
+    except AttributeError:
+        cpus = None
     if cpus is None:
         import multiprocessing
         cpus = multiprocessing.cpu_count()
@@ -4228,10 +4222,8 @@ def open(name, mode='r', encoding='utf-8'):  # pylint: disable=redefined-builtin
     Also, it handles supplying a default value of 'utf-8' for the encoding
     parameter.
     """
-    if 'b' in mode or sys.version_info[0] < 3:
+    if 'b' in mode:
         # When opening files in binary mode, no encoding can be specified.
-        # Also, on Python 2, `open` doesn't take any encoding parameter since
-        # the strings are not decoded at read time.
         return builtins.open(_safe_path(name), mode=mode)
     else:
         return builtins.open(_safe_path(name), mode=mode, encoding=encoding)
@@ -4468,12 +4460,12 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-    except (IOError, socket.timeout, _urllib_error.HTTPError) as e:
+    except (IOError, socket.timeout, urllib.error.HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
         log_error("Error downloading from " + url + " to " + path + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
-        if isinstance(e, _urllib_error.HTTPError) and e.code == 500:
+        if isinstance(e, urllib.error.HTTPError) and e.code == 500:
             return "retry"
     finally:
         if conn:
@@ -6230,7 +6222,7 @@ class LayoutDistribution(AbstractDistribution):
                         for tarinfo in directories:
                             dirpath = join(absolute_destination, tarinfo.name)
                             try:
-                                _tarfile_chown(tf, tarinfo, dirpath)
+                                tf.chown(tarinfo, dirpath, False)
                                 tf.utime(tarinfo, dirpath)
                                 tf.chmod(tarinfo, dirpath)
                             except tarfile.ExtractError as e:
@@ -7379,11 +7371,11 @@ class JavaBuildTask(ProjectBuildTask):
 
     def pushSharedMemoryState(self):
         ProjectBuildTask.pushSharedMemoryState(self)
-        self._newestBox.value = _encode(self._newestOutput.path if self._newestOutput else '')
+        self._newestBox.value = (self._newestOutput.path if self._newestOutput else '').encode()
 
     def pullSharedMemoryState(self):
         ProjectBuildTask.pullSharedMemoryState(self)
-        self._newestOutput = TimeStampFile(_decode(self._newestBox.value)) if self._newestBox.value else None
+        self._newestOutput = TimeStampFile(self._newestBox.value.decode()) if self._newestBox.value else None
 
     def cleanSharedMemoryState(self):
         ProjectBuildTask.cleanSharedMemoryState(self)
@@ -7741,7 +7733,7 @@ class JavacLikeCompiler(JavaCompiler):
                 if any(exists(join(jmodsDir, jmod)) for jmod in jmodsToRemove):
                     # Use version and sha1 of source JDK's JAVA_HOME to ensure jmods copy is unique to source JDK
                     d = hashlib.sha1()
-                    d.update(_encode(self.jdk.home))
+                    d.update(self.jdk.home.encode())
                     jdkHomeSig = d.hexdigest()[0:10] # 10 digits of the sha1 is more than enough
                     jdkHomeMirror = ensure_dir_exists(join(primary_suite().get_output_root(), '.jdk{}_{}_ecj'.format(self.jdk.version, jdkHomeSig)))
                     jmodsCopyPath = join(jdkHomeMirror, 'jmods')
@@ -7968,7 +7960,7 @@ class CompilerDaemon(Daemon):
         pout = []
         def redirect(stream):
             for line in iter(stream.readline, b''):
-                line = _decode(line)
+                line = line.decode()
                 pout.append(line)
                 self._noticePort(line)
             stream.close()
@@ -8018,7 +8010,7 @@ class CompilerDaemon(Daemon):
         commandLine = u'\x00'.join(compilerArgs)
         s.send((commandLine + '\n').encode('utf-8'))
         f = s.makefile()
-        response = _unicode(f.readline())
+        response = str(f.readline())
         if response == '':
             # Compiler server process probably crashed
             logv('[Compiler daemon process appears to have crashed]')
@@ -10066,7 +10058,7 @@ class GitConfig(VC):
         return cmd
 
     def _clone(self, url, dest=None, branch=None, rev=None, abortOnError=True, **extra_args):
-        hashed_url = hashlib.sha1(_encode(url)).hexdigest()
+        hashed_url = hashlib.sha1(url.encode()).hexdigest()
         cmd = ['git', 'clone']
         if rev and self.object_cache_mode == 'refcache' and GitConfig._is_hash(rev):
             cache = self._local_cache_repo()
@@ -10852,7 +10844,7 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except _urllib_error.HTTPError as e:
+        except urllib.error.HTTPError as e:
             _suggest_http_proxy_error(e)
             abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
         try:
@@ -10877,7 +10869,7 @@ class MavenRepo:
                     snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
                         snapshot_metadataFile = _urlopen(snapshot_metadataUrl, timeout=10)
-                    except _urllib_error.HTTPError as e:
+                    except urllib.error.HTTPError as e:
                         logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
                         snapshot_metadataFile = None
 
@@ -10888,7 +10880,7 @@ class MavenRepo:
                         break
 
             return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
-        except _urllib_error.URLError as e:
+        except urllib.error.URLError as e:
             abort('Error while retrieving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
         finally:
             if metadataFile:
@@ -10903,8 +10895,8 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except _urllib_error.URLError as e:
-            if isinstance(e, _urllib_error.HTTPError) and e.code == 404:
+        except urllib.error.URLError as e:
+            if isinstance(e, urllib.error.HTTPError) and e.code == 404:
                 return None
             _suggest_http_proxy_error(e)
             abort('Error while retrieving snapshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
@@ -11778,7 +11770,7 @@ class XMLDoc(xml.dom.minidom.Document):
 
     def xml(self, indent='', newl='', escape=False, standalone=None):
         assert self.current == self
-        result = _decode(self.toprettyxml(indent, newl, encoding="UTF-8"))
+        result = self.toprettyxml(indent, newl, encoding="UTF-8").decode()
         if not result.startswith('<?xml'):
             # include xml tag if it's not already included
             result = '<?xml version="1.0" encoding="UTF-8"?>\n' + result
@@ -13222,7 +13214,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
 
         def redirect(stream, f):
             for line in iter(stream.readline, b''):
-                f(_decode(line))
+                f(line.decode())
             stream.close()
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
@@ -13243,7 +13235,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             t.start()
             joiners.append(t)
         if isinstance(stdin, str):
-            p.stdin.write(_encode(stdin))
+            p.stdin.write(stdin.encode())
             p.stdin.close()
         if timeout is None or timeout == 0:
             while True:
@@ -15041,7 +15033,7 @@ class Archiver(SafeFileCreation):
 
     def _add_str_tar(self, data, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
-        binary_data = _encode(data)
+        binary_data = data.encode()
         tarinfo = self.zf.tarinfo()
         tarinfo.name = archive_name
         tarinfo.size = len(binary_data)
@@ -17640,8 +17632,8 @@ def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
     else:
         abort("Unknown Socks Proxy type {0}".format(proxytype))
 
-    opener = _urllib_request.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
-    _urllib_request.install_opener(opener)
+    opener = urllib.request.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
+    urllib.request.install_opener(opener)
 
 _mx_args = []
 _mx_command_and_args = []

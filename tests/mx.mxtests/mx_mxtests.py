@@ -1,20 +1,12 @@
 # A collections of commands that exercise some mx functions in the context of a particular set of suites.
 # Incomplete
 
-from __future__ import print_function
-
 from argparse import ArgumentParser
 import os
 import mx
 
-import sys
-
-if sys.version_info[0] < 3:
-    from HTMLParser import HTMLParser
-    from urllib import urlopen # pylint: disable=no-name-in-module
-else:
-    from html.parser import HTMLParser
-    from urllib.request import urlopen # pylint: disable=no-name-in-module
+from html.parser import HTMLParser
+from urllib.request import urlopen
 
 _suite = mx.suite('mxtests')
 

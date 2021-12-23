@@ -24,8 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import os, re, time, datetime, json
 import tempfile
 import atexit

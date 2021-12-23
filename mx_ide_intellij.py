@@ -25,32 +25,23 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import print_function
-
-import sys
-
 try:
     import defusedxml #pylint: disable=unused-import
     from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 import os
+import sys
 # TODO use defusedexpat?
 import re
 import glob
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, dirname, exists, isdir, realpath
+from io import StringIO
 
 import mx
 import mx_ideconfig
 import mx_javamodules
-
-
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-if sys.version_info[0] < 3:
-    from StringIO import StringIO
-else:
-    from io import StringIO
 
 
 # IntelliJ SDK types.

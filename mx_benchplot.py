@@ -24,8 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import json
 from argparse import ArgumentParser, REMAINDER
 from argparse import RawTextHelpFormatter
@@ -33,7 +31,6 @@ import os.path
 import sys
 
 import mx
-
 
 def suite_context_free(func):
     """
