@@ -2,7 +2,7 @@ local common = import "common.json";
 local jdks = common.jdks;
 local versions = {
     python3: "3.8.10",
-    pylint: "1.9.3",
+    pylint: "2.4.4",
     gcc: "4.9.2",
     ruby: "2.7.2",
     git: "1.8.3",
@@ -39,7 +39,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     packages+: {
         "pip:pylint": "==" + versions.pylint,
         "gcc": "==" + versions.gcc,
-        "python": "==" + versions.python3,
+        "python3": "==" + versions.python3,
     },
     downloads+: common.downloads.eclipse.downloads + {
         JAVA_HOME: jdks["labsjdk-ee-%s" % java_release]
@@ -100,7 +100,6 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     proftool_test:: self.with_name("proftool-test") + {
         packages+: {
             "pip:capstone": ">=" + versions.capstone,
-            "python": "==" + versions.python3,
         },
         setup:  [
             [mx, "build"],
