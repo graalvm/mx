@@ -206,8 +206,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     specVersion: "3",
 
     # Overlay
-    overlay: "fa7b89f39e034388b149591ef6fb706c72c8c29b",
-    
+    overlay: "35accb484712f25209a2bafd6cf699162a302c78",
 
     # For use by overlay
     versions:: versions,
