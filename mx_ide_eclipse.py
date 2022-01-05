@@ -130,7 +130,7 @@ def eclipseformat(args):
     class FileInfo:
         def __init__(self, path):
             self.path = path
-            with open(path) as fp:
+            with open(path, encoding='utf-8') as fp:
                 self.content = fp.read()
             self.times = (os.path.getatime(path), mx.getmtime(path))
 
