@@ -60,7 +60,18 @@ else
         if [ $? -eq 0 ]; then
             python_exe=python2
         else
-            python_exe=python
+            type python > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                python_exe=python
+            else
+                type python3 > /dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    python_exe=python3
+                else
+                    echo "Cannot find Python on PATH"
+                    exit 1
+                fi
+            fi
         fi
     fi
 fi
