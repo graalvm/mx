@@ -15295,9 +15295,9 @@ def canonicalizeprojects(args):
                             ignoredDeps.discard(dep)
                         if pkg in dep.extended_java_packages():
                             ignoredDeps.discard(dep)
-
             genDeps = frozenset([dependency(name, context=p) for name in getattr(p, "generatedDependencies", [])])
             incorrectGenDeps = genDeps - ignoredDeps
+
             ignoredDeps -= genDeps
             if incorrectGenDeps:
                 p.abort('{0} should declare following as normal dependencies, not generatedDependencies: {1}'.format(p, ', '.join([d.name for d in incorrectGenDeps])))
@@ -17876,7 +17876,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.6")  # GR-35989
+version = VersionSpec("5.317.7")  # GR-35982
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
