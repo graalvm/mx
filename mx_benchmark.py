@@ -853,23 +853,53 @@ class CSVStdOutFileRule(CSVBaseRule):
     def getCSVFiles(self, text):
         return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
 
-class JsonStdOutFileRule(BaseRule):
 
-    def __init__(self, pattern, match_name, replacement, keys):
-        super(JsonStdOutFileRule, self).__init__(replacement)
-        self.pattern = pattern
-        self.match_name = match_name
+class JsonBaseRule(BaseRule):
+    """Parses JSON files and creates a measurement result using the replacement."""
+
+    def __init__(self, replacement, keys):
+        super(JsonBaseRule, self).__init__(replacement)
         self.keys = keys
 
     def parseResults(self, text):
         l = []
-        for f in self.getFiles(text):
+        for f in self.getJsonFiles(text):
             with open(f) as fp:
-                l = l + [{k:str(v)} for k, v in json.load(fp).items() if k in self.keys]
+                l = l + [{k: str(v)} for k, v in json.load(fp).items() if k in self.keys]
         return l
 
-    def getFiles(self, text):
+    def getJsonFiles(self, text):
+        """Get the JSON files which should be parsed.
+
+       :param text: The standard output of the benchmark.
+       :type text: str
+       :return: List of file names
+       :rtype: list
+       """
+        raise NotImplementedError()
+
+
+class JsonStdOutFileRule(JsonBaseRule):
+    """Rule that looks for JSON file names in the output of the benchmark."""
+
+    def __init__(self, pattern, match_name, replacement, keys):
+        super(JsonStdOutFileRule, self).__init__(replacement, keys)
+        self.pattern = pattern
+        self.match_name = match_name
+
+    def getJsonFiles(self, text):
         return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
+
+
+class JsonFixedFileRule(JsonBaseRule):
+    """Rule that parses a JSON file with a predefined name."""
+
+    def __init__(self, filename, replacement, keys):
+        super(JsonFixedFileRule, self).__init__(replacement, keys)
+        self.filename = filename
+
+    def getJsonFiles(self, text):
+        return [self.filename]
 
 
 class JMHJsonRule(Rule):
