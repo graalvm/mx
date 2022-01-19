@@ -15928,7 +15928,7 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None, packa
                         packageInfos.add(package)
     return packages
 
-def _get_javadoc_module_args(project, jdk):
+def _get_javadoc_module_args(projects, jdk):
     additional_javadoc_args = []
     if jdk.javaCompliance >= JavaCompliance(11):
         jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
@@ -15939,11 +15939,12 @@ def _get_javadoc_module_args(project, jdk):
         class NonLocal:
             requiresJVMCI = False
         def visit(dep, edge):
-            if dep == project:
+            if dep in projects:
                 return
             if hasattr(dep, 'module') and dep.module == 'jdk.internal.vm.ci':
                 NonLocal.requiresJVMCI = True
-        project.walk_deps(visit=visit)
+        for p in projects:
+            p.walk_deps(visit=visit)
         if NonLocal.requiresJVMCI:
             for module in jdk.get_modules():
                 if module.name == 'jdk.internal.vm.ci':
@@ -16122,7 +16123,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-snippetpath', snippets,
                      '-hiddingannotation', 'java.lang.Deprecated',
                      '-source', str(jdk.javaCompliance)] +
-                     _get_javadoc_module_args(p, jdk) +
+                     _get_javadoc_module_args([p], jdk) +
                      snippetsPatterns +
                      jdk.javadocLibOptions([]) +
                      ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
@@ -16238,6 +16239,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-snippetpath', snippets,
              '-hiddingannotation', 'java.lang.Deprecated',
              '-sourcepath', sp] +
+             _get_javadoc_module_args(projects, jdk) +
              verifySincePresent +
              snippetsPatterns +
              ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
@@ -17876,7 +17878,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.7")  # GR-35982
+version = VersionSpec("5.317.8")  # GR-33851
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
