@@ -1424,7 +1424,7 @@ def _stage_file_impl(src, dst):
         return
 
     mx.ensure_dir_exists(dirname(dst))
-    
+
     if not mx.can_symlink():
         if exists(dst):
             os.remove(dst)
