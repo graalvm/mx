@@ -16142,31 +16142,18 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         pkgs = set()
         sproots = []
         names = []
-        classpath_deps = set()
 
         for p in projects:
             pkgs.update(_find_packages(p, not args.implementation, include_packages, exclude_packages))
             sproots += p.source_dirs()
             names.append(p.name)
-            for dep in p.deps:
-                if dep.isJavaProject():
-                    if dep not in projects:
-                        classpath_deps.add(dep)
-                elif dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isJdkLibrary():
-                    classpath_deps.add(dep)
-                elif dep.isJreLibrary():
-                    pass
-                elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
-                    logv("Ignoring dependency from {} to {}".format(p.name, dep.name))
-                else:
-                    abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
         links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
         overviewFile = os.sep.join([primary_suite().dir, primary_suite().name, 'overview.html'])
         out = join(primary_suite().dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
-        cp = classpath(classpath_deps, jdk=jdk)
+        cp = classpath([p.name for p in projects], includeSelf=True, jdk=jdk)
         sp = os.pathsep.join(sproots)
         nowarnAPI = []
         if not args.warnAPI:
@@ -17878,7 +17865,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.9")  # GR-35755
+version = VersionSpec("5.317.10")  # GR-33851 (javadocs)
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
