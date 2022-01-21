@@ -1417,7 +1417,14 @@ def _stage_file_impl(src, dst):
     """
     Copies or symlinks `src` to `dst`.
     """
+    # GR-36461: If the directories are the same, then nothing should be done.
+    if not exists(src):
+        return
+    if exists(dst) and os.path.samefile(src, dst):
+        return
+
     mx.ensure_dir_exists(dirname(dst))
+
     if not mx.can_symlink():
         if exists(dst):
             os.remove(dst)
