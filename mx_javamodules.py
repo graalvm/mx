@@ -815,23 +815,20 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
             if archive.exploded:
                 default_version = str(jdk.javaCompliance.value)
-                max_version = default_version
                 all_versions = [default_version]
             else:
+                default_jdk = mx.get_jdk(tag=mx.DEFAULT_JDK_TAG)
+                try:
+                    # Ensure that default_jmd is compatible with default_jdk
+                    default_version = str(max(v for v in versions if v <= default_jdk.javaCompliance.value))
+                except ValueError:
+                    default_version = None if default_jdk.javaCompliance < '9' else 'common'
                 all_versions = [str(v) for v in sorted(versions)]
                 if '9' not in all_versions:
                     # 9 is the first version that supports modules and can be versioned in the JAR:
-                    # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
-                    # so that the module works on JDK 9.
-                    default_version = 'common'
-                    if all_versions:
-                        max_version = str(max((int(v) for v in all_versions)))
-                    else:
-                        max_version = default_version
+                    # if there is no `META-INF/versions/9` then we should add a `module-info.class`
+                    # to the root of the JAR so that the module works on JDK 9.
                     all_versions = ['common'] + all_versions
-                else:
-                    max_version = str(max((int(v) for v in all_versions)))
-                    default_version = max_version
 
             def create_missing_dirs(path):
                 if not exists(path):
@@ -1000,7 +997,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         mx.run([jdk.javac] + javac_args, cmdlinefile=dest_dir + '.cmdline')
 
                 # Create .jmod for module
-                if version == max_version and not archive.exploded:
+                if version == default_version and not archive.exploded:
 
                     class HideDirectory(object):
                         def __init__(self, dirpath):
@@ -1021,7 +1018,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         if exists(jmod_path):
                             os.remove(jmod_path)
 
-                        jdk_jmod = join(jdk_jmods, basename(jmod_path))
+                        jdk_jmod = join(default_jdk.home, 'jmods', basename(jmod_path))
                         jmod_args = ['create', '--class-path=' + dest_dir]
                         if not dist.is_stripped():
                             # There is a ProGuard bug that corrupts the ModuleTarget
