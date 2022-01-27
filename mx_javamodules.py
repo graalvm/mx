@@ -830,48 +830,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     # to the root of the JAR so that the module works on JDK 9.
                     all_versions = ['common'] + all_versions
 
-            def create_missing_dirs(path):
-                if not exists(path):
-                    create_missing_dirs(dirname(path))
-                    os.mkdir(path)
-                    _Archive.create_jdk_8268216(path)
-
-            def sync_file(src, dst, restore_files):
-                """
-                Ensures that `dst` points at or contains the same contents as `src`.
-
-                :param dict restore_files: map from `dst` to a callable that will restore its original
-                            content or to None should `dst` be deleted once the module-info.class has
-                            been produced
-                """
-                while islink(src):
-                    src = os.readlink(src)
-                if not mx.can_symlink():
-                    mx.ensure_dir_exists(dirname(dst))
-                    if exists(dst):
-                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
-                        os.remove(dst)
-                    else:
-                        restore_files[dst] = None
-                    shutil.copy(src, dst)
-                else:
-                    if exists(dst):
-                        if islink(dst):
-                            target = os.readlink(dst)
-                            if target == src:
-                                return
-                            if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
-                                # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
-                                return
-                            restore_files[dst] = lambda: os.symlink(target, dst)
-                        else:
-                            restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
-                        os.remove(dst)
-                    else:
-                        restore_files[dst] = None
-                        create_missing_dirs(dirname(dst))
-                    os.symlink(src, dst)
-
             for version in all_versions:
                 restore_files = {}
                 with mx.Timer('jmd@' + version, times):
@@ -883,6 +841,48 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     dest_dir = module_jar_staging_dir
 
                     if not archive.exploded:
+                        def create_missing_dirs(path):
+                            if not exists(path):
+                                create_missing_dirs(dirname(path))
+                                os.mkdir(path)
+                                _Archive.create_jdk_8268216(path)
+
+                        def sync_file(src, dst, restore_files):
+                            """
+                            Ensures that `dst` points at or contains the same contents as `src`.
+
+                            :param dict restore_files: map from `dst` to a callable that will restore its original
+                                        content or to None should `dst` be deleted once the module-info.class has
+                                        been produced
+                            """
+                            while islink(src):
+                                src = os.readlink(src)
+                            if not mx.can_symlink():
+                                mx.ensure_dir_exists(dirname(dst))
+                                if exists(dst):
+                                    restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
+                                    os.remove(dst)
+                                else:
+                                    restore_files[dst] = None
+                                shutil.copy(src, dst)
+                            else:
+                                if exists(dst):
+                                    if islink(dst):
+                                        target = os.readlink(dst)
+                                        if target == src:
+                                            return
+                                        if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
+                                            # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                                            return
+                                        restore_files[dst] = lambda: os.symlink(target, dst)
+                                    else:
+                                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
+                                    os.remove(dst)
+                                else:
+                                    restore_files[dst] = None
+                                    create_missing_dirs(dirname(dst))
+                                os.symlink(src, dst)
+
                         # Put versioned resources into their non-versioned locations
                         for arcname, entry, entry_version, unversioned_name in versioned:
                             if entry_version > int_version:
