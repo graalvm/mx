@@ -79,6 +79,7 @@ import random
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
+import posixpath
 
 _mx_commands = MxCommands("mx")
 
@@ -7041,7 +7042,7 @@ class JavaProject(Project, ClasspathDependency):
                         if path_package not in depPackages:
                             packages.add(path_package)
                         else:
-                            # A project extends a package already defined by one of it dependencies
+                            # A project extends a package already defined by one of its dependencies
                             extendedPackages.add(path_package)
 
             self._defined_java_packages = frozenset(packages)
@@ -8877,6 +8878,15 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
                     ext = "src." + ext
                 src_filename = _map_to_maven_dist_name(self.name) + '.' + ext
                 yield src_path, src_filename
+
+    def defined_java_packages(self):
+        if not hasattr(self, '_defined_java_packages'):
+            self._defined_java_packages = set()
+            with zipfile.ZipFile(self.get_path(True), 'r') as zf:
+                for zi in zf.infolist():
+                    if zi.filename.endswith('.class'):
+                        self._defined_java_packages.add(posixpath.dirname(zi.filename).replace('/', '.'))
+        return self._defined_java_packages
 
 
 class LibraryDownloadTask(BuildTask):
