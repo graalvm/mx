@@ -17882,7 +17882,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.15")  # revert
+version = VersionSpec("5.317.16")  # GR-32683 make jackpot work on jdk-17
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
