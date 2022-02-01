@@ -822,13 +822,15 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 except ValueError:
                     jmod_version = None if default_jdk.javaCompliance < '9' else 'common'
 
-                # Sort versions in increasing order as the rest of the code assumes so
+                # Sort versions in increasing order as expected by the rest of the code
                 all_versions = [str(v) for v in sorted(versions)]
                 if '9' not in all_versions:
                     # 9 is the first version that supports modules and can be versioned in the JAR:
                     # if there is no `META-INF/versions/9` then we should add a `module-info.class`
                     # to the root of the JAR so that the module works on JDK 9.
                     all_versions = ['common'] + all_versions
+
+            assert jmod_version is None or jmod_version in all_versions
 
             for version in all_versions:
                 restore_files = {}
@@ -1074,7 +1076,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         jmd.save()
 
     mx.logv('[' + moduleName + ' times: ' + ', '.join(['{}={:.3f}s'.format(name, secs) for name, secs in sorted(times, key=lambda pair: pair[1], reverse=True)]) + ']')
-    assert version == (str(max(versions)) if versions else jdk.javaCompliance if archive.exploded else 'common')
+    assert version == (str(max(versions)) if versions else str(jdk.javaCompliance.value) if archive.exploded else 'common')
     return jmd
 
 def get_transitive_closure(roots, observable_modules):
