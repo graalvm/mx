@@ -534,7 +534,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
     :param _Archive archive: info about the jar being converted to a module
     :param CompilerDaemon javac_daemon: compiler daemon (if not None) to use for compiling module-info.java
     :param str alt_module_info_name: name of alternative module descriptor in `dist` (in the attribute "moduleInfo:" + `alt_module_info_name`)
-    :return: the `JavaModuleDescriptor` for the created Java module
+    :return: the `JavaModuleDescriptor` for the latest version of the created Java module
     """
     info = get_java_module_info(dist)
     if info is None:
@@ -811,69 +811,26 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 else:
                     unversioned.append((arcname, entry))
 
-            default_jmd = None
-
             if archive.exploded:
-                default_version = str(jdk.javaCompliance.value)
-                max_version = default_version
-                all_versions = [default_version]
+                jmod_version = None
+                all_versions = [str(jdk.javaCompliance.value)]
             else:
+                # Ensure that created .jmod is compatible with the default JDK
+                default_jdk = mx.get_jdk(tag=mx.DEFAULT_JDK_TAG)
+                try:
+                    jmod_version = str(max(v for v in versions if v <= default_jdk.javaCompliance.value))
+                except ValueError:
+                    jmod_version = None if default_jdk.javaCompliance < '9' else 'common'
+
+                # Sort versions in increasing order as expected by the rest of the code
                 all_versions = [str(v) for v in sorted(versions)]
                 if '9' not in all_versions:
                     # 9 is the first version that supports modules and can be versioned in the JAR:
-                    # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
-                    # so that the module works on JDK 9.
-                    default_version = 'common'
-                    if all_versions:
-                        max_version = str(max((int(v) for v in all_versions)))
-                    else:
-                        max_version = default_version
+                    # if there is no `META-INF/versions/9` then we should add a `module-info.class`
+                    # to the root of the JAR so that the module works on JDK 9.
                     all_versions = ['common'] + all_versions
-                else:
-                    max_version = str(max((int(v) for v in all_versions)))
-                    default_version = max_version
 
-            def create_missing_dirs(path):
-                if not exists(path):
-                    create_missing_dirs(dirname(path))
-                    os.mkdir(path)
-                    _Archive.create_jdk_8268216(path)
-
-            def sync_file(src, dst, restore_files):
-                """
-                Ensures that `dst` points at or contains the same contents as `src`.
-
-                :param dict restore_files: map from `dst` to a callable that will restore its original
-                            content or to None should `dst` be deleted once the module-info.class has
-                            been produced
-                """
-                while islink(src):
-                    src = os.readlink(src)
-                if not mx.can_symlink():
-                    mx.ensure_dir_exists(dirname(dst))
-                    if exists(dst):
-                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
-                        os.remove(dst)
-                    else:
-                        restore_files[dst] = None
-                    shutil.copy(src, dst)
-                else:
-                    if exists(dst):
-                        if islink(dst):
-                            target = os.readlink(dst)
-                            if target == src:
-                                return
-                            if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
-                                # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
-                                return
-                            restore_files[dst] = lambda: os.symlink(target, dst)
-                        else:
-                            restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
-                        os.remove(dst)
-                    else:
-                        restore_files[dst] = None
-                        create_missing_dirs(dirname(dst))
-                    os.symlink(src, dst)
+            assert jmod_version is None or jmod_version in all_versions
 
             for version in all_versions:
                 restore_files = {}
@@ -886,6 +843,48 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     dest_dir = module_jar_staging_dir
 
                     if not archive.exploded:
+                        def create_missing_dirs(path):
+                            if not exists(path):
+                                create_missing_dirs(dirname(path))
+                                os.mkdir(path)
+                                _Archive.create_jdk_8268216(path)
+
+                        def sync_file(src, dst, restore_files):
+                            """
+                            Ensures that `dst` points at or contains the same contents as `src`.
+
+                            :param dict restore_files: map from `dst` to a callable that will restore its original
+                                        content or to None should `dst` be deleted once the module-info.class has
+                                        been produced
+                            """
+                            while islink(src):
+                                src = os.readlink(src)
+                            if not mx.can_symlink():
+                                mx.ensure_dir_exists(dirname(dst))
+                                if exists(dst):
+                                    restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
+                                    os.remove(dst)
+                                else:
+                                    restore_files[dst] = None
+                                shutil.copy(src, dst)
+                            else:
+                                if exists(dst):
+                                    if islink(dst):
+                                        target = os.readlink(dst)
+                                        if target == src:
+                                            return
+                                        if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
+                                            # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                                            return
+                                        restore_files[dst] = lambda: os.symlink(target, dst)
+                                    else:
+                                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
+                                    os.remove(dst)
+                                else:
+                                    restore_files[dst] = None
+                                    create_missing_dirs(dirname(dst))
+                                os.symlink(src, dst)
+
                         # Put versioned resources into their non-versioned locations
                         for arcname, entry, entry_version, unversioned_name in versioned:
                             if entry_version > int_version:
@@ -1000,7 +999,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         mx.run([jdk.javac] + javac_args, cmdlinefile=dest_dir + '.cmdline')
 
                 # Create .jmod for module
-                if version == max_version and not archive.exploded:
+                if version == jmod_version:
+                    assert not archive.exploded
 
                     class HideDirectory(object):
                         def __init__(self, dirpath):
@@ -1021,7 +1021,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         if exists(jmod_path):
                             os.remove(jmod_path)
 
-                        jdk_jmod = join(jdk_jmods, basename(jmod_path))
+                        jdk_jmod = join(default_jdk.home, 'jmods', basename(jmod_path))
                         jmod_args = ['create', '--class-path=' + dest_dir]
                         if not dist.is_stripped():
                             # There is a ProGuard bug that corrupts the ModuleTarget
@@ -1044,10 +1044,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                             shutil.rmtree(entries_dir)
                                         os.rename(extracted_dir, entries_dir)
                                         jmod_args.extend([jmod_option, join(entries_dir)])
-                        mx.run([jdk.exe_path('jmod')] + jmod_args + [jmod_path])
-
-                if version == default_version:
-                    default_jmd = jmd
+                        mx.run([default_jdk.exe_path('jmod')] + jmod_args + [jmod_path])
 
                 with mx.Timer('jar@' + version, times):
                     if not archive.exploded:
@@ -1076,10 +1073,11 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 # Preserve build directory so that javac command can be re-executed
                 # by cutting and pasting verbose output.
                 mx.rmtree(build_directory)
-        default_jmd.save()
+        jmd.save()
 
     mx.logv('[' + moduleName + ' times: ' + ', '.join(['{}={:.3f}s'.format(name, secs) for name, secs in sorted(times, key=lambda pair: pair[1], reverse=True)]) + ']')
-    return default_jmd
+    assert version == (str(max(versions)) if versions else str(jdk.javaCompliance.value) if archive.exploded else 'common')
+    return jmd
 
 def get_transitive_closure(roots, observable_modules):
     """
