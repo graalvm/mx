@@ -16039,8 +16039,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if p.isJavaProject() and not is_multirelease_jar_overlay(p):
                 snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
-    snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
-
+    snippetslib = library('CODESNIPPET-DOCLET_0.63').get_path(resolve=True)
 
     ap = []
     for sp in snippetsPatterns:
@@ -16169,7 +16168,6 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         if jdk.javaCompliance <= JavaCompliance(8):
             cp = classpath(classpath_deps, jdk=jdk)
         else:
-            snippetslib = library('CODESNIPPET-DOCLET_0.63').get_path(resolve=True)
             cp = classpath(projects, includeSelf=True, jdk=jdk)
         sp = os.pathsep.join(sproots)
         nowarnAPI = []
@@ -17882,7 +17880,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.17")  # GR-36612 fixup
+version = VersionSpec("5.317.18")  # GR-34816 - fixup
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
