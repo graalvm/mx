@@ -587,6 +587,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     e_module_name = e.get_declaring_module_name()
                     if e_module_name and e_module_name != moduleName:
                         requires.setdefault(e_module_name, set())
+            for library in java_libraries:
+                module_packages.update(library.defined_java_packages())
 
         def _parse_packages_spec(packages_spec, available_packages, project_scope):
             """
@@ -610,7 +612,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages), context=dist)
                     res.update(selection)
                 elif spec == '<package-info>':
-                    if not project_scope:
+                    if not isinstance(project_scope, mx.Project):
                         mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
                     res.update(mx._find_packages(project_scope, onlyPublic=True))
                 else:
@@ -761,9 +763,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     for module in getattr(library, 'requires', []):
                         requires.setdefault(module, set())
                     if hasattr(library, 'exports'):
-                        for package in getattr(library, 'exports'):
-                            exports[package] = set()
-                            module_packages.add(package)
+                        _process_exports(getattr(library, 'exports'), library.defined_java_packages(), library)
                     if not module_info:
                         mx.warn("Module {} re-packages library {} but doesn't have a `moduleInfo` attribute. Note that library packages are not auto-exported")
 
