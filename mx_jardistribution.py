@@ -1427,7 +1427,7 @@ def _stage_file_impl(src, dst):
 
     if not mx.can_symlink():
         if exists(dst):
-            os.remove(dst)
+            mx.rmtree(dst)
         shutil.copy(src, dst)
     else:
         if exists(dst):
@@ -1438,7 +1438,7 @@ def _stage_file_impl(src, dst):
                 if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
                     # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
                     return
-            os.remove(dst)
+            mx.rmtree(dst)
         elif islink(dst):
             # Remove a broken link
             os.remove(dst)

@@ -6842,8 +6842,8 @@ class JavaProject(Project, ClasspathDependency):
         return res
 
     # GR-31142
-    def latest_source_gen_dir(self):
-        return join(self.suite.get_output_root(False, False), self.name, 'src_gen')
+    def latest_output_dir(self):
+        return join(self.suite.get_output_root(False, False), self.name)
 
     def jni_gen_dir(self, relative=False):
         if getattr(self, 'jniHeaders', False):
@@ -7585,18 +7585,13 @@ class JavaBuildTask(ProjectBuildTask):
             for f in os.listdir(genDir):
                 rmtree(join(genDir, f))
 
-        linkedGenDir = self.subject.latest_source_gen_dir()
+        linkedGenDir = self.subject.latest_output_dir()
         if exists(linkedGenDir):
             logv('Cleaning {0}...'.format(linkedGenDir))
             if islink(linkedGenDir):
                 os.unlink(linkedGenDir)
             elif isdir(linkedGenDir):
                 rmtree(linkedGenDir)
-        linkedGenDirParent = dirname(linkedGenDir)
-        if exists(linkedGenDirParent):
-            for root, dirs, files in os.walk(linkedGenDirParent, topdown=False, followlinks=False):
-                if not dirs and not files:
-                    os.rmdir(root)
 
         outputDir = self.subject.output_dir()
         if exists(outputDir):
@@ -7674,14 +7669,15 @@ class JavacLikeCompiler(JavaCompiler):
         if processorPath:
             ensure_dir_exists(sourceGenDir)
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
-            # GR-31142
-            postCompileActions.append(lambda: _stage_file_impl(project.source_gen_dir(), project.latest_source_gen_dir()))
         else:
             javacArgs += ['-proc:none']
         c = str(compliance)
         javacArgs += ['-target', c, '-source', c]
         if _opts.very_verbose:
             javacArgs.append('-verbose')
+
+        # GR-31142
+        postCompileActions.append(lambda: _stage_file_impl(project.get_output_root(), project.latest_output_dir()))
 
         javacArgs.extend(self.extraJavacArgs)
 
@@ -17890,7 +17886,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.19")  # library exports
+version = VersionSpec("5.317.20")  # netbeans output directory symlink update
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
