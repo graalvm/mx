@@ -140,7 +140,7 @@ def apply_selection(args, jdk, extra_jdks):
         with open(args.shell_file, 'w') as fp:
             print(get_shell_commands(args, jdk, extra_jdks), file=fp)
     else:
-        env = get_suite_env_file(args.suite_path)
+        env = get_suite_env_file(args.suite_path) if args.suite_path else None
         if env:
             with open(env, 'a') as fp:
                 print('JAVA_HOME=' + jdk, file=fp)
