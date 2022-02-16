@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # ----------------------------------------------------------------------------------------------------
 #
 # Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
@@ -23,21 +23,12 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
-
 from __future__ import print_function
 
 import os, tempfile, pipes
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
-
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-import sys
-if sys.version_info[0] < 3:
-    def input(prompt=None):                    # pylint: disable=redefined-builtin
-        return raw_input(prompt)               # pylint: disable=undefined-variable
-    from StringIO import StringIO
-else:
-    from io import StringIO
+from io import StringIO
 
 def is_valid_jdk(jdk):
     """
@@ -149,7 +140,7 @@ def apply_selection(args, jdk, extra_jdks):
         with open(args.shell_file, 'w') as fp:
             print(get_shell_commands(args, jdk, extra_jdks), file=fp)
     else:
-        env = get_suite_env_file(args.suite_path)
+        env = get_suite_env_file(args.suite_path) if args.suite_path else None
         if env:
             with open(env, 'a') as fp:
                 print('JAVA_HOME=' + jdk, file=fp)
@@ -170,25 +161,25 @@ if __name__ == '__main__':
         If the -s/--shell-source option is given, settings appropriate for the current shell are written to
         the given file such that it can be eval'ed in the shell to apply the settings. For example, in ~/.config/fish/config.fish:
 
-            if test -x (dirname (which mx))/select_jdk.py
-                function select_jdk
-                    set tmp_file (mktemp)
-                    eval (dirname (which mx))/select_jdk.py -s $tmp_file $argv
-                    source $tmp_file
-                    rm $tmp_file
-                end
-            end
+if test -x (dirname (which mx))/select_jdk.py
+    function select_jdk
+        set tmp_file (mktemp)
+        eval (dirname (which mx))/select_jdk.py -s $tmp_file $argv
+        source $tmp_file
+        rm $tmp_file
+    end
+end
 
         or in ~/.bashrc:
 
-            if [ -x $(dirname $(which mx))/select_jdk.py ]; then
-                function select_jdk {
-                    TMP_FILE=select_jdk.$$
-                    eval $(dirname $(which mx))/select_jdk.py -s $TMP_FILE "$@"
-                    source $TMP_FILE
-                    rm $TMP_FILE
-                }
-            fi
+if [ -x $(dirname $(which mx))/select_jdk.py ]; then
+    function select_jdk {
+        TMP_FILE=select_jdk.$$
+        eval $(dirname $(which mx))/select_jdk.py -s $TMP_FILE "$@"
+        source $TMP_FILE
+        rm $TMP_FILE
+    }
+fi
 
         In the absence of -s, if the current directory looks like a suite, the mx.<suite>/env file is
         created/updated with the selected values for JAVA_HOME and EXTRA_JAVA_HOMES.

@@ -17886,7 +17886,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.20")  # netbeans output directory symlink update
+version = VersionSpec("5.317.21")  # GR-37017
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
