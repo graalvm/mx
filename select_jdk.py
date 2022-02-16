@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # ----------------------------------------------------------------------------------------------------
 #
 # Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
@@ -23,21 +23,12 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
-
 from __future__ import print_function
 
 import os, tempfile, pipes
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
-
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-import sys
-if sys.version_info[0] < 3:
-    def input(prompt=None):                    # pylint: disable=redefined-builtin
-        return raw_input(prompt)               # pylint: disable=undefined-variable
-    from StringIO import StringIO
-else:
-    from io import StringIO
+from io import StringIO
 
 def is_valid_jdk(jdk):
     """
