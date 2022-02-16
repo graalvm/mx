@@ -170,25 +170,25 @@ if __name__ == '__main__':
         If the -s/--shell-source option is given, settings appropriate for the current shell are written to
         the given file such that it can be eval'ed in the shell to apply the settings. For example, in ~/.config/fish/config.fish:
 
-            if test -x (dirname (which mx))/select_jdk.py
-                function select_jdk
-                    set tmp_file (mktemp)
-                    eval (dirname (which mx))/select_jdk.py -s $tmp_file $argv
-                    source $tmp_file
-                    rm $tmp_file
-                end
-            end
+if test -x (dirname (which mx))/select_jdk.py
+    function select_jdk
+        set tmp_file (mktemp)
+        eval (dirname (which mx))/select_jdk.py -s $tmp_file $argv
+        source $tmp_file
+        rm $tmp_file
+    end
+end
 
         or in ~/.bashrc:
 
-            if [ -x $(dirname $(which mx))/select_jdk.py ]; then
-                function select_jdk {
-                    TMP_FILE=select_jdk.$$
-                    eval $(dirname $(which mx))/select_jdk.py -s $TMP_FILE "$@"
-                    source $TMP_FILE
-                    rm $TMP_FILE
-                }
-            fi
+if [ -x $(dirname $(which mx))/select_jdk.py ]; then
+    function select_jdk {
+        TMP_FILE=select_jdk.$$
+        eval $(dirname $(which mx))/select_jdk.py -s $TMP_FILE "$@"
+        source $TMP_FILE
+        rm $TMP_FILE
+    }
+fi
 
         In the absence of -s, if the current directory looks like a suite, the mx.<suite>/env file is
         created/updated with the selected values for JAVA_HOME and EXTRA_JAVA_HOMES.
