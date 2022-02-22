@@ -999,8 +999,14 @@ class _ArchiveStager(object):
                 for root, _, files in os.walk(outputDir):
                     reldir = root[len(outputDir) + 1:]
                     for f in files:
-                        relpath = join(reldir, f)
-                        self.add_file(dep, outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
+                        # If the directory contains a special file named .mxkeep then add a file entry for it
+                        # This was added for the needs of https://github.com/oracle/graal/pull/4327
+                        if f == ".mxkeep":
+                            dirEntry = reldir.replace(os.sep, '/') + '/'
+                            self.bin_archive.entries[dirEntry] = dirEntry
+                        else:
+                            relpath = join(reldir, f)
+                            self.add_file(dep, outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
 
             add_classes(archivePrefix, includeServices=True)
             sourceDirs = p.source_dirs()
