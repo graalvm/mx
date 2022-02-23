@@ -3149,6 +3149,13 @@ class MXSuite(InternalSuite):
                 SourceSuite._load_env_in_mxDir(self.mxDir)
         _primary_suite_deferrables.append(_deferrable)
 
+    def _complete_init(self):
+        """
+        Initialization steps to be completed once mx.mx/env has been processed
+        """
+        self._init_metadata()
+        self._resolve_dependencies()
+        self._post_init()
 
 class MXTestsSuite(InternalSuite):
     def __init__(self):
@@ -17738,10 +17745,6 @@ def main():
 
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
-    _mx_suite._init_metadata()
-    _mx_suite._resolve_dependencies()
-    _mx_suite._post_init()
-
     # Do not treat initial_command as an abbreviation as it would prevent
     # mx extensions from defining commands that match an abbreviation.
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
@@ -17763,15 +17766,20 @@ def main():
 
     primarySuiteMxDir = None
     if is_suite_context_free:
+        _mx_suite._complete_init()
         _setup_binary_suites()
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
     else:
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
             _primary_suite_init(_mx_suite)
+            _mx_suite._complete_init()
+
             _mx_suite.internal = False
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
+            _mx_suite._complete_init()
+
             # We explicitly load the 'env' file of the primary suite now as it might
             # influence the suite loading logic.  During loading of the sub-suites their
             # environment variable definitions are collected and will be placed into the
@@ -17790,6 +17798,7 @@ def main():
                 primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
             _primary_suite_init(primary)
         else:
+            _mx_suite._complete_init()
             if not is_optional_suite_context:
                 abort('no primary suite found for %s' % initial_command)
 
@@ -17893,7 +17902,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.320.0")  # GR-29416
+version = VersionSpec("5.320.1")  # GR-37125
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
