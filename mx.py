@@ -1752,6 +1752,8 @@ class Suite(object):
                     release = str(jdk.javaCompliance.value)
                     if release not in jdk_releases:
                         jdk_releases.append(release)
+                if not jdk_releases:
+                    abort('No JDK releases found while computing JDK dependent output root')
             if platformDependent:
                 config.append(get_os() + '-' + get_arch())
             if jdk_releases:
@@ -17778,8 +17780,6 @@ def main():
             _mx_suite.internal = False
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
-            _mx_suite._complete_init()
-
             # We explicitly load the 'env' file of the primary suite now as it might
             # influence the suite loading logic.  During loading of the sub-suites their
             # environment variable definitions are collected and will be placed into the
@@ -17787,6 +17787,7 @@ def main():
             # are seen.  The primary suite must have everything required for loading
             # defined.
             SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
+            _mx_suite._complete_init()
             additional_env = _opts.additional_env or get_env('MX_ENV_PATH')
             if additional_env:
                 SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=additional_env, abort_if_missing=True)
