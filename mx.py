@@ -48,7 +48,6 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 import os, errno, time, subprocess, shlex, zipfile, signal, tempfile, platform
-from platform import system
 import textwrap
 import socket
 import tarfile, gzip
@@ -74,7 +73,6 @@ from io import BytesIO
 import fnmatch
 import operator
 import calendar
-import multiprocessing
 import random
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
@@ -100,6 +98,7 @@ if sys.version_info[0] < 3:
     def _encode(x):
         return x
     _unicode = unicode                         # pylint: disable=undefined-variable
+    import multiprocessing
 else:
     import builtins                            # pylint: disable=unused-import,no-name-in-module
     import urllib.request as _urllib_request   # pylint: disable=unused-import,no-name-in-module
@@ -110,6 +109,18 @@ else:
     def _encode(x):
         return x.encode()
     _unicode = str
+    import multiprocessing.dummy as multiprocessing
+    class _DummyProcess(multiprocessing.DummyProcess):
+        def run(self):
+            try:
+                super(_DummyProcess, self).run()
+            except:
+                self._exitcode = 1
+                raise
+        @property
+        def exitcode(self):
+            return getattr(self, '_exitcode', super(_DummyProcess, self).exitcode)
+    multiprocessing.Process = _DummyProcess
 
 ### ~~~~~~~~~~~~~ _private
 
@@ -3929,6 +3940,7 @@ def cpu_count():
         except AttributeError:
             cpus = None
     if cpus is None:
+        import multiprocessing
         cpus = multiprocessing.cpu_count()
     if _opts.cpu_count:
         return cpus if cpus <= _opts.cpu_count else _opts.cpu_count
@@ -4087,27 +4099,28 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     If `context` defines a __abort_context__ method, the latter is called and
     its return value is printed. Otherwise str(context) is printed.
     """
+    import threading
+    if sys.version_info[0] < 3 or threading.current_thread() is threading.main_thread():
+        if is_continuous_integration() or _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
+            logv('sending SIGQUIT to subprocesses on abort')
+            _send_sigquit()
 
-    if is_continuous_integration() or _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
-        logv('sending SIGQUIT to subprocesses on abort')
-        _send_sigquit()
-
-    for p, args in _currentSubprocesses:
-        if _is_process_alive(p):
-            if is_windows():
-                p.terminate()
-            else:
-                _kill_process(p.pid, killsig)
-            time.sleep(0.1)
-        if _is_process_alive(p):
-            try:
+        for p, args in _currentSubprocesses:
+            if _is_process_alive(p):
                 if is_windows():
                     p.terminate()
                 else:
-                    _kill_process(p.pid, signal.SIGKILL)
-            except BaseException as e:
-                if _is_process_alive(p):
-                    log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
+                    _kill_process(p.pid, killsig)
+                time.sleep(0.1)
+            if _is_process_alive(p):
+                try:
+                    if is_windows():
+                        p.terminate()
+                    else:
+                        _kill_process(p.pid, signal.SIGKILL)
+                except BaseException as e:
+                    if _is_process_alive(p):
+                        log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
     sys.stdout.flush()
     if is_continuous_integration() or (_opts and hasattr(_opts, 'verbose') and _opts.verbose):
@@ -7375,7 +7388,10 @@ class JavaBuildTask(ProjectBuildTask):
 
     def initSharedMemoryState(self):
         ProjectBuildTask.initSharedMemoryState(self)
-        self._newestBox = multiprocessing.Array('c', 2048)
+        try:
+            self._newestBox = multiprocessing.Array('c', 2048)
+        except TypeError:
+            self._newestBox = multiprocessing.Value('c', '')
 
     def pushSharedMemoryState(self):
         ProjectBuildTask.pushSharedMemoryState(self)
@@ -14313,7 +14329,7 @@ def build(cmd_args, parser=None):
         deps_w_deprecation_errors = [e.name for e in primary_java_projects + primary_java_project_dists]
         logv("Deprecations are only errors for " + ", ".join(deps_w_deprecation_errors))
 
-    if is_windows():
+    if is_windows() and sys.version_info[0] < 3:
         if args.parallelize:
             warn('parallel builds are not supported on windows: can not use -p')
             args.parallelize = False
@@ -14492,8 +14508,9 @@ def build(cmd_args, parser=None):
                 break
 
             def executeTask(task):
-                # Clear sub-process list cloned from parent process
-                del _currentSubprocesses[:]
+                if not isinstance(task.proc, Thread):
+                    # Clear sub-process list cloned from parent process
+                    del _currentSubprocesses[:]
                 task.execute()
                 task.pushSharedMemoryState()
 
@@ -14515,7 +14532,7 @@ def build(cmd_args, parser=None):
                     task._finished = False
                     task.proc.start()
                     active.append(task)
-                    task.sub = _addSubprocess(task.proc, [str(task)])
+                    task.sub = None if isinstance(task.proc, Thread) else _addSubprocess(task.proc, [str(task)])
                     added_new_tasks = True
                 if _activeCpus(active) >= cpus:
                     break
@@ -17656,16 +17673,6 @@ def current_mx_command(injected_args=None):
     return 'mx' + shell_quoted_args(_mx_args) + '' + shell_quoted_args(injected_args if injected_args else _mx_command_and_args)
 
 
-def force_fork_multiprocessing_on_darwin():
-    """
-        Python version 3.8 and newest switch multiprocessing from fork
-        to spawn witch leads mx to undesirable behavior on the CI,
-        this function force set multiprocessing context to fork for
-        newest python version on darwin system. GR-26022
-    """
-    if sys.version_info > (3, 7) and system().lower() == "darwin":
-        multiprocessing.set_start_method('fork', force=True)
-
 def main():
     # make sure logv, logvv and warn work as early as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
@@ -17886,7 +17893,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.319.0")  # GR-37095
+version = VersionSpec("5.320.0")  # GR-29416
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
@@ -17895,6 +17902,5 @@ _last_timestamp = _mx_start_datetime
 if __name__ == '__main__':
     # Capture the current umask since there's no way to query it without mutating it.
     currentUmask = os.umask(0)
-    force_fork_multiprocessing_on_darwin()  # GR-26022
     os.umask(currentUmask)
     main()
