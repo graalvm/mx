@@ -1753,7 +1753,7 @@ class Suite(object):
                     if release not in jdk_releases:
                         jdk_releases.append(release)
                 if not jdk_releases:
-                    abort('No JDK releases found while computing JDK dependent output root')
+                    logv('No JDK releases found while computing JDK dependent output root')
             if platformDependent:
                 config.append(get_os() + '-' + get_arch())
             if jdk_releases:
@@ -17903,7 +17903,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.320.1")  # GR-37125
+version = VersionSpec("5.320.2")  # GR-37173
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
