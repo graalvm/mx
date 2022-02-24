@@ -1,5 +1,16 @@
 local common = import "common.json";
 local jdks = common.jdks;
+local versions = {
+    python3: "3.9.9",
+    pylint: "1.9.3",
+    gcc: "4.9.2",
+    ruby: "2.7.2",
+    git: "1.8.3",
+    devtoolset: "7",
+    make: "3.83",
+    binutils: "2.34",
+    capstone: "4.0.2",
+};
 
 # Common configuration for all gates. Specific gates are defined
 # by the functions at the bottom of this object.
@@ -23,8 +34,8 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
     targets: ["gate"],
     capabilities: [os, arch],
     packages+: {
-        "pip:pylint": "==1.9.3",
-        "gcc": "==4.9.2",
+        "pip:pylint": "==" + versions.pylint,
+        "gcc": "==" + versions.gcc,
     },
     downloads+: common.downloads.eclipse.downloads + {
         JAVA_HOME: jdks["labsjdk-ee-%s" % java_release]
@@ -79,7 +90,7 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
 
     proftool_test:: self.with_name("proftool-test") + {
         packages+: {
-            "pip:capstone": ">=4.0.2",
+            "pip:capstone": ">=" + versions.capstone,
             "python": ">=3.4.1",
         },
         setup:  [
@@ -131,7 +142,7 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
 
     build_truffleruby:: self.with_name("gate-build-truffleruby") + common.sulong.deps[os] + {
         packages+: {
-            ruby: ">=2.7.2",
+            ruby: ">=" + versions.ruby
         },
         environment+: {
             PATH: "$BUILD_DIR/main:$PATH", # add ./mx on PATH
@@ -146,12 +157,12 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
 
     build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.sulong.deps[os] + {
         packages+: {
-            git: ">=1.8.3",
-            devtoolset: "==7",
-            make: ">=3.83",
-            binutils: "==2.34",
+            git: ">=" + versions.git,
+            devtoolset: "==" + versions.devtoolset,
+            make: ">=" + versions.make,
+            binutils: "==" + versions.binutils,
         },
-        run: [
+        run: self.java_home_in_env("../graal/vm", "vm") + [
             [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
         ],
@@ -181,6 +192,9 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
 {
     # Overlay
     overlay: "fa7b89f39e034388b149591ef6fb706c72c8c29b",
+
+    # For use by overlay
+    versions:: versions,
 
     builds: [
         with("linux",   "amd64", 17, python=2).gate,
