@@ -59,13 +59,19 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
         ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
     ] else [],
 
+    java_home_in_env(suite_dir, suite_name):: [
+        # Set JAVA_HOME *only* in <suite_dir>/mx.<suite>/env
+        ["echo", "JAVA_HOME=$JAVA_HOME", ">", path(suite_dir + "/mx.%s/env" % suite_name)],
+        ["unset", "JAVA_HOME"],
+    ],
+
     # Specific gate builders are defined by the following functions
 
     gate:: self.with_name("gate") + {
         environment+: {
             JDT: "builtin",
         },
-        run: [
+        run: self.java_home_in_env(".", "mx") + [
             [mx, "--strict-compliance", "gate", "--strict-mode"] + if os == "windows" then ["--tags", "fullbuild"] else [],
         ],
     },
@@ -162,8 +168,9 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
             make: ">=" + versions.make,
             binutils: "==" + versions.binutils,
         },
-        run: self.java_home_in_env("../graal/vm", "vm") + [
+        run: [
             [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+        ] + self.java_home_in_env("../graal/vm", "vm") + [
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
         ],
     },
