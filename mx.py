@@ -14195,7 +14195,7 @@ def gmake_cmd(context=None):
 
 def expandvars_in_property(value):
     result = expandvars(value)
-    if '$' in result or '%' in result:
+    if '$' in result:
         abort('Property contains an undefined environment variable: ' + value)
     return result
 
