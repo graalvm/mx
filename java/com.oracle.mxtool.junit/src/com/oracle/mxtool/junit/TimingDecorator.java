@@ -80,7 +80,7 @@ class TimingDecorator extends MxRunListenerDecorator {
         testTimes.put(description, totalTime / 1_000_000);
     }
 
-    private static String valueToString(long valueNS) {
+    static String valueToString(long valueNS) {
         long timeWholeMS = valueNS / 1_000_000;
         long timeFractionMS = (valueNS / 100_000) % 10;
         return String.format("%d.%d ms", timeWholeMS, timeFractionMS);
