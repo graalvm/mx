@@ -864,6 +864,7 @@ class JsonBaseRule(BaseRule):
     def parseResults(self, text):
         l = []
         for f in self.getJsonFiles(text):
+            mx.logv("Parsing results using '{}' on file: {}".format(self.__class__.__name__, f))
             with open(f) as fp:
                 l = l + [{k: str(v)} for k, v in json.load(fp).items() if k in self.keys]
         return l
