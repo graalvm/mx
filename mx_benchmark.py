@@ -1130,9 +1130,10 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
                         "Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
-                if compiled(pat).search(out):
+                m = compiled(pat).search(out)
+                if m:
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                        "Benchmark failed, failure pattern found. Benchmark(s): {0}".format(benchmarks))
+                        "Benchmark failed, failure pattern found: '{0}'. Benchmark(s): {1}".format(m.group(), benchmarks))
             success = False
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
