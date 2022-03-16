@@ -864,6 +864,7 @@ class JsonBaseRule(BaseRule):
     def parseResults(self, text):
         l = []
         for f in self.getJsonFiles(text):
+            mx.logv("Parsing results using '{}' on file: {}".format(self.__class__.__name__, f))
             with open(f) as fp:
                 l = l + [{k: str(v)} for k, v in json.load(fp).items() if k in self.keys]
         return l
@@ -1129,9 +1130,10 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
                         "Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
-                if compiled(pat).search(out):
+                m = compiled(pat).search(out)
+                if m:
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                        "Benchmark failed, failure pattern found. Benchmark(s): {0}".format(benchmarks))
+                        "Benchmark failed, failure pattern found: '{0}'. Benchmark(s): {1}".format(m.group(), benchmarks))
             success = False
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
