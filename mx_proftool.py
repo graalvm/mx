@@ -26,6 +26,7 @@
 
 import copy
 import io
+import json
 import os
 import re
 import shutil
@@ -698,6 +699,12 @@ class CompiledCodeInfo:
         if self.nmethod is None:
             return None
         return self.nmethod.get_compile_id()
+
+    def name_without_compile_id(self):
+        match = re.fullmatch(r'\d+: (.*)', self.name)
+        if match:
+            return match.group(1)
+        return self.name
 
     def set_nmethod(self, nmethod):
         self.nmethod = nmethod
@@ -1482,6 +1489,7 @@ def profhot(args):
                         action='store_true')
     parser.add_argument('-H', '--hide-perf', help='Don\'t display perf information in the output.\n'
                         'This can be useful when comparing the assembly from different runs.')
+    parser.add_argument('--json', help='Print in JSON format.', action='store_true')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-E', '--experiment',
                        help='The directory containing the data files from the experiment',
@@ -1500,24 +1508,38 @@ def profhot(args):
     fp = sys.stdout
     if options.output:
         fp = open(options.output, 'w')
-    print('Hot C functions:', file=fp)
-    print('  Percent   Name', file=fp)
-    for symbol, _, count in non_jit_entries[:options.limit]:
-        print('   {:5.2f}%   {}'.format(100 * (float(count) / perf_data.total_period), symbol), file=fp)
-    print('', file=fp)
 
     hot = assembly.top_methods(lambda x: x.total_period > 0)
     hot = hot[:options.limit]
-    print('Hot generated code:', file=fp)
-    print('  Percent   Name', file=fp)
-    for code in hot:
-        print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period),
-                                        code.format_name(options.short_class_names)), file=fp)
-    print('', file=fp)
+    if options.json:
+        out = {
+            'hotGeneratedCode': [
+                {
+                    'share': float(code.total_period) / perf_data.total_period,
+                    'name': code.name_without_compile_id(),
+                    'compileId': code.get_compile_id()
+                }
+                for code in hot
+            ]
+        }
+        json.dump(out, fp=fp, indent=4)
+    else:
+        print('Hot C functions:', file=fp)
+        print('  Percent   Name', file=fp)
+        for symbol, _, count in non_jit_entries[:options.limit]:
+            print('   {:5.2f}%   {}'.format(100 * (float(count) / perf_data.total_period), symbol), file=fp)
+        print('', file=fp)
 
-    assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
-                       hide_perf=options.hide_perf, threshold=options.threshold,
-                       short_class_names=options.short_class_names)
+        print('Hot generated code:', file=fp)
+        print('  Percent   Name', file=fp)
+        for code in hot:
+            print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period),
+                                            code.format_name(options.short_class_names)), file=fp)
+        print('', file=fp)
+
+        assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
+                           hide_perf=options.hide_perf, threshold=options.threshold,
+                           short_class_names=options.short_class_names)
 
     if fp != sys.stdout:
         fp.close()
