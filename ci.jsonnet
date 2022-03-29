@@ -12,12 +12,16 @@ local versions = {
     capstone: "4.0.2",
 };
 
+# this uses <os>_<arch> or <os> depending on what field is available in 'common.json'
+# if 'common.json' is migrated to jsonnet, we could simplify this by providing reasonable defaults there
+local deps(project, os, arch) = if std.objectHasAll(common[project].deps, os) then common.sulong.deps[os] else common.sulong.deps[os + "_" + arch];
+
 # Common configuration for all gates. Specific gates are defined
 # by the functions at the bottom of this object.
 #
 # This structure allows for easily changing the
 # platform details of a gate builder.
-local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.deps[os] + {
+local with(os, arch, java_release, timelimit="15:00", python=3) = deps("sulong", os, arch) + {
     local path(unixpath) = if os == "windows" then std.strReplace(unixpath, "/", "\\") else unixpath,
     local exe(unixpath) = if os == "windows" then path(unixpath) + ".exe" else unixpath,
     local copydir(src, dst) = if os == "windows" then ["xcopy", path(src), path(dst), "/e", "/i", "/q"] else ["cp", "-r", src, dst],
@@ -146,7 +150,7 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
         ],
     },
 
-    build_truffleruby:: self.with_name("gate-build-truffleruby") + common.sulong.deps[os] + {
+    build_truffleruby:: self.with_name("gate-build-truffleruby") + deps("sulong", os, arch) + {
         packages+: {
             ruby: ">=" + versions.ruby
         },
@@ -161,7 +165,7 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.
         ],
     },
 
-    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.sulong.deps[os] + {
+    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + deps("sulong", os, arch) + {
         packages+: {
             git: ">=" + versions.git,
             devtoolset: "==" + versions.devtoolset,

@@ -2104,10 +2104,11 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
 
     def benchmarkList(self, bmSuiteArgs):
         benchmarks = None
-        jvm = self.getJavaVm(bmSuiteArgs)
+        vm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
-        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        exit_code, out, _ = jvm.runWithSuite(self, cwd, args + self.jmhBenchmarkFilter(bmSuiteArgs) + ["-l"])
+        # Do not pass any JVM args to extract the benchmark list since they can generate extra output that will be
+        # incorrectly interpreted as a benchmark name
+        exit_code, out, _ = vm.runWithSuite(self, cwd, ["-jar", self.jmhJAR(bmSuiteArgs), "-l"] + self.runArgs(bmSuiteArgs))
         if exit_code != 0:
             raise ValueError("JMH benchmark list extraction failed!")
         benchs = out.splitlines()
