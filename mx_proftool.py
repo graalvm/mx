@@ -36,6 +36,7 @@ import sys
 import zipfile
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
+from xml.etree import ElementTree
 from zipfile import ZipFile
 
 import mx
@@ -700,12 +701,6 @@ class CompiledCodeInfo:
             return None
         return self.nmethod.get_compile_id()
 
-    def name_without_compile_id(self):
-        match = re.fullmatch(r'\d+: (.*)', self.name)
-        if match:
-            return match.group(1)
-        return self.name
-
     def set_nmethod(self, nmethod):
         self.nmethod = nmethod
         nmethod_name = nmethod.format_name(with_arguments=True)
@@ -987,6 +982,7 @@ class GeneratedAssembly:
 
         :type files: ExperimentFiles
         """
+        self.executionId = None
         self.code_info = []
         self.low_address = None
         self.high_address = None
@@ -1010,9 +1006,11 @@ class GeneratedAssembly:
         if files.has_log_compilation():
             # try to attribute the nmethods to the JVMTI output so that compile ids are available
             with files.open_log_compilation_file() as fp:
+                tree = ElementTree.parse(fp)
+                self.executionId = tree.getroot().get('process')
                 # build a map from the entry pc to the nmethod information
                 nmethods = {}
-                for nmethod in mx_logcompilation.find_nmethods(fp):
+                for nmethod in mx_logcompilation.collect_nmethods(tree):
                     current = nmethods.get(nmethod.entry_pc)
                     if current is None:
                         current = list()
@@ -1508,38 +1506,24 @@ def profhot(args):
     fp = sys.stdout
     if options.output:
         fp = open(options.output, 'w')
+    print('Hot C functions:', file=fp)
+    print('  Percent   Name', file=fp)
+    for symbol, _, count in non_jit_entries[:options.limit]:
+        print('   {:5.2f}%   {}'.format(100 * (float(count) / perf_data.total_period), symbol), file=fp)
+    print('', file=fp)
 
     hot = assembly.top_methods(lambda x: x.total_period > 0)
     hot = hot[:options.limit]
-    if options.json:
-        out = {
-            'hotGeneratedCode': [
-                {
-                    'share': float(code.total_period) / perf_data.total_period,
-                    'name': code.name_without_compile_id(),
-                    'compileId': code.get_compile_id()
-                }
-                for code in hot
-            ]
-        }
-        json.dump(out, fp=fp, indent=4)
-    else:
-        print('Hot C functions:', file=fp)
-        print('  Percent   Name', file=fp)
-        for symbol, _, count in non_jit_entries[:options.limit]:
-            print('   {:5.2f}%   {}'.format(100 * (float(count) / perf_data.total_period), symbol), file=fp)
-        print('', file=fp)
+    print('Hot generated code:', file=fp)
+    print('  Percent   Name', file=fp)
+    for code in hot:
+        print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period),
+                                        code.format_name(options.short_class_names)), file=fp)
+    print('', file=fp)
 
-        print('Hot generated code:', file=fp)
-        print('  Percent   Name', file=fp)
-        for code in hot:
-            print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period),
-                                            code.format_name(options.short_class_names)), file=fp)
-        print('', file=fp)
-
-        assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
-                           hide_perf=options.hide_perf, threshold=options.threshold,
-                           short_class_names=options.short_class_names)
+    assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
+                       hide_perf=options.hide_perf, threshold=options.threshold,
+                       short_class_names=options.short_class_names)
 
     if fp != sys.stdout:
         fp.close()
@@ -1610,6 +1594,44 @@ def profasm(args):
     assembly = GeneratedAssembly(files)
     assembly.print_all(threshold=0)
 
+@mx.command('mx', 'profjson', '[options]')
+@mx.suite_context_free
+def profjson(args):
+    """Dump the executed methods to JSON"""
+    check_capstone_import('profjson')
+    parser = ArgumentParser(description='Dump the executed methods to JSON', prog='mx profjson')
+    parser.add_argument('-o', '--output', help='Write output to named file.  Writes to stdout by default.',
+                        action='store')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-E', '--experiment',
+                       help='The directory containing the data files from the experiment',
+                       action='store', required=False)
+    group.add_argument('experiment',
+                       help='The directory containing the data files from the experiment',
+                       action=SuppressNoneArgs, nargs='?')
+    options = parser.parse_args(args)
+    files = ExperimentFiles.open(options)
+    perf_data = PerfOutput(files)
+    assembly = GeneratedAssembly(files)
+    assembly.attribute_events(perf_data)
+    fp = sys.stdout
+    if options.output:
+        fp = open(options.output, 'w')
+    out = {
+        'executionId': assembly.executionId,
+        'totalPeriod': perf_data.total_period,
+        'code': [
+            {
+                'compileId': code.get_compile_id(),
+                'name': code.format_name(),
+                'level': code.nmethod.level if code.nmethod else None,
+                'period': code.total_period,
+            }
+            for code in assembly.code_info
+            if code.total_period > 0
+        ]
+    }
+    json.dump(out, fp=fp, indent=4)
 
 class ProftoolProfiler(mx_benchmark.JVMProfiler):
     """
