@@ -25,6 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 
 import copy
+from dataclasses import field
 import io
 import os
 import re
@@ -32,6 +33,7 @@ import shutil
 import struct
 import subprocess
 import sys
+from tokenize import group
 import zipfile
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
@@ -130,13 +132,15 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
 class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
 
-    def __init__(self, directory, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
+    def __init__(self, directory, block_info=None, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
                  perf_output_name='perf_output_file', log_compilation_name='log_compilation'):
         super(FlatExperimentFiles, self).__init__()
         self.dump_path = None
         if not os.path.isdir(directory):
             raise AssertionError('Must be directory')
         self.directory = os.path.abspath(directory)
+        assert block_info == None or os.path.isdir(block_info), "Must be directory"
+        self.block_info = os.path.abspath(block_info) if block_info else None
         self.jvmti_asm_filename = os.path.join(directory, jvmti_asm_name)
         self.perf_binary_filename = os.path.join(directory, perf_binary_name)
         self.perf_output_filename = os.path.join(directory, perf_output_name)
@@ -217,6 +221,26 @@ class FlatExperimentFiles(ExperimentFiles):
         if not name:
             name = directory_name
         return shutil.make_archive(name, 'zip', root_dir=parent, base_dir=directory_name)
+
+    def has_block_info(self):
+        return self.block_info and os.path.isdir(self.block_info)
+
+    def find_block_info(self, compilation_id):
+        assert self.has_block_info(), "Must have block information"
+        reg = re.compile('^HotSpot(OSR)?Compilation-{}\\[.*\\]$'.format(compilation_id))
+        dirs = os.listdir(self.block_info)
+        found = [d for d in dirs if re.search(reg, d)]
+        assert len(found) <= 1, "Multiple block information file found for compilation id {}".format(compilation_id)
+        if not found:
+            return None 
+        else:
+            return found[0]
+
+    def open_block_info(self, compilation_id, block_info_file_name='block_info'):
+        found = self.find_block_info(compilation_id)
+        path = os.path.join(self.block_info, found, block_info_file_name)
+        assert os.path.isfile(path), "Block info file missing for {}".format(found)
+        return open(path)
 
 
 class ZipExperimentFiles(ExperimentFiles):
@@ -482,6 +506,16 @@ method_signature_re = re.compile(r'((?:\[*[VIJFDSCBZ])|(?:\[*L[^;]+;))')
 primitive_types = {'I': 'int', 'J': 'long', 'V': 'void', 'F': 'float', 'D': 'double',
                    'S': 'short', 'C': 'char', 'B': 'byte', 'Z': 'boolean'}
 
+class Block:
+    """A cfg block"""
+
+    def __init__(self, id, start, end, freq):
+        self.id = id
+        self.start = start
+        self.end = end
+        self.freq = freq
+        self.period = 0
+        self.samples = 0
 
 class Method:
     """A Java Method decoded from a JVMTI assembly dump."""
@@ -575,6 +609,7 @@ class CompiledCodeInfo:
         self.total_samples = 0
         self.methods = methods
         self.nmethod = None
+        self.blocks = None
 
     def __str__(self):
         return '0x{:x}-0x{:x} {} {}-{}'.format(self.code_begin(), self.code_end(), self.name, self.timestamp,
@@ -607,6 +642,9 @@ class CompiledCodeInfo:
         # update the name to include the LogCompilation id and any truffle names
         self.name = str(nmethod)
 
+    def set_blocks(self, blocks):
+        self.blocks = blocks
+
     def set_unload_time(self, timestamp):
         self.unload_time = timestamp
 
@@ -628,6 +666,15 @@ class CompiledCodeInfo:
         self.events.append(event)
         self.total_period += event.period
         self.total_samples += event.samples
+        if self.blocks:
+            block_found = False
+            for b in self.blocks:
+                if self.code_begin() + b.start <= event.pc < self.code_begin() + b.end:
+                    block_found = True
+                    b.period += event.period
+                    b.samples += event.samples
+            # if not block_found:
+            #     print('Sample not in a block !! method {}, sample {}'.format(self, event))
 
     def contains_timestamp(self, timestamp):
         return timestamp >= self.timestamp and \
@@ -686,6 +733,33 @@ class CompiledCodeInfo:
             hotpc[event.pc] = event
         decoder.disassemble(self, hotpc, short_class_names=short_class_names, threshold=threshold)
         decoder.print('')
+
+    def check_blocks_0_rel_freq(self, fp=sys.stdout):
+        """Check the relative frequencies of each block with respect to block 0"""
+        if self.blocks and self.blocks[0].samples == 0:
+            print('Block 0 has {} samples in method {}'.format(self.blocks[0].samples, self.name), file=fp)
+        # if self.total_period > 0 and self.blocks and self.blocks[0].samples > 0:
+        else:
+            error = 0
+            error_sample = 0
+            samples_in_blocks = 0
+            for b in self.blocks:
+                samples_in_blocks += b.samples
+                freq = b.period / self.blocks[0].period
+                if b.freq >= 10 and len(self.blocks) < self.total_samples:
+                    print('High frequency block {}, found {}, block period {}, block samples {}, total_period {}, total_samples {}, #blocks in method {}'.format(b.freq, freq, b.period, b.samples, self.total_period, self.total_samples, len(self.blocks)), file=fp)
+                if (b.freq < freq / 10 or freq * 10 < b.freq) and b.freq >= 1:
+                    print('In method {} block {}, graal_freq={}, perf_freq={}'.format(self.name, b.id, b.freq, freq), file=fp)
+                    error += 1
+                    error_sample += b.samples
+            if error > 0:
+                    print('Error {} in method with total_period {}, total_samples {}, #blocks in method {}, {} samples in blocks, {} samples used in error blocks'.format(error, self.total_period, self.total_samples, len(self.blocks), samples_in_blocks, error_sample), file=fp)
+
+    def check_blocks_rel_freq_most(self, fp=sys.stdout):
+        """Check the relative frequencies of each block with respect to the most frequent block"""
+
+        # else:
+        #     print('Got no samples for method {}'.format(self.name))
 
 
 class PerfEvent:
@@ -819,6 +893,7 @@ class GeneratedAssembly:
         self.low_address = None
         self.high_address = None
         self.code_by_address = {}
+        self.code_by_id = {}
         self.map = {}
         self.bucket_size = 8192
         with files.open_jvmti_asm_file() as fp:
@@ -859,8 +934,26 @@ class GeneratedAssembly:
                 if matches:
                     found = matches.pop(0)
                     code.set_nmethod(found)
+                    self.code_by_id[code.get_compile_id()] = code
                     continue
                 mx.abort('Unable to find matching nmethod for code {}'.format(code))
+        
+        if files.has_block_info():
+            reg = re.compile(
+                r'HotSpot(?P<is_osr>(OSR)?)Compilation-(?P<id>[0-9]*)\[(?P<sig>.*)\]'
+            )
+            for compil in os.listdir(files.block_info):
+                res = reg.match(compil)
+                if not res:
+                    continue
+                compile_id, is_osr = res.group('id'), res.group('is_osr')
+                code = self.code_by_id[compile_id + ('%' if is_osr else '')]
+                with files.open_block_info(compile_id) as block_file:
+                    blocks = []
+                    for line in block_file:
+                        [id, start, end, freq] = line.split(',')
+                        blocks.append(Block(int(id), int(start), int(end), float(freq)))
+                    code.set_blocks(blocks)
 
     def decoder(self, fp=sys.stdout):
         if self.arch == 'amd64':
@@ -908,7 +1001,7 @@ class GeneratedAssembly:
                 code_info = CompiledCodeInfo(name, timestamp, code_addr, code_size, code, True)
                 self.add(code_info)
                 if verbose:
-                    print('Parsed {}'.format(code_info))
+                    print('Parsed DynamicCode {}'.format(code_info))
             elif tag == CompiledMethodUnloadTag:
                 timestamp = self.read_timestamp()
                 code_addr = self.read_unsigned_jlong()
@@ -917,6 +1010,8 @@ class GeneratedAssembly:
                     message = "missing code for {}".format(code_addr)
                     mx.abort(message)
                 nmethod.set_unload_time(timestamp)
+                if verbose:
+                    print('Parsed CompiledMethodUnload {}'.format(code_info))
             elif tag == CompiledMethodLoadTag:
                 timestamp = self.read_timestamp()
                 code_addr = self.read_unsigned_jlong()
@@ -957,7 +1052,7 @@ class GeneratedAssembly:
                                            False, debug_infos, methods)
                 self.add(nmethod)
                 if verbose:
-                    print('Parsed {}'.format(nmethod))
+                    print('Parsed CompiledMethod {}'.format(nmethod))
             else:
                 raise AssertionError("Unexpected tag {}".format(tag))
 
@@ -1212,7 +1307,7 @@ def profpackage(args):
                        action='store', nargs='*', default=[])
     options = parser.parse_args(args)
     if options.experiment:
-        options.experiments = list(options.experiment)
+        options.experiments = [options.experiment]
     for experiment in options.experiments:
         files = FlatExperimentFiles(directory=experiment)
         files.ensure_perf_output()
@@ -1324,6 +1419,48 @@ def profhot(args):
     if fp != sys.stdout:
         fp.close()
 
+@mx.command('mx', 'checkblocks', '[options]')
+@mx.suite_context_free
+def checkblocks(args):
+    """Check that block frequencies computed by graal match frequecies measured using pref"""
+    check_capstone_import('checkblocks')
+    parser = ArgumentParser(description='Check that block frequencies computed by graal match frequecies measured using pref', prog='mx checkblocks')
+    parser.add_argument('-n', '--limit', help='Check block frequencies for the top n functions;', action='store', default=10, type=int)
+    parser.add_argument('-t', '--threshold',
+                        help='Minimum percentage for a pc to be considered hot when building regions.\n'
+                        'A threshold of 0 shows the all the generated code instead of just the hot regions.',
+                        action='store', type=float, default=0.001)
+    parser.add_argument('-o', '--output', help='Write output to named file.  Writes to stdout by default.',
+                        action='store')
+    parser.add_argument('-s', '--short-class-names', help='Drop package names from class names',
+                        action='store_true')
+    parser.add_argument('-E', '--experiment',
+                       help='The directory containing the data files from the experiment',
+                       action='store', required=True)
+    parser.add_argument('-b', '--block-info',
+                       help='The directory containing the block information data files from the experiment',
+                       action='store', required=True)
+    options = parser.parse_args(args)
+    files = FlatExperimentFiles(directory=options.experiment, block_info=options.block_info)
+    files.ensure_perf_output()
+    perf_data = PerfOutput(files)
+    assembly = GeneratedAssembly(files) 
+    assembly.attribute_events(perf_data)
+    fp = sys.stdout
+    if options.output:
+        fp = open(options.output, 'w')
+
+    hot = assembly.top_methods(lambda x: x.total_period > 0)
+    hot = hot[:options.limit]
+
+    for code in hot:
+        print("for hot method {} with {} blocks, got {} samples".format(code.name, len(code.blocks or []), code.total_samples), file=fp)
+        if code.blocks:
+            code.check_blocks_0_rel_freq(fp=fp)
+            code.check_blocks_rel_freq_most(fp=fp)
+
+    if fp != sys.stdout:
+        fp.close()
 
 @mx.command('mx', 'profasm', '[options]')
 @mx.suite_context_free
