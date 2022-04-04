@@ -345,15 +345,6 @@ class VmRegistry(object):
     def get_vms(self):
         return list(self._vms.values())
 
-# JMH suite parsers.
-add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(
-    ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-    "\n\nVM selection flags for JMH benchmark suites:\n"
-))
-get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-jar", default=None)
-get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-name", default=None)
-get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-benchmarks", default=None)
-
 
 class BenchmarkSuite(object):
     """
@@ -2091,7 +2082,6 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
         return ["org.openjdk.jmh.Main"]
 
 
-
 class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
     """
     JMH benchmark suite that executes microbenchmarks in a JMH jar.
@@ -2102,13 +2092,24 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
     """
     jmh_jar_parser_name = "jmh_jar_benchmark_suite_vm"
 
+    def __init__(self, *args, **kwargs):
+        self._extracted_jmh_benchmarks = None
+        super(JMHJarBenchmarkSuite, self).__init__(*args, **kwargs)
+
     def benchmarkList(self, bmSuiteArgs):
+        if self._extracted_jmh_benchmarks is not None:
+            return self._extracted_jmh_benchmarks
+
+        self._extracted_jmh_benchmarks = self._extractJMHBenchmarks(bmSuiteArgs)
+        return self._extracted_jmh_benchmarks
+
+    def _extractJMHBenchmarks(self, bmSuiteArgs):
         benchmarks = None
         vm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         # Do not pass any JVM args to extract the benchmark list since they can generate extra output that will be
         # incorrectly interpreted as a benchmark name
-        exit_code, out, _ = vm.runWithSuite(self, cwd, ["-jar", self.jmhJAR(bmSuiteArgs), "-l"] + self.runArgs(bmSuiteArgs))
+        exit_code, out, _ = vm.runWithSuite(self, cwd, ["-jar", self.jmhJAR(bmSuiteArgs), "-l"] + self.jmhBenchmarkFilter(bmSuiteArgs) + self.runArgs(bmSuiteArgs))
         if exit_code != 0:
             raise ValueError("JMH benchmark list extraction failed!")
         benchs = out.splitlines()
@@ -2141,7 +2142,8 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
 
     def jmhBenchmarkFilter(self, bmSuiteArgs):
         jmh_benchmarks = self.jmhArgs(bmSuiteArgs).jmh_benchmarks
-        jmh_benchmarks = jmh_benchmarks if jmh_benchmarks is not None else ""
+        if not jmh_benchmarks:
+            return []
         return jmh_benchmarks.split(',')
 
     def jmhJAR(self, bmSuiteArgs):
@@ -2152,6 +2154,17 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         if not os.path.exists(jmh_jar):
             mx.abort("The --jmh-jar argument points to a non-existing file: " + jmh_jar)
         return jmh_jar
+
+
+_jmh_args_parser = ParserEntry(
+    ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
+    "\n\nVM selection flags for JMH benchmark suites:\n"
+)
+_jmh_args_parser.parser.add_argument("--jmh-jar", default=None)
+_jmh_args_parser.parser.add_argument("--jmh-name", default=None)
+_jmh_args_parser.parser.add_argument("--jmh-benchmarks", default="")
+
+add_parser(JMHJarBenchmarkSuite.jmh_jar_parser_name, _jmh_args_parser)
 
 
 class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
