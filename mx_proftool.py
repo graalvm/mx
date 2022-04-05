@@ -736,30 +736,62 @@ class CompiledCodeInfo:
 
     def check_blocks_0_rel_freq(self, fp=sys.stdout):
         """Check the relative frequencies of each block with respect to block 0"""
-        if self.blocks and self.blocks[0].samples == 0:
-            print('Block 0 has {} samples in method {}'.format(self.blocks[0].samples, self.name), file=fp)
-        # if self.total_period > 0 and self.blocks and self.blocks[0].samples > 0:
-        else:
-            error = 0
-            error_sample = 0
-            samples_in_blocks = 0
-            for b in self.blocks:
-                samples_in_blocks += b.samples
-                freq = b.period / self.blocks[0].period
-                if b.freq >= 10 and len(self.blocks) < self.total_samples:
-                    print('High frequency block {}, found {}, block period {}, block samples {}, total_period {}, total_samples {}, #blocks in method {}'.format(b.freq, freq, b.period, b.samples, self.total_period, self.total_samples, len(self.blocks)), file=fp)
-                if (b.freq < freq / 10 or freq * 10 < b.freq) and b.freq >= 1:
-                    print('In method {} block {}, graal_freq={}, perf_freq={}'.format(self.name, b.id, b.freq, freq), file=fp)
-                    error += 1
-                    error_sample += b.samples
-            if error > 0:
-                    print('Error {} in method with total_period {}, total_samples {}, #blocks in method {}, {} samples in blocks, {} samples used in error blocks'.format(error, self.total_period, self.total_samples, len(self.blocks), samples_in_blocks, error_sample), file=fp)
+        assert self.blocks and len(self.blocks) > 0, "Must have blocks information"
+        b0 = self.blocks[0]
+        if b0.samples == 0:
+            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tblock 0 got {b0.samples} samples', file=fp)
+            return 
+        
+        # error = 0
+        # error_sample = 0
+        # samples_in_blocks = 0
+        for b in [b for b in self.blocks if b.id != b0.id]:
+            # samples_in_blocks += b.samples
+            perf_freq = b.period / b0.period
+            if not compare_freq(b.freq, perf_freq):
+                print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to first block diverge, graal freq {b.freq:.2e}, perf freq {perf_freq:.2e}', file=fp)
+            
+
+            # if b.freq >= 10 and len(self.blocks) < self.total_samples:
+            #     print('High frequency block {}, found {}, block period {}, block samples {}, total_period {}, total_samples {}, #blocks in method {}'.format(b.freq, perf_freq, b.period, b.samples, self.total_period, self.total_samples, len(self.blocks)), file=fp)
+            # if (b.freq < perf_freq / 10 or perf_freq * 10 < b.freq) and b.freq >= 1:
+            #     print('In method {} block {}, graal_freq={}, perf_freq={}'.format(self.name, b.id, b.freq, perf_freq), file=fp)
+                # error += 1
+                # error_sample += b.samples
+        # if error > 0:
+        #         print('Error {} in method with total_period {}, total_samples {}, #blocks in method {}, {} samples in blocks, {} samples used in error blocks'.format(error, self.total_period, self.total_samples, len(self.blocks), samples_in_blocks, error_sample), file=fp)
 
     def check_blocks_rel_freq_most(self, fp=sys.stdout):
         """Check the relative frequencies of each block with respect to the most frequent block"""
+        assert self.blocks and len(self.blocks) > 0, "Must have blocks information"
 
+        # blocks_by_graal_freq = sorted(self.blocks, key=lambda b: b.freq,          reverse=True)
+        # blocks_by_perf_freq  = sorted(self.blocks, key=lambda b: b.total_period,  reverse=True)
+        
+        # b0_graal = blocks_by_graal_freq.pop(0)
+        # b0_perf = blocks_by_perf_freq.pop(0)
+
+        bmax_graal = max(self.blocks, key=lambda b: b.freq)
+        bmax_perf  = max(self.blocks, key=lambda b: b.period)
+
+        if bmax_graal.id != bmax_perf.id:
+            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tmost frequent block measured with perf (id={bmax_perf.id:3}) differs from most frequent block from graal (id={bmax_graal.id:3})', file=fp)
+            return 
+        bmax = bmax_graal
+        
+        for b in [b for b in self.blocks if b.id != bmax.id]:
+            graal_freq = b.freq / bmax.freq
+            perf_freq = b.period / bmax.period
+
+            if not compare_freq(graal_freq, perf_freq):
+                print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to most frequent block diverge, graal freq {graal_freq:.2e}, perf freq {perf_freq:.2e}', file=fp)
+            
         # else:
         #     print('Got no samples for method {}'.format(self.name))
+
+def compare_freq(graal_freq, perf_freq, epsilon = 3E-151):
+    factor = 10
+    return 1 / factor <= graal_freq / (perf_freq + epsilon) <= factor
 
 
 class PerfEvent:
@@ -1450,7 +1482,7 @@ def checkblocks(args):
     if options.output:
         fp = open(options.output, 'w')
 
-    hot = assembly.top_methods(lambda x: x.total_period > 0)
+    hot = assembly.top_methods(lambda x: x.total_period > 0 and x.blocks)
     hot = hot[:options.limit]
 
     for code in hot:
