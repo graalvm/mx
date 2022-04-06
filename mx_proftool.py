@@ -745,7 +745,9 @@ class CompiledCodeInfo:
         # error = 0
         # error_sample = 0
         # samples_in_blocks = 0
-        for b in [b for b in self.blocks if b.id != b0.id]:
+        average_samples_per_block = self.total_samples / len(self.blocks)
+        average_period_per_block  = self.total_period  / len(self.blocks)
+        for b in [b for b in self.blocks if b.id != b0.id and b.samples >= average_samples_per_block]:
             # samples_in_blocks += b.samples
             perf_freq = b.period / b0.period
             if not compare_freq(b.freq, perf_freq):
@@ -771,13 +773,15 @@ class CompiledCodeInfo:
         # b0_graal = blocks_by_graal_freq.pop(0)
         # b0_perf = blocks_by_perf_freq.pop(0)
 
-        bmax_graal = max(self.blocks, key=lambda b: b.freq)
-        bmax_perf  = max(self.blocks, key=lambda b: b.period)
+        bmax_graal = sorted(self.blocks, key=lambda b: b.freq,   reverse=True)
+        bmax_perf  = sorted(self.blocks, key=lambda b: b.period, reverse=True)
 
-        if bmax_graal.id != bmax_perf.id:
-            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tmost frequent block measured with perf (id={bmax_perf.id:3}) differs from most frequent block from graal (id={bmax_graal.id:3})', file=fp)
+        if bmax_graal[0].id != bmax_perf[0].id:
+            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tmost frequent block measured with perf (id={bmax_perf[0].id:3}) differs from most frequent block from graal (id={bmax_graal[0].id:3})', file=fp)
+            print(f'\tTop 5 blocks from graal {[(b.id, b.freq) for b in bmax_graal[:5]]}\n\tTop 5 blocks from perf {[(b.id, b.samples, b.period) for b in bmax_perf[:5]]}', file=fp)
             return 
-        bmax = bmax_graal
+
+        bmax = bmax_graal[0]
         
         for b in [b for b in self.blocks if b.id != bmax.id]:
             graal_freq = b.freq / bmax.freq
@@ -790,7 +794,7 @@ class CompiledCodeInfo:
         #     print('Got no samples for method {}'.format(self.name))
 
 def compare_freq(graal_freq, perf_freq, epsilon = 3E-151):
-    factor = 10
+    factor = 100 if graal_freq < 1 else 10 if graal_freq < 10 else 1.5
     return 1 / factor <= graal_freq / (perf_freq + epsilon) <= factor
 
 
@@ -1482,7 +1486,7 @@ def checkblocks(args):
     if options.output:
         fp = open(options.output, 'w')
 
-    hot = assembly.top_methods(lambda x: x.total_period > 0 and x.blocks)
+    hot = assembly.top_methods(lambda x: x.total_period > 0 and x.blocks and x.total_samples > len(x.blocks))
     hot = hot[:options.limit]
 
     for code in hot:
