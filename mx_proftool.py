@@ -737,7 +737,7 @@ class CompiledCodeInfo:
         assert self.blocks and len(self.blocks) > 0, "Must have blocks information"
         b0 = self.blocks[0]
         if b0.samples == 0:
-            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tblock 0 got {b0.samples} samples', file=fp)
+            print('[WARRNING] In method {}\n\tblock 0 got {} samples'.format(self.format_name(short_class_names=True), b0.samples), file=fp)
             return
 
         # error = 0
@@ -745,11 +745,11 @@ class CompiledCodeInfo:
         # samples_in_blocks = 0
         average_samples_per_block = self.total_samples / len(self.blocks)
         # average_period_per_block = self.total_period  / len(self.blocks)
-        for b in [b for b in self.blocks if b.id != b0.id and b.samples >= average_samples_per_block]:
+        for b in [b for b in self.blocks if b.id != b0.id and b.freq >= average_samples_per_block]:
             # samples_in_blocks += b.samples
             perf_freq = b.period / b0.period
             if not compare_freq(b.freq, perf_freq):
-                print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to first block diverge, graal freq {b.freq:.2e}, perf freq {perf_freq:.2e}', file=fp)
+                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to first block diverge, graal freq {:.2e}, perf freq {:.2e}'.format(self.format_name(short_class_names=True), b.id, b.freq, perf_freq), file=fp)
 
 
             # if b.freq >= 10 and len(self.blocks) < self.total_samples:
@@ -775,8 +775,8 @@ class CompiledCodeInfo:
         bmax_perf = sorted(self.blocks, key=lambda b: b.period, reverse=True)
 
         if bmax_graal[0].id != bmax_perf[0].id:
-            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tmost frequent block measured with perf (id={bmax_perf[0].id:3}) differs from most frequent block from graal (id={bmax_graal[0].id:3})', file=fp)
-            print(f'\tTop 5 blocks from graal {[(b.id, b.freq) for b in bmax_graal[:5]]}\n\tTop 5 blocks from perf {[(b.id, b.samples, b.period) for b in bmax_perf[:5]]}', file=fp)
+            print('[WARRNING] In method {}\n\tmost frequent block measured with perf (id={:3}) differs from most frequent block from graal (id={:3})'.format(self.format_name(short_class_names=True), bmax_perf[0].id, bmax_graal[0].id), file=fp)
+            print('\tTop 5 blocks from graal {}\n\tTop 5 blocks from perf {}'.format([(b.id, b.freq) for b in bmax_graal[:5]], [(b.id, b.samples, b.period) for b in bmax_perf[:5]]), file=fp)
             return
 
         bmax = bmax_graal[0]
@@ -786,7 +786,7 @@ class CompiledCodeInfo:
             perf_freq = b.period / bmax.period
 
             if not compare_freq(graal_freq, perf_freq):
-                print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to most frequent block diverge, graal freq {graal_freq:.2e}, perf freq {perf_freq:.2e}', file=fp)
+                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to most frequent block diverge, graal freq {:.2e}, perf freq {:.2e}'.format(self.format_name(short_class_names=True), b.id, graal_freq, perf_freq), file=fp)
 
         # else:
         #     print('Got no samples for method {}'.format(self.name))
