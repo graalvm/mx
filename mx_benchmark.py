@@ -149,7 +149,7 @@ class AsyncProfiler(JVMProfiler):
     def libraryPath(self):
         async_profiler_lib = mx.library("ASYNC_PROFILER_{}".format(self.version()))
         if not async_profiler_lib.is_available():
-            raise mx.abort("'--profiler {}' is not supported on '{}/{}' because the '{}' library is not available."
+            mx.abort("'--profiler {}' is not supported on '{}/{}' because the '{}' library is not available."
                            .format(self.name(), mx.get_os(), mx.get_arch(), async_profiler_lib.name))
 
         libraryDirectory = async_profiler_lib.get_path(True)
@@ -1319,7 +1319,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if self.profilerNames(bmSuiteArgs):
             for profiler in self.profilerNames(bmSuiteArgs).split(','):
                 if profiler not in _profilers:
-                    raise mx.abort("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
+                    mx.abort("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
                 vmargs, prefix_command = _profilers.get(profiler).additional_options(os.getcwd())
                 args += vmargs
                 if prefix_command:

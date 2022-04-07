@@ -187,23 +187,23 @@ def checkout_downstream(args):
     def get_suite(name):
         suite = mx.suite(name, fatalIfMissing=False)
         if suite is None:
-            raise mx.abort("Cannot load the '{}' suite. Did you forget a dynamic import or pass a repository name rather than a suite name (e.g., 'graal' rather than 'compiler')?".format(name))
+            mx.abort("Cannot load the '{}' suite. Did you forget a dynamic import or pass a repository name rather than a suite name (e.g., 'graal' rather than 'compiler')?".format(name))
         return suite
 
     upstream_suite = get_suite(args.upstream)
     downstream_suite = get_suite(args.downstream)
 
     if upstream_suite.vc_dir == downstream_suite.vc_dir:
-        raise mx.abort("Suites '{}' and '{}' are part of the same repository, cloned in '{}'".format(upstream_suite.name, downstream_suite.name, upstream_suite.vc_dir))
+        mx.abort("Suites '{}' and '{}' are part of the same repository, cloned in '{}'".format(upstream_suite.name, downstream_suite.name, upstream_suite.vc_dir))
     if len(downstream_suite.suite_imports) == 0:
-        raise mx.abort("Downstream suite '{}' does not have dependencies".format(downstream_suite.name))
+        mx.abort("Downstream suite '{}' does not have dependencies".format(downstream_suite.name))
     if upstream_suite.name not in (suite_import.name for suite_import in downstream_suite.suite_imports):
-        raise mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
+        mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
 
     git = mx.GitConfig()
     for suite in upstream_suite, downstream_suite:
         if not git.is_this_vc(suite.vc_dir):
-            raise mx.abort("Suite '{}' is not part of a Git repo.".format(suite.name))
+            mx.abort("Suite '{}' is not part of a Git repo.".format(suite.name))
 
     if not args.no_fetch:
         mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
@@ -241,7 +241,7 @@ def checkout_downstream(args):
 
         mx.log("The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branch_candidates)))
         if not _checkout_upstream_revision(upstream_commit, upstream_branch_candidates, upstream_suite, downstream_suite):
-            raise mx.abort("Cannot find a revision of '{}' that imports revision '{}' of '{}".format(downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+            mx.abort("Cannot find a revision of '{}' that imports revision '{}' of '{}".format(downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
 
 
 def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
@@ -256,7 +256,7 @@ def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
     output = (git.git_command(vc_dir, cmd, abortOnError=abortOnError) or '').strip()
     if regex is not None and re.match(regex, output, re.MULTILINE) is None:
         if abortOnError:
-            raise mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
+            mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
         return None
     return output
 

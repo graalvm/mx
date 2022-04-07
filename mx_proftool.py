@@ -25,7 +25,6 @@
 # ----------------------------------------------------------------------------------------------------
 
 import copy
-from dataclasses import field
 import io
 import os
 import re
@@ -33,7 +32,6 @@ import shutil
 import struct
 import subprocess
 import sys
-from tokenize import group
 import zipfile
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
@@ -139,7 +137,7 @@ class FlatExperimentFiles(ExperimentFiles):
         if not os.path.isdir(directory):
             raise AssertionError('Must be directory')
         self.directory = os.path.abspath(directory)
-        assert block_info == None or os.path.isdir(block_info), "Must be directory"
+        assert block_info is None or os.path.isdir(block_info), "Must be directory"
         self.block_info = os.path.abspath(block_info) if block_info else None
         self.jvmti_asm_filename = os.path.join(directory, jvmti_asm_name)
         self.perf_binary_filename = os.path.join(directory, perf_binary_name)
@@ -232,7 +230,7 @@ class FlatExperimentFiles(ExperimentFiles):
         found = [d for d in dirs if re.search(reg, d)]
         assert len(found) <= 1, "Multiple block information file found for compilation id {}".format(compilation_id)
         if not found:
-            return None 
+            return None
         else:
             return found[0]
 
@@ -509,8 +507,8 @@ primitive_types = {'I': 'int', 'J': 'long', 'V': 'void', 'F': 'float', 'D': 'dou
 class Block:
     """A cfg block"""
 
-    def __init__(self, id, start, end, freq):
-        self.id = id
+    def __init__(self, block_id, start, end, freq):
+        self.id = block_id
         self.start = start
         self.end = end
         self.freq = freq
@@ -667,10 +665,10 @@ class CompiledCodeInfo:
         self.total_period += event.period
         self.total_samples += event.samples
         if self.blocks:
-            block_found = False
+            # block_found = False
             for b in self.blocks:
                 if self.code_begin() + b.start <= event.pc < self.code_begin() + b.end:
-                    block_found = True
+                    # block_found = True
                     b.period += event.period
                     b.samples += event.samples
             # if not block_found:
@@ -740,19 +738,19 @@ class CompiledCodeInfo:
         b0 = self.blocks[0]
         if b0.samples == 0:
             print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tblock 0 got {b0.samples} samples', file=fp)
-            return 
-        
+            return
+
         # error = 0
         # error_sample = 0
         # samples_in_blocks = 0
         average_samples_per_block = self.total_samples / len(self.blocks)
-        average_period_per_block  = self.total_period  / len(self.blocks)
+        # average_period_per_block = self.total_period  / len(self.blocks)
         for b in [b for b in self.blocks if b.id != b0.id and b.samples >= average_samples_per_block]:
             # samples_in_blocks += b.samples
             perf_freq = b.period / b0.period
             if not compare_freq(b.freq, perf_freq):
                 print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to first block diverge, graal freq {b.freq:.2e}, perf freq {perf_freq:.2e}', file=fp)
-            
+
 
             # if b.freq >= 10 and len(self.blocks) < self.total_samples:
             #     print('High frequency block {}, found {}, block period {}, block samples {}, total_period {}, total_samples {}, #blocks in method {}'.format(b.freq, perf_freq, b.period, b.samples, self.total_period, self.total_samples, len(self.blocks)), file=fp)
@@ -769,31 +767,31 @@ class CompiledCodeInfo:
 
         # blocks_by_graal_freq = sorted(self.blocks, key=lambda b: b.freq,          reverse=True)
         # blocks_by_perf_freq  = sorted(self.blocks, key=lambda b: b.total_period,  reverse=True)
-        
+
         # b0_graal = blocks_by_graal_freq.pop(0)
         # b0_perf = blocks_by_perf_freq.pop(0)
 
-        bmax_graal = sorted(self.blocks, key=lambda b: b.freq,   reverse=True)
-        bmax_perf  = sorted(self.blocks, key=lambda b: b.period, reverse=True)
+        bmax_graal = sorted(self.blocks, key=lambda b: b.freq, reverse=True)
+        bmax_perf = sorted(self.blocks, key=lambda b: b.period, reverse=True)
 
         if bmax_graal[0].id != bmax_perf[0].id:
             print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tmost frequent block measured with perf (id={bmax_perf[0].id:3}) differs from most frequent block from graal (id={bmax_graal[0].id:3})', file=fp)
             print(f'\tTop 5 blocks from graal {[(b.id, b.freq) for b in bmax_graal[:5]]}\n\tTop 5 blocks from perf {[(b.id, b.samples, b.period) for b in bmax_perf[:5]]}', file=fp)
-            return 
+            return
 
         bmax = bmax_graal[0]
-        
+
         for b in [b for b in self.blocks if b.id != bmax.id]:
             graal_freq = b.freq / bmax.freq
             perf_freq = b.period / bmax.period
 
             if not compare_freq(graal_freq, perf_freq):
                 print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to most frequent block diverge, graal freq {graal_freq:.2e}, perf freq {perf_freq:.2e}', file=fp)
-            
+
         # else:
         #     print('Got no samples for method {}'.format(self.name))
 
-def compare_freq(graal_freq, perf_freq, epsilon = 3E-151):
+def compare_freq(graal_freq, perf_freq, epsilon=3E-151):
     factor = 100 if graal_freq < 1 else 10 if graal_freq < 10 else 1.5
     return 1 / factor <= graal_freq / (perf_freq + epsilon) <= factor
 
@@ -973,7 +971,7 @@ class GeneratedAssembly:
                     self.code_by_id[code.get_compile_id()] = code
                     continue
                 mx.abort('Unable to find matching nmethod for code {}'.format(code))
-        
+
         if files.has_block_info():
             reg = re.compile(
                 r'HotSpot(?P<is_osr>(OSR)?)Compilation-(?P<id>[0-9]*)\[(?P<sig>.*)\]'
@@ -987,8 +985,8 @@ class GeneratedAssembly:
                 with files.open_block_info(compile_id) as block_file:
                     blocks = []
                     for line in block_file:
-                        [id, start, end, freq] = line.split(',')
-                        blocks.append(Block(int(id), int(start), int(end), float(freq)))
+                        [block_id, start, end, freq] = line.split(',')
+                        blocks.append(Block(int(block_id), int(start), int(end), float(freq)))
                     code.set_blocks(blocks)
 
     def decoder(self, fp=sys.stdout):
@@ -1480,7 +1478,7 @@ def checkblocks(args):
     files = FlatExperimentFiles(directory=options.experiment, block_info=options.block_info)
     files.ensure_perf_output()
     perf_data = PerfOutput(files)
-    assembly = GeneratedAssembly(files) 
+    assembly = GeneratedAssembly(files)
     assembly.attribute_events(perf_data)
     fp = sys.stdout
     if options.output:

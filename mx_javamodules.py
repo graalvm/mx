@@ -885,7 +885,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                 continue
                             if arcname.startswith(_special_versioned_prefix):
                                 if not unversioned_name.startswith('META-INF/services'):
-                                    raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
+                                    mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
                             if unversioned_name:
                                 dst = join(dest_dir, unversioned_name)
                                 sync_file(entry.staged, dst, restore_files)
