@@ -126,6 +126,18 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
     def open_log_compilation_file(self):
         raise NotImplementedError()
 
+    @abstractmethod
+    def has_block_info(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def find_block_info(self, compilation_id):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def open_block_info(self, compilation_id, block_info_file_name='block_info'):
+        raise NotImplementedError()
+
 
 class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
@@ -285,6 +297,15 @@ class ZipExperimentFiles(ExperimentFiles):
 
     def get_log_compilation_filename(self):
         mx.abort('Unable to output directly to zip file')
+
+    def has_block_info(self):
+        return False
+
+    def find_block_info(self, compilation_id):
+        return None
+
+    def open_block_info(self, compilation_id, block_info_file_name='block_info'):
+        return None
 
 
 class Instruction:
