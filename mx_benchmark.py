@@ -2631,6 +2631,9 @@ class BenchmarkExecutor(object):
             "benchmark", nargs="?", default=None,
             help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
+            "--fail-fast", action="store_true", default=None,
+            help="Abort as soon as an error is caught instead of trying to execute all benchmarks.")
+        parser.add_argument(
             "--results-file",
             default="bench-results.json",
             help="Path to JSON output file with benchmark results.")
@@ -2776,6 +2779,8 @@ class BenchmarkExecutor(object):
                             failures_seen = True
                             failed_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
                             mx.log(traceback.format_exc())
+                            if mxBenchmarkArgs.fail_fast:
+                                mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
             if ignored_benchmarks:
                 mx.log("Benchmarks ignored since they aren't supported on the current platform/configuration:\n\t{}".format('\n\t'.join(ignored_benchmarks)))
             if skipped_benchmark_forks:
@@ -2934,8 +2939,11 @@ class TTYCapturing(object):
 def gate_mx_benchmark(args, out=None, err=None, nonZeroIsFatal=True):
     if (out is not None and not callable(out)) or (err is not None and not callable(err)):
         mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
+    opts_and_args = args
+    if "--fail-fast" not in opts_and_args:
+        opts_and_args = ["--fail-fast"] + opts_and_args
     with TTYCapturing(out=out, err=err):
-        exit_code, suite, results = benchmark(args, returnSuiteAndResults=True)
+        exit_code, suite, results = benchmark(opts_and_args, returnSuiteAndResults=True)
     if exit_code != 0 and nonZeroIsFatal is True:
-        mx.abort("Benchmark gate failed with args: {}".format(args))
+        mx.abort("Benchmark gate failed with args: {}".format(opts_and_args))
     return exit_code, suite, results
