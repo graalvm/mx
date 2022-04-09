@@ -2940,7 +2940,7 @@ def gate_mx_benchmark(args, out=None, err=None, nonZeroIsFatal=True):
     if (out is not None and not callable(out)) or (err is not None and not callable(err)):
         mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
     opts_and_args = args
-    if "--fail-fast" not in opts_and_args:
+    if nonZeroIsFatal and "--fail-fast" not in opts_and_args:
         opts_and_args = ["--fail-fast"] + opts_and_args
     with TTYCapturing(out=out, err=err):
         exit_code, suite, results = benchmark(opts_and_args, returnSuiteAndResults=True)
