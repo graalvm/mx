@@ -1434,7 +1434,10 @@ def _stage_file_impl(src, dst):
     if not mx.can_symlink():
         if exists(dst):
             mx.rmtree(dst)
-        shutil.copy(src, dst)
+        if isdir(src):
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy(src, dst)
     else:
         if exists(dst):
             if islink(dst):
