@@ -134,10 +134,6 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
     def find_block_info(self, compilation_id):
         raise NotImplementedError()
 
-    @abstractmethod
-    def open_block_info(self, compilation_id, block_info_file_name='block_info'):
-        raise NotImplementedError()
-
 
 class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
@@ -235,23 +231,24 @@ class FlatExperimentFiles(ExperimentFiles):
     def has_block_info(self):
         return self.block_info and os.path.isdir(self.block_info)
 
-    def find_block_info(self, compilation_id):
+    def find_block_info(self, compilation_id, block_info_file_name='block_info'):
         assert self.has_block_info(), "Must have block information"
-        reg = re.compile('^HotSpot(OSR)?Compilation-{}\\[.*\\]$'.format(compilation_id))
+        if compilation_id[-1] == '%':
+            # It is an OSR compilation id
+            reg = '^HotSpotOSRCompilation-{}\\[.*\\]$'.format(compilation_id[:-1])
+        else:
+            # Normal compilation
+            reg = '^HotSpotCompilation-{}\\[.*\\]$'.format(compilation_id)
+        reg = re.compile(reg)
         dirs = os.listdir(self.block_info)
-        found = [d for d in dirs if re.search(reg, d)]
+        found = [d for d in dirs if re.match(reg, d)]
         assert len(found) <= 1, "Multiple block information file found for compilation id {}".format(compilation_id)
         if not found:
             return None
         else:
-            return found[0]
-
-    def open_block_info(self, compilation_id, block_info_file_name='block_info'):
-        found = self.find_block_info(compilation_id)
-        path = os.path.join(self.block_info, found, block_info_file_name)
-        assert os.path.isfile(path), "Block info file missing for {}".format(found)
-        return open(path)
-
+            path = os.path.join(self.block_info, found[0], block_info_file_name)
+            assert os.path.isfile(path), "Block info file missing for {}".format(found)
+            return path
 
 class ZipExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
@@ -302,9 +299,6 @@ class ZipExperimentFiles(ExperimentFiles):
         return False
 
     def find_block_info(self, compilation_id):
-        return None
-
-    def open_block_info(self, compilation_id, block_info_file_name='block_info'):
         return None
 
 
@@ -994,21 +988,39 @@ class GeneratedAssembly:
                 mx.abort('Unable to find matching nmethod for code {}'.format(code))
 
         if files.has_block_info():
-            reg = re.compile(
-                r'HotSpot(?P<is_osr>(OSR)?)Compilation-(?P<id>[0-9]*)\[(?P<sig>.*)\]'
-            )
-            for compil in os.listdir(files.block_info):
-                res = reg.match(compil)
-                if not res:
+            for code in self.code_info:
+                if not code.nmethod:
                     continue
-                compile_id, is_osr = res.group('id'), res.group('is_osr')
-                code = self.code_by_id[compile_id + ('%' if is_osr else '')]
-                with files.open_block_info(compile_id) as block_file:
+                
+                compile_id = code.get_compile_id()
+                block_info_path = files.find_block_info(compile_id)
+                if block_info_path is None:
+                    # methods that are not compiled with graal don't have a block info file
+                    continue
+                
+                with open(block_info_path) as block_file:
                     blocks = []
                     for line in block_file:
                         [block_id, start, end, freq] = line.split(',')
                         blocks.append(Block(int(block_id), int(start), int(end), float(freq)))
                     code.set_blocks(blocks)
+
+            # reg = re.compile(
+            #     r'HotSpot(?P<is_osr>(OSR)?)Compilation-(?P<id>[0-9]*)\[(?P<sig>.*)\]'
+            # )
+            # for compil in os.listdir(files.block_info):
+            #     res = reg.match(compil)
+            #     if not res:
+            #         continue
+            #     compile_id, is_osr = res.group('id'), res.group('is_osr')
+            #     code = self.code_by_id.get(compile_id + ('%' if is_osr else ''))
+
+            #     with files.open_block_info(compile_id) as block_file:
+            #         blocks = []
+            #         for line in block_file:
+            #             [block_id, start, end, freq] = line.split(',')
+            #             blocks.append(Block(int(block_id), int(start), int(end), float(freq)))
+            #         code.set_blocks(blocks)
 
     def decoder(self, fp=sys.stdout):
         if self.arch == 'amd64':
@@ -1513,6 +1525,10 @@ def checkblocks(args):
         if code.blocks:
             code.check_blocks_0_rel_freq(fp=fp)
             code.check_blocks_rel_freq_most(fp=fp)
+
+    hottest = hot[0]
+    for b in hottest.blocks:
+        print(f'id = {b.id:3}, graal freq = {b.freq:.5e}, samples = {b.samples:10}, period = {b.period:15}, period normalized = {b.period / hottest.total_period:.5f}')
 
     if fp != sys.stdout:
         fp.close()
