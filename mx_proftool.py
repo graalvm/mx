@@ -1487,7 +1487,6 @@ def profhot(args):
                         action='store_true')
     parser.add_argument('-H', '--hide-perf', help='Don\'t display perf information in the output.\n'
                         'This can be useful when comparing the assembly from different runs.')
-    parser.add_argument('--json', help='Print in JSON format.', action='store_true')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-E', '--experiment',
                        help='The directory containing the data files from the experiment',
@@ -1594,6 +1593,7 @@ def profasm(args):
     assembly = GeneratedAssembly(files)
     assembly.print_all(threshold=0)
 
+
 @mx.command('mx', 'profjson', '[options]')
 @mx.suite_context_free
 def profjson(args):
@@ -1611,6 +1611,7 @@ def profjson(args):
                        action=SuppressNoneArgs, nargs='?')
     options = parser.parse_args(args)
     files = ExperimentFiles.open(options)
+    files.ensure_perf_output()
     perf_data = PerfOutput(files)
     assembly = GeneratedAssembly(files)
     assembly.attribute_events(perf_data)
@@ -1632,6 +1633,7 @@ def profjson(args):
         ]
     }
     json.dump(out, fp=fp, indent=4)
+
 
 class ProftoolProfiler(mx_benchmark.JVMProfiler):
     """
