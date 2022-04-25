@@ -231,14 +231,14 @@ class FlatExperimentFiles(ExperimentFiles):
     def has_block_info(self):
         return self.block_info and os.path.isdir(self.block_info)
 
-    def find_block_info(self, compilation_id, block_info_file_name='block_info'):
+    def find_block_info(self, compilation_id, dump_directory_extension='.blocks', block_info_file_name='block_info'):
         assert self.has_block_info(), "Must have block information"
         if compilation_id[-1] == '%':
             # It is an OSR compilation id
-            reg = '^HotSpotOSRCompilation-{}\\[.*\\]$'.format(compilation_id[:-1])
+            reg = '^HotSpotOSRCompilation-{}\\[.*\\]{}$'.format(compilation_id[:-1], dump_directory_extension)
         else:
             # Normal compilation
-            reg = '^HotSpotCompilation-{}\\[.*\\]$'.format(compilation_id)
+            reg = '^HotSpotCompilation-{}\\[.*\\]{}$'.format(compilation_id, dump_directory_extension)
         reg = re.compile(reg)
         dirs = os.listdir(self.block_info)
         found = [d for d in dirs if re.match(reg, d)]
@@ -1526,9 +1526,11 @@ def checkblocks(args):
             code.check_blocks_0_rel_freq(fp=fp)
             code.check_blocks_rel_freq_most(fp=fp)
 
-    hottest = hot[0]
-    for b in hottest.blocks:
-        print(f'id = {b.id:3}, graal freq = {b.freq:.5e}, samples = {b.samples:10}, period = {b.period:15}, period normalized = {b.period / hottest.total_period:.5f}')
+    for code in hot:
+        print('\nBlocks info for {}'.format(code.name))
+        for b in code.blocks:
+            print(f'id = {b.id:3}, graal freq = {b.freq:.5e}, samples = {b.samples:10}, period = {b.period:15}, period normalized = {b.period / code.total_period:.5f}')
+        print('')
 
     if fp != sys.stdout:
         fp.close()
