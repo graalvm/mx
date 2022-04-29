@@ -25,24 +25,15 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import print_function
-
 import os
 import pipes
 import re
+import urllib.parse
 from os.path import join, exists, isabs, basename, dirname
 from argparse import ArgumentParser
 
 import mx
 import mx_urlrewrites
-
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-import sys
-if sys.version_info[0] < 3:
-    import urlparse as _urllib_parse
-else:
-    import urllib.parse as _urllib_parse             #pylint: disable=unused-import,no-name-in-module
-
 
 def testdownstream_cli(args):
     """tests a downstream repo against the current working directory state of the primary suite
@@ -138,7 +129,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     targetDir = None
     for repoUrl in repoUrls:
         # Deduce a target name from the target URL
-        url = _urllib_parse.urlparse(repoUrl)
+        url = urllib.parse.urlparse(repoUrl)
         targetName = url.path
         if targetName.rfind('/') != -1:
             targetName = targetName[targetName.rfind('/') + 1:]

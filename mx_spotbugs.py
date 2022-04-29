@@ -25,8 +25,6 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import print_function
-
 import mx
 import os
 import tempfile

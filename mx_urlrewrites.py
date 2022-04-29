@@ -24,14 +24,11 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import re
 import json
 import mx
 
 _urlrewrites = []  # list of URLRewrite objects
-
 
 def register_urlrewrite(urlrewrite, onError=None):
     """

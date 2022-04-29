@@ -24,8 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import sys, inspect, re, bisect
 from collections import OrderedDict
 from os.path import join

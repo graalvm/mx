@@ -25,23 +25,13 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import print_function
-
-import sys
-
-import os
+import os, sys
 from os.path import join, exists
+from io import StringIO
 
 import mx
 import mx_ideconfig
 import mx_ide_eclipse
-
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-if sys.version_info[0] < 3:
-    from StringIO import StringIO
-else:
-    from io import StringIO
-
 
 @mx.command('mx', 'netbeansinit')
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):

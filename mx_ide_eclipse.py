@@ -25,10 +25,6 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import print_function
-
-import sys
-
 import os, time, zipfile, tempfile
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
@@ -37,16 +33,11 @@ import difflib
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
 from os.path import join, basename, dirname, exists, isdir, abspath
+from io import StringIO
 
 import mx
 import mx_ideconfig
 import mx_javamodules
-
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-if sys.version_info[0] < 3:
-    from StringIO import StringIO
-else:
-    from io import StringIO
 
 @mx.command('mx', 'eclipseformat')
 def eclipseformat(args):

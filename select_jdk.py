@@ -23,7 +23,6 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
-from __future__ import print_function
 
 import os, tempfile, pipes
 from argparse import ArgumentParser, REMAINDER

@@ -24,8 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import sys
 import json
 import os.path
@@ -2912,10 +2910,7 @@ class TTYCapturing(object):
             mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
 
     def __enter__(self):
-        if sys.version_info[0] < 3:
-            from StringIO import StringIO
-        else:
-            from io import StringIO
+        from io import StringIO
 
         if self._out is not None:
             self._stdout = sys.stdout
