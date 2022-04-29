@@ -1,7 +1,7 @@
 on: [push, pull_request]
 
 env:
-  JDT: ${{ github.workspace }}/ecj.jar
+  JDT: builtin
   ECLIPSE_TAR: ${{ github.workspace }}/../eclipse.tar.gz
   ECLIPSE_EXE: ${{ github.workspace }}/../eclipse/eclipse
 
@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ '3.6', '3.x' ]
+        python-version: [ '3.8' ]
     name: Python ${{ matrix.python-version }} gate
     steps:
       - uses: actions/checkout@v2
@@ -22,18 +22,17 @@ jobs:
           architecture: x64
       - uses: actions/setup-java@v1
         with:
-            java-version: 8
+            java-version: 17
       - name: Style dependencies
         run: |
           cat common.json |
             jq -r '.deps.common.packages | to_entries[] | select(.key | startswith("pip:")) | (.key | split(":")[1]) + .value' |
             xargs pip install
       - run: pylint --version
-      - name: Download and set up dependencies
+      - name: Download and set up Eclipse dependency
         run: |
-          wget https://archive.eclipse.org/eclipse/downloads/drops4/R-4.5.2-201602121500/eclipse-SDK-4.5.2-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
+          wget --no-verbose https://archive.eclipse.org/eclipse/downloads/drops4/R-4.14-201912100610/eclipse-SDK-4.14-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
           tar -C ${{ github.workspace }}/.. -xf $ECLIPSE_TAR
-          wget https://www.eclipse.org/downloads/download.php?file=/eclipse/downloads/drops4/R-4.5.2-201602121500/ecj-4.5.2.jar -O $JDT
       - name: mx gate
         run: ./mx --strict-compliance gate --strict-mode
       - name: Test native build without vcs dir
