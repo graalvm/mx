@@ -70,6 +70,8 @@
         "ECLIPSE": {
           "name": "eclipse",
           "version": "4.14.0",
+          "eclipse_org_version": "4.14",
+          "eclipse_org_timestamp": "201912100610",
           "platformspecific": true
         }
       },
