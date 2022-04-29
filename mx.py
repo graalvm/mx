@@ -15931,30 +15931,18 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None, packa
 
 def _get_javadoc_module_args(projects, jdk):
     additional_javadoc_args = []
-    if jdk.javaCompliance >= JavaCompliance(11):
-        jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
-        additional_javadoc_args = [
-            '--limit-modules',
-            ','.join([module.name for module in jdk.get_modules() if not module.name in jdk_excluded_modules])
-            ]
-        class NonLocal:
-            requiresJVMCI = False
-        def visit(dep, edge):
-            if dep in projects:
-                return
-            if hasattr(dep, 'module') and dep.module == 'jdk.internal.vm.ci':
-                NonLocal.requiresJVMCI = True
-        for p in projects:
-            p.walk_deps(visit=visit)
-        if NonLocal.requiresJVMCI:
-            for module in jdk.get_modules():
-                if module.name == 'jdk.internal.vm.ci':
-                    for package in module.packages:
-                        additional_javadoc_args.extend([
-                            '--add-exports', module.name + '/' + package + '=ALL-UNNAMED'
-                        ])
-                    additional_javadoc_args.extend(['--add-modules', 'jdk.internal.vm.ci'])
-                    break
+    jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
+    additional_javadoc_args = [
+        '--limit-modules',
+        ','.join([module.name for module in jdk.get_modules() if not module.name in jdk_excluded_modules])
+        ]
+    for project in projects:
+        for module, packages in project.get_concealed_imported_packages(jdk).items():
+            for package in packages:
+                    additional_javadoc_args.extend([
+                        '--add-exports', module + '/' + package + '=ALL-UNNAMED'
+                    ])
+                    additional_javadoc_args.extend(['--add-modules', module])
     return additional_javadoc_args
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
@@ -16233,8 +16221,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         captureErr = WarningCapture('stderr: ', True, partialJavadoc)
 
         run([get_jdk().javadoc, memory,
+                     '-XDignore.symbol.file',
              '-classpath', cp,
-             '-quiet',
+             '-verbose',
+            #  '--ignore-source-errors',
+            #  '-J-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000',
+            #  '-quiet',
              '-notimestamp',
              '-d', out,
              '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
