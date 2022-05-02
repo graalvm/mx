@@ -64,7 +64,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
 
     java_home_in_env(suite_dir, suite_name):: [
         # Set JAVA_HOME *only* in <suite_dir>/mx.<suite>/env
-        ["echo", "JAVA_HOME=$JAVA_HOME", ">", path(suite_dir + "/mx.%s/env" % suite_name)],
+        ["python3", "-c", "import os; open(r'" + path(suite_dir + "/mx.%s/env" % suite_name) + "', 'w').write('JAVA_HOME=' + os.environ['JAVA_HOME'])"],
         ["unset", "JAVA_HOME"],
     ],
 
