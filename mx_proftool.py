@@ -231,14 +231,14 @@ class FlatExperimentFiles(ExperimentFiles):
     def has_block_info(self):
         return self.block_info and os.path.isdir(self.block_info)
 
-    def find_block_info(self, compilation_id, dump_directory_extension='.blocks', block_info_file_name='block_info'):
+    def find_block_info(self, compilation_id, block_extension='.blocks'):
         assert self.has_block_info(), "Must have block information"
         if compilation_id[-1] == '%':
             # It is an OSR compilation id
-            reg = '^HotSpotOSRCompilation-{}\\[.*\\]{}$'.format(compilation_id[:-1], dump_directory_extension)
+            reg = '^HotSpotOSRCompilation-{}\\[.*\\]{}$'.format(compilation_id[:-1], block_extension)
         else:
             # Normal compilation
-            reg = '^HotSpotCompilation-{}\\[.*\\]{}$'.format(compilation_id, dump_directory_extension)
+            reg = '^HotSpotCompilation-{}\\[.*\\]{}$'.format(compilation_id, block_extension)
         reg = re.compile(reg)
         dirs = os.listdir(self.block_info)
         found = [d for d in dirs if re.match(reg, d)]
@@ -246,7 +246,7 @@ class FlatExperimentFiles(ExperimentFiles):
         if not found:
             return None
         else:
-            path = os.path.join(self.block_info, found[0], block_info_file_name)
+            path = os.path.join(self.block_info, found[0])
             assert os.path.isfile(path), "Block info file missing for {}".format(found)
             return path
 
