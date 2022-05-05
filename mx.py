@@ -3840,6 +3840,8 @@ def _get_real_arch():
         return 'amd64'
     if machine in ['sun4v', 'sun4u', 'sparc64']:
         return 'sparcv9'
+    if machine in ['riscv64']:
+        return 'riscv64'
     if machine == 'i386' and is_darwin():
         try:
             # Support for Snow Leopard and earlier version of MacOSX
@@ -17870,7 +17872,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.0.1")  # GR-38477
+version = VersionSpec("6.0.2")  # GR-37190
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

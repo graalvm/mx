@@ -667,6 +667,9 @@ suite = {
             "sha1": "cc9dc177d8ab9368af332eb4d39ee3be434683c3",
             "urls": ["{urlbase}/async-profiler-1.8.3-linux-aarch64.tar.gz"],
           },
+          "<others>": {
+            "optional": True,
+          }
         },
         "darwin": {
           "amd64": {
@@ -834,6 +837,9 @@ suite = {
           "aarch64": {
             "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=aarch64", "-std=gnu99"],
           },
+          "riscv64" : {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=riscv64", "-std=gnu99"],
+          }
         },
         "darwin": {
             "<others>": {
