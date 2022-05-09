@@ -15983,6 +15983,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     if args.exclude_packages is not None:
         exclude_packages = frozenset(args.exclude_packages.split(','))
 
+    jdk = get_jdk()
+
     def outDir(p):
         if args.base is None:
             return join(p.dir, docDir)
@@ -16001,6 +16003,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             return False, 'Test project'
         if is_multirelease_jar_overlay(p):
             return False, 'Multi release JAR overlay project'
+        if args.unified and jdk.javaCompliance not in p.javaCompliance:
+            return False, 'Java compliance too high'
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
             return True, None
@@ -16126,7 +16130,6 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     os.remove(overviewFile)
 
     else:
-        jdk = get_jdk()
         pkgs = set()
         sproots = []
         names = []
@@ -16220,7 +16223,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         captureOut = WarningCapture('stdout: ', False, partialJavadoc)
         captureErr = WarningCapture('stderr: ', True, partialJavadoc)
 
-        run([get_jdk().javadoc, memory,
+        run([jdk.javadoc, memory,
              '-XDignore.symbol.file',
              '-classpath', cp,
              '-quiet',
