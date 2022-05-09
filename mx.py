@@ -15939,10 +15939,10 @@ def _get_javadoc_module_args(projects, jdk):
     for project in projects:
         for module, packages in project.get_concealed_imported_packages(jdk).items():
             for package in packages:
-                    additional_javadoc_args.extend([
-                        '--add-exports', module + '/' + package + '=ALL-UNNAMED'
-                    ])
-                    additional_javadoc_args.extend(['--add-modules', module])
+                additional_javadoc_args.extend([
+                    '--add-exports', module + '/' + package + '=ALL-UNNAMED'
+                ])
+                additional_javadoc_args.extend(['--add-modules', module])
     return additional_javadoc_args
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
@@ -16221,12 +16221,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         captureErr = WarningCapture('stderr: ', True, partialJavadoc)
 
         run([get_jdk().javadoc, memory,
-                     '-XDignore.symbol.file',
+             '-XDignore.symbol.file',
              '-classpath', cp,
-             '-verbose',
-            #  '--ignore-source-errors',
-            #  '-J-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000',
-            #  '-quiet',
+             '-quiet',
              '-notimestamp',
              '-d', out,
              '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
