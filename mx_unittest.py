@@ -29,9 +29,14 @@ import mx
 import os
 import re
 import tempfile
+import json
 import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
 from os.path import exists, join, basename, isdir, isabs
+import urllib.request
+from urllib.error import HTTPError, URLError
+import sys
+from datetime import datetime, timezone
 
 def _newest(path):
     """
@@ -332,6 +337,16 @@ def add_unittest_argument(*args, **kwargs):
     _extra_unittest_arguments.append((args, kwargs))
 
 
+def _upload_test_result(tests_collection_file, location, auth_value=None, auth_header="Authorization"):
+    """
+    Uploads the contents of the file `tests_collection_file` to the `location`
+    """
+    with open(tests_collection_file, "rb") as f:
+        req = urllib.request.Request(url=location, data=f, method='PUT')
+        if auth_value:
+            req.add_header(auth_header, auth_value)
+        urllib.request.urlopen(req)
+
 def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitelist=None, regex=None, suite=None, **extra_args):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
@@ -383,12 +398,95 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         def _run_vm(vmArgs, mainClass, mainClassArgs):
             mx.run_java(vmArgs + [mainClass] + mainClassArgs, jdk=jdk)
         vmLauncher = _VMLauncher('default VM launcher', _run_vm, jdk)
-
     try:
         _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, mx.suite(suite) if suite else None)
     finally:
         if os.environ.get('MX_TESTFILE') is None:
             os.remove(testfile)
+
+
+def _read_test_content(testfile):
+    if testfile.endswith(".gz"):
+        import gzip
+        with gzip.open(testfile, "rt") as f_in:
+            return json.load(f_in)
+    else:
+        with open(testfile, "r") as f_in:
+            return json.load(f_in)
+
+def _write_test_content(testfile, results):
+    if testfile.endswith(".gz"):
+        import gzip
+        with gzip.open(testfile, 'wt') as f_in:
+            f_in.write((json.dumps(results.__dict__)))
+    else:
+        with open(testfile, 'w') as f_in:
+            f_in.write(json.dumps(results.__dict__))
+
+def _generate_test_collection_file(json_results, suite=None):
+    job_types = {"gate", "post-merge", "ondemand", "daily", "weekly", "bench"}
+    if mx.get_jdk():
+        java_version = str(mx.get_jdk().javaCompliance)
+    else:
+        java_version = "NoJava"
+    current_suite = str(mx.suite(suite)) if suite else str(mx.primary_suite())
+    results_commit = _get_commit(mx.primary_suite())
+    results_repo_name = _get_repo_name(mx.primary_suite())
+    results_timestamp = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
+    # Make sure test collection is unique when running multiple components in the build job
+    tests_collection_name_suffix = "_" + current_suite
+    if mx.get_env("MX_TEST_COLLECTION_VARIANT"):
+        tests_collection_name_suffix += "+" + mx.get_env("MX_TEST_COLLECTION_VARIANT")
+    job_name = mx.get_env("BUILD_NAME", "unclassified")
+    tests_collection_name = job_name + tests_collection_name_suffix
+    job_type = "unclassified"
+    for job in job_types:
+        if job in job_name:
+            job_type = job
+    tags = {
+        'os':  mx.get_os(),
+        'arch': mx.get_arch(),
+        'java_version': java_version,
+        'component': current_suite,
+        'job_type': job_type
+    }
+    if mx.get_env("MX_TEST_TAGS"):
+        for tag in mx.get_env("MX_TEST_TAGS").split(","):
+            tags.update({tag.partition(":")[0].strip(): tag.partition(":")[2].strip()})
+    _write_test_content(
+        json_results,
+        TestReport(
+            results_repo_name,
+            results_commit,
+            results_timestamp,
+            tests_collection_name,
+            tags,
+            _read_test_content(json_results)
+        )
+    )
+    if mx.get_env("MX_TEST_COLLECTION_UPLOAD", default="false").lower().strip() == "true":
+        report_path = mx.get_env("MX_TEST_REPORTS_LOCATION")
+        if report_path:
+            report_path += results_repo_name + "/" + str(results_commit) + "/" + tests_collection_name + (".json.gz" if json_results.endswith(".gz") else ".json")
+            auth_header = mx.get_env("MX_TEST_UPLOAD_API_USER", default="Authorization")
+            if mx.get_env("MX_TEST_UPLOAD_API_KEY_PATH"):
+                test_upload_api_key_path = mx.get_env("MX_TEST_UPLOAD_API_KEY_PATH")
+                with open(test_upload_api_key_path) as key:
+                    auth_value = key.read().strip()
+            else:
+                mx.warn("MX_TEST_UPLOAD_API_KEY_PATH is not defined, skipping authentication.")
+            try:
+                _upload_test_result(json_results, report_path, auth_value or None, auth_header)
+            except HTTPError as e:
+                mx.warn("Uploading " + json_results + " to " + report_path + " failed with reason : " + str(e))
+            except URLError as ur:
+                mx.warn("Uploading " + json_results + " to " + report_path + " failed with reason : " + str(ur))
+            except:
+                er = sys.exc_info()[0]
+                mx.warn("Uploading " + json_results + " to " + report_path + " failed with reason : " + str(er))
+
+        else:
+            mx.warn("MX_TEST_COLLECTION_UPLOAD is set true, but MX_TEST_REPORTS_LOCATION is not defined")
 
 unittestHelpSuffix = """
     To avoid conflicts with VM options, '--' can be used as delimiter.
@@ -443,6 +541,50 @@ unittestHelpSuffix = """
       --open-packages jdk.internal.vm.*/org.graalvm.compiler.*=ALL-UNNAMED,org.graalvm.enterprise
 """
 
+class TestReport(object):
+    """
+    Collect tests run from various CI jobs in the specified format.
+
+    :param str repo: repo where the test job is running (ie. js, truffleruby...)
+    :param str commit: test job's commit
+    :param str timestamp: when the report was generated; ISO 8601 format
+    :param str testCollection: unique identifier for the collection, most common format : $builder_name[+$configuration]
+    :param dict tags: os (required), arch (required), java_version (required), component (required), job_type (required) and optional tags can be added from "MX_TEST_TAGS" variable
+    :param array tests: an array of atomic tests (name, status, duration)
+    """
+    def __init__(self, repo, commit, timestamp, testCollection, tags, tests):
+        self.repo = repo
+        self.commit = commit
+        self.timestamp = timestamp
+        self.testCollection = testCollection
+        self.tags = tags
+        self.tests = tests
+
+
+def _generate_test_results_path():
+    if mx.get_env("MX_TEST_COLLECTION_COMPRESSION", default="false").lower().strip() == "true":
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".json.gz")
+    else:
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+    return temp.name
+
+
+def _get_repo_name(suite):
+    vc = suite.vc
+    if vc is None:
+        return ''
+    repo_url = vc.default_pull(suite.vc_dir)
+    return str(repo_url).split('.git')[0].split('/')[-1]
+
+def _get_commit(suite):
+    """
+    Get commit revision of `suite`.
+    """
+    vc = suite.vc
+    if vc is None:
+        return ''
+    info = vc.parent(suite.vc_dir)
+    return str(info)
 
 def is_strictly_positive(value):
     try:
@@ -540,7 +682,6 @@ def unittest(args):
     parser.add_argument('--print-passed', metavar="<file>", dest='JUnitRecordPassed', action=MxJUnitWrapperArg, help='record passed test class results in <file>. ' + record_help_msg_shared)
     parser.add_argument('--print-failed', metavar="<file>", dest='JUnitRecordFailed', action=MxJUnitWrapperArg, help='record failed test class results in <file>.  ' + record_help_msg_shared)
     parser.add_argument('--json-results', metavar="<file>", help='record test results in <file> in json format.')
-    parser.add_argument('--json-result-tags', metavar="<tags>", help='comma-separated list of tags to add to all results.')
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
     parser.add_argument('--repeat', help='run each test <n> times', dest='JUnitRepeat', action=MxJUnitWrapperArg, type=is_strictly_positive, metavar='<n>')
     parser.add_argument('--open-packages', dest='JUnitOpenPackages', action=MxJUnitWrapperArg, metavar='<module>/<package>[=<target-module>(,<target-module>)*]',
@@ -581,20 +722,15 @@ def unittest(args):
         junit_args.append('-JUnitEagerStackTrace')
     parsed_args.__dict__.pop('eager_stacktrace')
 
-    json_results = parsed_args.__dict__.pop('json_results') or mx.maybe_generate_test_results_path('unittest')
-    if json_results:
+    json_results = parsed_args.__dict__.pop('json_results')
+    if json_results or (mx.get_env("MX_TEST_COLLECTION_UPLOAD", default="false").lower().strip() == "true" and (temp_file := _generate_test_results_path())):
+        json_results = json_results or temp_file
         junit_args.append('-JUnitJsonResults')
         junit_args.append(json_results)
-        # -JUnitJsonResultTags will only be added when -JUnitJsonResults is set
-        json_result_tags = parsed_args.__dict__.pop('json_result_tags')
-        if json_result_tags:
-            json_result_tags = set(json_result_tags.split(","))
-        else:
-            json_result_tags = mx.test_results_tags()
-        json_result_tags.add(str(mx.primary_suite()))
-        junit_args.append('-JUnitJsonResultTags')
-        junit_args.append(",".join(json_result_tags))
-    elif parsed_args.__dict__.pop('json_result_tags') or mx.user_env_test_results_tags():
-        mx.log('Ignoring -JUnitJsonResultTags since -JUnitJsonResults was not set')
-
-    _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
+    try:
+        _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
+    finally:
+        if json_results:
+            _generate_test_collection_file(json_results, parsed_args.__dict__.pop("suite"))
+        if "temp_file" in locals():
+            os.unlink(temp_file)

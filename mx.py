@@ -68,7 +68,6 @@ from io import BytesIO
 import fnmatch
 import operator
 import calendar
-import random
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
@@ -4001,7 +4000,6 @@ def get_os():
         return 'cygwin'
     else:
         abort('Unknown operating system ' + sys.platform)
-
 
 _os_variant = None
 
@@ -17339,45 +17337,6 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
 
     if not args.quiet:
         log("CI setup is fine.")
-
-
-_warn_test_results_pattern_collision = False
-_test_results_patter_xxx = re.compile('XXXX*')
-
-
-def maybe_generate_test_results_path(key=None):
-    pattern = get_env('MX_TEST_RESULTS_PATTERN')
-    if not pattern:
-        return None
-    if 'XXX' not in pattern:
-        global _warn_test_results_pattern_collision
-        if _warn_test_results_pattern_collision:
-            warn("MX_TEST_RESULTS_PATTERN doesn't contain `XXX` but it seems to be used multiple times.\n"
-                 "Results will probably be overwritten")
-        _warn_test_results_pattern_collision = True
-        return pattern
-    if key:
-        identifier = key + "-"
-    else:
-        identifier = ""
-    identifier += datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    identifier += "-{:08x}".format(random.getrandbits(32))
-    return _test_results_patter_xxx.sub(identifier, pattern, count=1)
-
-
-_test_results_tags = {get_os(), get_arch()}
-
-
-def user_env_test_results_tags():
-    return get_env("MX_TEST_RESULT_TAGS")
-
-
-def test_results_tags():
-    tags = _test_results_tags
-    from_env = user_env_test_results_tags()
-    if from_env:
-        tags = tags.union(from_env.split(','))
-    return tags
 
 
 ### ~~~~~~~~~~~~~ Java Compiler
