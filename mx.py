@@ -17061,11 +17061,13 @@ def show_suites(args):
     optional arguments:
       -h, --help   show this help message and exit
       --locations  show element locations on disk
+      --class      show mx class implementing each suite component
       --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
     parser.add_argument('-p', '--locations', action='store_true', help='show element locations on disk')
     parser.add_argument('-l', '--licenses', action='store_true', help='show element licenses')
+    parser.add_argument('-c', '--class', dest='clazz', action='store_true', help='show mx class implementing each suite component')
     parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')
     args = parser.parse_args(args)
 
@@ -17096,6 +17098,8 @@ def show_suites(args):
                     else:
                         l = '??'
                     data.append(l)
+                if args.clazz:
+                    data.append(e.__module__ + '.' + e.__class__.__name__)
                 if data:
                     out += ' (' + ', '.join(data) + ')'
                 print(out)
@@ -17872,7 +17876,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.0.2")  # GR-37190
+version = VersionSpec("6.0.3")  # GR-38622
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
