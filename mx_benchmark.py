@@ -1028,22 +1028,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     5. Use the parse rules on the standard output to create data points.
     """
     def run(self, benchmarks, bmSuiteArgs):
-        runretval = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        if len(runretval) == 3:
-            retcode, out, dims = runretval
-            return self.validateStdoutWithDimensions(
-                out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
-        else:
-            # TODO: Remove old-style validateStdOut after updating downstream suites.
-            mx.log_deprecation("'runAndReturnStdOut' must return exactly three elements !")
-            retcode, out = runretval
-            return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
-
-    # TODO: Remove once all the downstream suites become up-to-date.
-    def validateStdout(self, out, benchmarks, bmSuiteArgs, retcode=None):
-        mx.log_deprecation("'validateStdout' is deprecated ! Use 'validateStdoutWithDimensions' instead.'")
-        return self.validateStdoutWithDimensions(
-            out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
+        retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
+        datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
+        return datapoints
 
     def repairDatapoints(self, benchmarks, bmSuiteArgs, partialResults):
         """Repairs output results after a benchmark fails.
