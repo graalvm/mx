@@ -17874,7 +17874,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.0.4")  # GR-38729
+version = VersionSpec("6.1.0")  # noMavenJavadoc
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
