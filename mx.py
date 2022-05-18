@@ -11415,34 +11415,40 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                 if dist.isJARDistribution():
                     javadocPath = None
                     if generateJavadoc:
-                        projects = [p for p in dist.archived_deps() if p.isJavaProject()]
-                        tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
-                        javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
-                        if dist.javadocType == 'implementation':
-                            javadocArgs += ['--implementation']
-                        else:
-                            assert dist.javadocType == 'api'
-                        if dist.allowsJavadocWarnings:
-                            javadocArgs += ['--allow-warnings']
-                        javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
                         tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
                         tmpJavadocJar.close()
                         javadocPath = tmpJavadocJar.name
-                        emptyJavadoc = True
-                        with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
-                            javadocDir = join(tmpDir, 'javadoc')
-                            for (dirpath, _, filenames) in os.walk(javadocDir):
-                                for filename in filenames:
-                                    emptyJavadoc = False
-                                    src = join(dirpath, filename)
-                                    dst = os.path.relpath(src, javadocDir)
-                                    arc.write(src, dst)
-                        shutil.rmtree(tmpDir)
-                        if emptyJavadoc:
-                            if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
-                                raise abort("Missing javadoc for {}".format(dist.name))
-                            javadocPath = None
-                            warn('Javadoc for {0} was empty'.format(dist.name))
+                        if getattr(dist, "noMavenJavadoc", False):
+                            with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                                arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
+                        else:
+                            projects = [p for p in dist.archived_deps() if p.isJavaProject()]
+                            tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
+                            javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
+                            if dist.javadocType == 'implementation':
+                                javadocArgs += ['--implementation']
+                            else:
+                                assert dist.javadocType == 'api'
+                            if dist.allowsJavadocWarnings:
+                                javadocArgs += ['--allow-warnings']
+                            javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
+
+                            emptyJavadoc = True
+                            with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                                javadocDir = join(tmpDir, 'javadoc')
+                                for (dirpath, _, filenames) in os.walk(javadocDir):
+                                    for filename in filenames:
+                                        emptyJavadoc = False
+                                        src = join(dirpath, filename)
+                                        dst = os.path.relpath(src, javadocDir)
+                                        arc.write(src, dst)
+                            shutil.rmtree(tmpDir)
+                            if emptyJavadoc:
+                                os.unlink(javadocPath)
+                                if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
+                                    raise abort("Missing javadoc for {}".format(dist.name))
+                                javadocPath = None
+                                warn('Javadoc for {0} was empty'.format(dist.name))
 
                     extraFiles = []
                     if deployMapFiles and dist.is_stripped():
@@ -15931,30 +15937,18 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None, packa
 
 def _get_javadoc_module_args(projects, jdk):
     additional_javadoc_args = []
-    if jdk.javaCompliance >= JavaCompliance(11):
-        jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
-        additional_javadoc_args = [
-            '--limit-modules',
-            ','.join([module.name for module in jdk.get_modules() if not module.name in jdk_excluded_modules])
-            ]
-        class NonLocal:
-            requiresJVMCI = False
-        def visit(dep, edge):
-            if dep in projects:
-                return
-            if hasattr(dep, 'module') and dep.module == 'jdk.internal.vm.ci':
-                NonLocal.requiresJVMCI = True
-        for p in projects:
-            p.walk_deps(visit=visit)
-        if NonLocal.requiresJVMCI:
-            for module in jdk.get_modules():
-                if module.name == 'jdk.internal.vm.ci':
-                    for package in module.packages:
-                        additional_javadoc_args.extend([
-                            '--add-exports', module.name + '/' + package + '=ALL-UNNAMED'
-                        ])
-                    additional_javadoc_args.extend(['--add-modules', 'jdk.internal.vm.ci'])
-                    break
+    jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
+    additional_javadoc_args = [
+        '--limit-modules',
+        ','.join([module.name for module in jdk.get_modules() if not module.name in jdk_excluded_modules])
+        ]
+    for project in projects:
+        for module, packages in project.get_concealed_imported_packages(jdk).items():
+            for package in packages:
+                additional_javadoc_args.extend([
+                    '--add-exports', module + '/' + package + '=ALL-UNNAMED'
+                ])
+                additional_javadoc_args.extend(['--add-modules', module])
     return additional_javadoc_args
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
@@ -15995,6 +15989,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     if args.exclude_packages is not None:
         exclude_packages = frozenset(args.exclude_packages.split(','))
 
+    jdk = get_jdk()
+
     def outDir(p):
         if args.base is None:
             return join(p.dir, docDir)
@@ -16013,6 +16009,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             return False, 'Test project'
         if is_multirelease_jar_overlay(p):
             return False, 'Multi release JAR overlay project'
+        if args.unified and jdk.javaCompliance not in p.javaCompliance:
+            return False, 'Java compliance too high'
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
             return True, None
@@ -16138,7 +16136,6 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     os.remove(overviewFile)
 
     else:
-        jdk = get_jdk()
         pkgs = set()
         sproots = []
         names = []
@@ -16232,7 +16229,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         captureOut = WarningCapture('stdout: ', False, partialJavadoc)
         captureErr = WarningCapture('stderr: ', True, partialJavadoc)
 
-        run([get_jdk().javadoc, memory,
+        run([jdk.javadoc, memory,
+             '-XDignore.symbol.file',
              '-classpath', cp,
              '-quiet',
              '-notimestamp',
@@ -17876,7 +17874,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.0.4")  # GR-38729
+version = VersionSpec("6.1.0")  # noMavenJavadoc
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
