@@ -599,6 +599,29 @@ class BenchmarkSuite(object):
         """
         return None
 
+    def expandBmSuiteArgs(self, benchmarks, bmSuiteArgs):
+        """ Generates an arbitrary number of bmSuiteArgs variants to allow triggering multiple runs with different configurations.
+
+        By default it returns the given a list only containing bmSuiteArgs.  If
+        one needs a suite to be able to support a "generic" suite arugment,
+        e.g. let's assume we have a bench suite called "mySuite" which can run
+        individual benchmarks in multiple configs (interpreter, compiled,
+        precompiled). We want to be able to do
+
+        mx benchmark mySuite:* -- --mode=*
+
+        to run the suite in all available modes. Overriding this method will allow expanding the
+        "--mode=*"
+        to
+        ["--mode=interpreter", "--mode=compiled", "--mode=precompiled"]
+        resulting in the benchmark being executed 3 times with these 3 arguments passed in as bmSuiteArgs.
+
+        :returns: A list of arguments resulting from the expansion of bmSuiteArgs.
+
+        """
+        return [bmSuiteArgs]
+
+
 
 def add_bm_suite(suite, mxsuite=None):
     if mxsuite is None:
@@ -2759,7 +2782,9 @@ class BenchmarkExecutor(object):
                                        "on the current platform/configuration.".format(suite.name(), benchnames[0]))
                                 ignored_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
                             else:
-                                results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num))
+                                for suiteArgs in suite.expandBmSuiteArgs(benchnames, bmSuiteArgs):
+                                    mx.log("Execution with suite args: {}".format(suiteArgs))
+                                    results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
                             failed_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
