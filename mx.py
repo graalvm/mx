@@ -4128,7 +4128,11 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
         error_message = codeOrMessage
         error_code = 1
     log_error(error_message)
-    raise SystemExit(error_code)
+    if threading.current_thread() is threading.main_thread():
+        raise SystemExit(error_code)
+    else:
+        # sys.exit or SystemExit is not enough to exit from another thread
+        os._exit(error_code)
 
 
 def abort_or_warn(message, should_abort, context=None):
