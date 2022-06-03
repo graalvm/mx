@@ -4128,6 +4128,9 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
         error_message = codeOrMessage
         error_code = 1
     log_error(error_message)
+    if threading.current_thread() is not threading.main_thread():
+        # sys.exit or SystemExit is not enough to exit from another thread
+        os._exit(error_code)
     raise SystemExit(error_code)
 
 
@@ -17874,7 +17877,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.0")  # noMavenJavadoc
+version = VersionSpec("6.1.1")  # abort exit
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
