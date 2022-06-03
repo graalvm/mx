@@ -2782,8 +2782,9 @@ class BenchmarkExecutor(object):
                                        "on the current platform/configuration.".format(suite.name(), benchnames[0]))
                                 ignored_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
                             else:
-                                for suiteArgs in suite.expandBmSuiteArgs(benchnames, bmSuiteArgs):
-                                    mx.log("Execution with suite args: {}".format(suiteArgs))
+                                expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
+                                for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
+                                    mx.log("Execution of variant {}/{} with suite args: {}".format(variant_num + 1, len(expandedBmSuiteArgs), suiteArgs))
                                     results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
