@@ -163,3 +163,6 @@ Other options to profhot give more control over how this is printed.  It's possi
 using the '-s' option which can make the output more compact.  The debug information associated with a pc can be
 quite deep which will overwhelm the actual assembly output.  The '-c' option can be used to control the number of frames printed,
 so passing `0` will hide the frame information completely and `1` will show just deepest inline frame.
+
+### Checking basic block relative frequencies
+
