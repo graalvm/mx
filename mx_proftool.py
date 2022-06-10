@@ -154,7 +154,7 @@ class FlatExperimentFiles(ExperimentFiles):
         self.dump_path = None
         if not os.path.isdir(directory):
             raise AssertionError('Must be directory')
-        self.directory = os.path.abspath(directory)        
+        self.directory = os.path.abspath(directory)
         self.jvmti_asm_filename = os.path.join(self.directory, jvmti_asm_name)
         self.perf_binary_filename = os.path.join(self.directory, perf_binary_name)
         self.perf_output_filename = os.path.join(self.directory, perf_output_name)
@@ -336,10 +336,10 @@ class ZipExperimentFiles(ExperimentFiles):
     def has_block_info(self, compilation_id=None):
         if self.block_info_directory is None:
             return False
-        
+
         if compilation_id is None:
             return True
-        
+
         return self.block_info_filename(compilation_id) in self.experiment_file.namelist()
 
     def open_block_info(self, compilation_id):
@@ -797,23 +797,15 @@ class CompiledCodeInfo:
             print('[WARRNING] In method {}\n\tblock 0 got {} samples'.format(self.format_name(short_class_names=True), b0.samples), file=fp)
             return
 
-        average_samples_per_block = self.total_samples / len(self.blocks)
-        # We filter blocks that 
-        for b in [bb for bb in self.blocks[1:] if bb.freq >= average_samples_per_block]:
+        for b in [bb for bb in self.blocks[1:]]:
             perf_freq = b.period / b0.period
             if not compare_freq(b.freq, perf_freq):
-                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to first block diverge, graal freq {:.2e}, perf freq {:.2e}'.format(self.format_name(short_class_names=True), b.id, b.freq, perf_freq), file=fp)
+                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to first block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, b.freq, perf_freq), file=fp)
 
 
     def check_blocks_rel_freq_most(self, fp=sys.stdout):
         """Check the relative frequencies of each block with respect to the most frequent block"""
         assert self.blocks and len(self.blocks) > 0, "Must have blocks information"
-
-        # blocks_by_graal_freq = sorted(self.blocks, key=lambda b: b.freq,          reverse=True)
-        # blocks_by_perf_freq  = sorted(self.blocks, key=lambda b: b.total_period,  reverse=True)
-
-        # b0_graal = blocks_by_graal_freq.pop(0)
-        # b0_perf = blocks_by_perf_freq.pop(0)
 
         bmax_graal = sorted(self.blocks, key=lambda b: b.freq, reverse=True)
         bmax_perf = sorted(self.blocks, key=lambda b: b.period, reverse=True)
@@ -834,7 +826,7 @@ class CompiledCodeInfo:
             perf_freq = b.period / bmax.period
 
             if not compare_freq(graal_freq, perf_freq):
-                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to most frequent block diverge, graal freq {:.2e}, perf freq {:.2e}'.format(self.format_name(short_class_names=True), b.id, graal_freq, perf_freq), file=fp)
+                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to most frequent block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, graal_freq, perf_freq), file=fp)
 
 def compare_freq(graal_freq, perf_freq, epsilon=3E-151):
     factor = 100 if graal_freq < 1 else 10 if graal_freq < 10 else 1.5
@@ -1021,13 +1013,13 @@ class GeneratedAssembly:
             for code in self.code_info:
                 if not code.nmethod:
                     continue
-                
+
                 compile_id = code.get_compile_id()
 
                 if not files.has_block_info(compile_id):
                     # methods that are not compiled with graal don't have a block info file
                     continue
-                
+
                 with files.open_block_info(compile_id) as block_file:
                     blocks = []
                     for line in block_file:
@@ -1303,7 +1295,7 @@ def profrecord(args):
     parser.add_argument('-O', '--overwrite', help='Overwrite an existing dump directory',
                         action='store_true')
     parser.add_argument('-B', '--with-basic-block-info',
-                        help='Enables dumping of the basic block information used by the checkblocks command', 
+                        help='Enables dumping of the basic block information used by the checkblocks command',
                         action='store_true')
     parser.add_argument('-D', '--dump-hot',
                         help='Run the program and then rerun it with dump options enabled for the hottest methods',
@@ -1421,7 +1413,7 @@ def build_capture_args(files, extra_vm_args=None, options=None):
     if extra_vm_args:
         vm_args += extra_vm_args
     if options and options.with_basic_block_info:
-            vm_args += [f"-Dgraal.PrintBBInfoPath={files.block_info_directory}"]
+        vm_args += [f"-Dgraal.PrintBBInfoPath={files.block_info_directory}"]
     return perf_cmd, vm_args
 
 
@@ -1525,6 +1517,8 @@ def checkblocks(args):
     options = parser.parse_args(args)
     files = ExperimentFiles.open(options)
     files.ensure_perf_output()
+    if not files.has_block_info():
+        mx.abort('No directory containing basic block information found!')
     perf_data = PerfOutput(files)
     assembly = GeneratedAssembly(files)
     assembly.attribute_events(perf_data)
@@ -1545,7 +1539,7 @@ def checkblocks(args):
         for code in hot:
             print('\nBlocks info for {}'.format(code.name))
             for b in code.blocks:
-                print(f'id = {b.id:3}, graal freq = {b.freq:.5e}, samples = {b.samples:10}, period = {b.period:15}, period normalized = {b.period / code.total_period:.5f}')
+                print(f'id = {b.id:4}, graal freq = {b.freq:.6e}, samples = {b.samples:10}, period = {b.period:15}, period normalized = {b.period / code.total_period:.5f}')
             print('')
 
     if fp != sys.stdout:
@@ -1600,7 +1594,7 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
             return [], []
         directory = os.path.join(dump_path, self.filename)
         files = FlatExperimentFiles.create(directory, overwrite=True, with_block_info=self.with_bb_info)
-        extra_vm_args = [f"-Dgraal.PrintBBInfoPath={files.block_info_directory}"]
+        extra_vm_args = [f"-Dgraal.PrintBBInfoPath={files.block_info_directory}"] if self.with_bb_info else None
         perf_cmd, vm_args = build_capture_args(files, extra_vm_args=extra_vm_args)
 
         # reset the next item name since it has just been consumed
