@@ -8400,6 +8400,45 @@ class ZipExtractor(Extractor):
     def _extractall(self, ar, dst):
         return ar.extractall(dst)
 
+
+class FileInfo:
+    def __init__(self, path):
+        self.path = path
+        with open(path) as fp:
+            self.content = fp.read()
+        self.times = (os.path.getatime(path), getmtime(path))
+
+    def update(self, removeTrailingWhitespace, restore):
+        with open(self.path) as fp:
+            content = fp.read()
+        file_modified = False  # whether the file was modified by formatting
+        file_updated = False  # whether the file is really different on disk after the update
+        if self.content != content:
+            # Only apply *after* formatting to match the order in which the IDE does it
+            if removeTrailingWhitespace:
+                content, n = re.subn(r'[ \t]+$', '', content, flags=re.MULTILINE)
+                if n != 0 and self.content == content:
+                    # undo on-disk changes made by the Eclipse formatter
+                    with open(self.path, 'w') as fp:
+                        fp.write(content)
+
+            if self.content != content:
+                rpath = os.path.relpath(self.path, primary_suite().dir)
+                self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
+                if restore:
+                    with open(self.path, 'w') as fp:
+                        fp.write(self.content)
+                else:
+                    file_updated = True
+                    self.content = content
+                file_modified = True
+
+        if not file_updated and (os.path.getatime(self.path), getmtime(self.path)) != self.times:
+            # reset access and modification time of file
+            os.utime(self.path, self.times)
+        return file_modified
+
+
 ### ~~~~~~~~~~~~~ Library
 
 
