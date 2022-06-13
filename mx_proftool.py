@@ -797,7 +797,7 @@ class CompiledCodeInfo:
             print('[WARRNING] In method {}\n\tblock 0 got {} samples'.format(self.format_name(short_class_names=True), b0.samples), file=fp)
             return
 
-        for b in [bb for bb in self.blocks[1:]]:
+        for b in self.blocks[1:]:
             perf_freq = b.period / b0.period
             if not compare_freq(b.freq, perf_freq):
                 print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to first block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, b.freq, perf_freq), file=fp)
