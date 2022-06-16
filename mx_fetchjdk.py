@@ -28,6 +28,10 @@
 import os, shutil, json, re
 from os.path import join, exists, abspath, dirname, isdir, basename, isabs
 from argparse import ArgumentParser
+try:
+    from urllib import quote
+except ImportError:
+    from urllib.parse import quote
 
 from mx import suite_context_free, _mx_home, command, atomic_file_move_with_fallback, is_quiet
 from select_jdk import get_setvar_format
@@ -446,7 +450,7 @@ class _JdkBinary(object):
         self._filename = _instantiate(filename, keywords, source)
         keywords['filename'] = self._filename
         self._folder_name = "{}-{}".format(jdk_id, _instantiate('{version|jvmci-tag}', keywords, source))
-        self._url = _instantiate(url, keywords, source)
+        self._url = _instantiate(url, {k: quote(v) for k, v in keywords.items()}, source)
         self._archive = self._url[self._url.rfind(self._filename):]
 
     def __repr__(self):

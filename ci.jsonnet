@@ -27,6 +27,12 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     local copydir(src, dst) = if os == "windows" then ["xcopy", path(src), path(dst), "/e", "/i", "/q"] else ["cp", "-r", src, dst],
     local mx_copy_dir = path("${PWD}/../path with a space"),
     local mx = path("./mx"),
+    local openssl102_for_ruby = if os == "linux" && arch == "amd64" then {
+      docker: {
+        image: "phx.ocir.io/oraclelabs2/c_graal/buildslave:buildslave_ol7",
+        mount_modules: true,
+      },
+    } else {},
 
     # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then Java version followed by OS and arch
     with_name(prefix):: self + {
@@ -148,7 +154,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
         ],
     },
 
-    build_truffleruby:: self.with_name("gate-build-truffleruby") + deps("sulong", os, arch) + {
+    build_truffleruby:: self.with_name("gate-build-truffleruby") + deps("sulong", os, arch) + openssl102_for_ruby + {
         packages+: {
             ruby: ">=" + versions.ruby,
             python3: "==" + versions.python3,
