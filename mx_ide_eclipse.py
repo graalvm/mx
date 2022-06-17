@@ -28,8 +28,6 @@
 import os, time, zipfile, tempfile
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
-import re
-import difflib
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
 from os.path import join, basename, dirname, exists, isdir, abspath
@@ -118,43 +116,6 @@ def eclipseformat(args):
                 content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled\n', '').replace('org.eclipse.jdt.core.compiler.processAnnotations=enabled\n', '')
                 return content
 
-    class FileInfo:
-        def __init__(self, path):
-            self.path = path
-            with open(path) as fp:
-                self.content = fp.read()
-            self.times = (os.path.getatime(path), mx.getmtime(path))
-
-        def update(self, removeTrailingWhitespace, restore):
-            with open(self.path) as fp:
-                content = fp.read()
-            file_modified = False  # whether the file was modified by formatting
-            file_updated = False  # whether the file is really different on disk after the update
-            if self.content != content:
-                # Only apply *after* formatting to match the order in which the IDE does it
-                if removeTrailingWhitespace:
-                    content, n = re.subn(r'[ \t]+$', '', content, flags=re.MULTILINE)
-                    if n != 0 and self.content == content:
-                        # undo on-disk changes made by the Eclipse formatter
-                        with open(self.path, 'w') as fp:
-                            fp.write(content)
-
-                if self.content != content:
-                    rpath = os.path.relpath(self.path, mx.primary_suite().dir)
-                    self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
-                    if restore:
-                        with open(self.path, 'w') as fp:
-                            fp.write(self.content)
-                    else:
-                        file_updated = True
-                        self.content = content
-                    file_modified = True
-
-            if not file_updated and (os.path.getatime(self.path), mx.getmtime(self.path)) != self.times:
-                # reset access and modification time of file
-                os.utime(self.path, self.times)
-            return file_modified
-
     modified = list()
     batches = dict()  # all sources with the same formatting settings are formatted together
     for p in projectsToProcess:
@@ -174,7 +135,7 @@ def eclipseformat(args):
             for root, _, files in os.walk(sourceDir):
                 for f in [join(root, name) for name in files if name.endswith('.java')]:
                     if filelist is None or f in filelist:
-                        javafiles.append(FileInfo(f))
+                        javafiles.append(mx.FileInfo(f))
         if len(javafiles) == 0:
             mx.logv('[no Java sources in {0} - skipping]'.format(p.name))
             continue
