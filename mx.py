@@ -17729,7 +17729,7 @@ update_commands("mx", {
     'help': [help_, '[command]'],
     'hg': [hg_command, '[options]'],
     'init' : [suite_init_cmd, '[options] name'],
-    'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml}] [output directory]'],
+    'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml,lcov}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
     'javadoc': [javadoc, '[options]'],
     'javap': [javap, '[options] <class name patterns>'],
