@@ -28,8 +28,10 @@
 try:
     import defusedxml #pylint: disable=unused-import
     from defusedxml.ElementTree import parse as etreeParse
+    from defusedxml.ElementTree import SubElement
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
+    from xml.etree.ElementTree import SubElement
 import os
 import sys
 # TODO use defusedexpat?
@@ -258,7 +260,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 moduleXml.open('module',
                                attributes={'type': {'ruby': 'RUBY_MODULE',
                                                     'python': 'PYTHON_MODULE',
-                                                    'web': 'WEB_MODULE'}.get(module_type, 'UKNOWN_MODULE'),
+                                                    'web': 'WEB_MODULE',
+                                                    'docs': 'DOCS_MODULE',
+                                                    'ci': 'CI_MODULE'}.get(module_type, 'UKNOWN_MODULE'),
                                            'version': '4'})
                 moduleXml.open('component',
                                attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
@@ -279,7 +283,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_ruby_sdk_type, 'jdkName': intellij_get_ruby_sdk_name(sdks)})
                 elif module_type == "python":
                     moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
-                elif module_type == "web":
+                elif module_type in ["web", "docs", "ci"]:
                     # nothing to do
                     pass
                 else:
@@ -304,10 +308,34 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 moduleFile = join(path, project_name + '.iml')
                 mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
-                if not module_files_only:
+                if module_files_only:
+                    # If we are not in primary suite, and we want to add some other module to
+                    # modules.xml - we have a problem, since that file has already been closed.
+                    # So we need to reopen it, parse it again, and append the module in question.
+                    declared_modules.add(project_name)
+                    modules_path = os.path.join('.idea', 'modules.xml')
+                    parent_dir = os.path.join(path, os.pardir)
+                    module_file_path = "$PROJECT_DIR$/" + os.path.relpath(os.path.relpath(moduleFile, parent_dir), "$PROJECT_DIR$")
+
+                    tree = etreeParse(modules_path)
+                    root = tree.getroot()
+                    assert root.tag == 'project'
+
+                    assert root.find('component') is not None
+                    component_node = root.find('component')
+
+                    assert component_node.find('modules') is not None
+                    modules_node = component_node.find('modules')
+
+                    attributes = {"filepath": module_file_path, "fileurl": "file://" + module_file_path}
+                    SubElement(modules_node, "module", attrib=attributes)
+
+                    tree.write(modules_path)
+                else:
                     declared_modules.add(project_name)
                     moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                     modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+
 
     if generate_external_projects:
         for p in s.projects_recursive() + mx._mx_suite.projects_recursive():
