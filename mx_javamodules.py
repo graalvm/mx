@@ -1118,7 +1118,7 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
         if '@' in module:
             module, java_compliance = module.split('@', 1)
             java_compliance = mx_javacompliance.JavaCompliance(java_compliance, context=context)
-            if java_compliance not in jdk.javaCompliance:
+            if jdk.javaCompliance not in java_compliance:
                 continue
 
         matches = [jmd for jmd in all_modules if jmd.name == module]
