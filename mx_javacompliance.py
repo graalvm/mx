@@ -104,6 +104,15 @@ class JavaCompliance(mx.Comparable):
                 if self._high is None:
                     return True
                 return value <= self._high
+            elif isinstance(other, JavaCompliance._Range):
+                if other._high is None:
+                    # open range is considered not match, e.g. '1.8+' not in '1.8..11'
+                    return False
+                if other._low < self._low:
+                    return False
+                if self._high is None:
+                    return True
+                return other._high <= self._high
             return False
 
         def _values(self, stop=None):
@@ -215,17 +224,7 @@ class JavaCompliance(mx.Comparable):
     def __contains__(self, other):
         if isinstance(other, (int, str)):
             other = JavaCompliance(other)
-        assert other._high_bound() is not None, "Contains check cannot be done with version ranges"
-        r = mx.compare(self.value, other.value)
-        if r == 0:
-            return True
-        elif r > 0:
-            return False
-        else: # r < 0
-            if self._high_bound() is None:
-                return True
-            else:
-                return mx.compare(self._high_bound(), other.value) >= 0
+        return all(any((other_part in self_part) for self_part in self._parts) for other_part in other._parts)
 
     def __hash__(self):
         return hash((self._parts, self._loom))
@@ -283,6 +282,8 @@ def _test():
     Mx suite specific tests.
     """
 
+    from collections import namedtuple
+
     # JavaCompliance tests
     good_specs = [
         (2, True),
@@ -317,6 +318,27 @@ def _test():
         '4,7,1..3,',
         '4..5,1..3',
     ]
+    range_case = namedtuple('range_case', ['spec', 'range_spec', 'should_match'])
+    range_specs = [
+        range_case('1.8', '1.8', True),
+        range_case('11', '11', True),
+        range_case('17', '17', True),
+        range_case('1.8', '1.7', False),
+        range_case('1.8', '11', False),
+        range_case('17', '1.8', False),
+        range_case('1.8', '11..17', False),
+        range_case('11', '11..17', True),
+        range_case('15', '11..17', True),
+        range_case('17', '11..17', True),
+        range_case('19', '11..17', False),
+        range_case('11..17', '11..17', True),
+        range_case('13..14', '11..17', True),
+        range_case('11..19', '11..17', False),
+        range_case('16', '11..15,17', False),
+        range_case('11..12,14..15', '11..15,17', True),
+        range_case('11,12,13,14,15,16,17', '11..17', True),
+        range_case('11+', '11..17', False),
+    ]
     for spec, exact in good_specs:
         p = mx.JavaCompliance(spec)
         assert p._is_exact_bound() is exact, p
@@ -342,3 +364,6 @@ def _test():
             mx.abort('expected SpecError while parsing "{}"'.format(spec))
         except SpecError:
             pass
+    for spec, range_spec, should_match in range_specs:
+        match = spec in mx.JavaCompliance(range_spec)
+        assert match == should_match, '"{}" in "{}" should returns {}'.format(spec, range_spec, should_match)
