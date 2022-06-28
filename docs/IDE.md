@@ -12,7 +12,6 @@ Open IntelliJ and go to **Preferences > Plugins > Browse Repositories**. Install
 
 * [Eclipse Code Formatter](https://plugins.jetbrains.com/plugin/6546): formats code according to Eclipse
 * [Checkstyle-IDEA](https://plugins.jetbrains.com/plugin/1065): runs style checks as you develop
-* [Save Actions](https://plugins.jetbrains.com/plugin/7642): allows code reformatting on save similar to Eclipse
 * [FindBugs-IDEA](https://plugins.jetbrains.com/plugin/3847): looks for suspicious code
 * [Python Plugin](https://plugins.jetbrains.com/idea/plugin/631-python): python plugin
 * [Markdown Navigator](https://plugins.jetbrains.com/plugin/7896-markdown-navigator): markdown plugin
@@ -27,6 +26,11 @@ Configure the `Eclipse Code Formatter` (**IntelliJ IDEA > Preferences > Other Se
 
 1. Set "Use the Eclipse code formatter"
 2. Choose the right version of the formatter for your project (e.g., 4.5 vs 4.6)
+
+Recommended _Format on Save_ configuration (**IntelliJ IDEA > Preferences > Tools > Actions on Save**):
+
+1. Check "Reformat code" (Files:Java, Changed lines only)
+2. Check "Opimize imports" (Files:Java)
 
 ##### Making IntelliJ Feel Similar to Eclipse (Optional)
 
