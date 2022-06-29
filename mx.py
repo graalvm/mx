@@ -14650,7 +14650,10 @@ def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction
             # 32,768 characters (http://msdn.microsoft.com/en-us/library/ms682425%28VS.85%29.aspx)
             limit = 32768
         else:
-            limit = os.sysconf('SC_ARG_MAX')
+            try:
+                limit = os.sysconf('SC_ARG_MAX')
+            except ValueError:
+                limit = -1
             if limit == -1:
                 limit = 262144 # we could use sys.maxint but we prefer a more robust smaller value
         # Reduce the limit by 20% to account for the space required by environment
