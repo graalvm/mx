@@ -7956,10 +7956,10 @@ class CompilerDaemon(Daemon):
         verbose = ['-v'] if _opts.verbose else []
         jobs = ['-j', str(cpu_count())]
         args = [jdk.java] + jvmArgs + cpArgs + [mainClass] + verbose + jobs
-        preexec_fn, creationflags = _get_new_progress_group_args()
+        start_new_session, creationflags = _get_new_progress_group_args()
         if _opts.verbose:
             log(' '.join(map(pipes.quote, args)))
-        p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags, stdout=subprocess.PIPE) #pylint: disable=subprocess-popen-preexec-fn
+        p = subprocess.Popen(args, start_new_session=start_new_session, creationflags=creationflags, stdout=subprocess.PIPE) #pylint: disable=subprocess-popen-preexec-fn
 
         # scan stdout to capture the port number
         pout = []
@@ -13121,17 +13121,17 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
 
 def _get_new_progress_group_args():
     """
-    Gets a tuple containing the `preexec_fn` and `creationflags` parameters to subprocess.Popen
+    Gets a tuple containing the `start_new_session` and `creationflags` parameters to subprocess.Popen
     required to create a subprocess that can be killed via os.killpg without killing the
     process group of the parent process.
     """
-    preexec_fn = None
+    start_new_session = False
     creationflags = 0
     if is_windows():
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
-        preexec_fn = os.setsid
-    return preexec_fn, creationflags
+        start_new_session = True
+    return start_new_session, creationflags
 
 def list_to_cmd_line(args):
     return _list2cmdline(args) if is_windows() else ' '.join(pipes.quote(arg) for arg in args)
@@ -13258,9 +13258,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
 
     try:
         if timeout or is_windows():
-            preexec_fn, creationflags = _get_new_progress_group_args()
+            start_new_session, creationflags = _get_new_progress_group_args()
         else:
-            preexec_fn, creationflags = (None, 0)
+            start_new_session, creationflags = (False, 0)
 
         def redirect(stream, f):
             for line in iter(stream.readline, b''):
@@ -13271,7 +13271,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         stdin_pipe = None if stdin is None else subprocess.PIPE
         global _subprocess_start_time
         _subprocess_start_time = datetime.now()
-        p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
+        p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, start_new_session=start_new_session, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
@@ -14650,7 +14650,10 @@ def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction
             # 32,768 characters (http://msdn.microsoft.com/en-us/library/ms682425%28VS.85%29.aspx)
             limit = 32768
         else:
-            limit = os.sysconf('SC_ARG_MAX')
+            try:
+                limit = os.sysconf('SC_ARG_MAX')
+            except ValueError:
+                limit = -1
             if limit == -1:
                 limit = 262144 # we could use sys.maxint but we prefer a more robust smaller value
         # Reduce the limit by 20% to account for the space required by environment
@@ -17916,7 +17919,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.6")  # Update IDEA doc
+version = VersionSpec("6.1.7")  # graal python support
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
