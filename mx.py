@@ -17919,7 +17919,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.6")  # Update IDEA doc
+version = VersionSpec("6.1.7")  # graal python support
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
