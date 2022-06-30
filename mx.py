@@ -17923,9 +17923,8 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.8")  # archives
+version = VersionSpec("6.1.9")  # [GR-39028]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
