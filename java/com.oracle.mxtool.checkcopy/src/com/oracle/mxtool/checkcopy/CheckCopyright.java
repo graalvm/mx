@@ -829,7 +829,7 @@ public class CheckCopyright {
 
     private static String getFileContent(byte[] fileContentBytes) {
         String fileContent = new String(fileContentBytes);
-        if (fileContent.charAt(fileContent.length() - 1) != '\n') {
+        if (fileContent.isEmpty() || fileContent.charAt(fileContent.length() - 1) != '\n') {
             /*
              * If the file does not end with a newline, the DOTALL does not work. Although files
              * should have a trailing newline, it is not the copyright checkers job to ensure this.
