@@ -8346,12 +8346,15 @@ class Extractor(_with_metaclass(ABCMeta, object)):
         logv("Extracting {} to {}".format(self.src, dst))
         with self._open() as ar:
             logv("Sanity checking archive...")
-            if any((m for m in self._getnames(ar) if not self._is_sane_name(m, dst))):
+            problematic_files = [m for m in self._getnames(ar) if not Extractor._is_sane_name(m)]
+            if problematic_files:
                 abort("Refusing to create files outside of the destination folder.\n" +
                       "Reasons might be entries with absolute paths or paths pointing to the parent directory (starting with `..`).\n" +
-                      "Archive: {} \nProblematic files:\n{}".format(self.src, "\n".join((m for m in self._getnames(ar) if not self._is_sane_name(m, dst)))
+                      "Archive: {} \nProblematic files:\n{}".format(self.src, "\n".join(problematic_files)
                 ))
             self._extractall(ar, dst)
+        # make sure archives that contain a "." entry don't mess with checks like mx.PackedResourceLibrary._check_extract_needed
+        os.utime(dst, None)
 
     @abstractmethod
     def _open(self):
@@ -8365,8 +8368,11 @@ class Extractor(_with_metaclass(ABCMeta, object)):
     def _extractall(self, ar, dst):
         pass
 
-    def _is_sane_name(self, m, dst):
-        return os.path.realpath(os.path.join(dst, m)).startswith(os.path.realpath(dst))
+    @staticmethod
+    def _is_sane_name(m):
+        if isabs(m):
+            return False
+        return not normpath(m).startswith('..')
 
     @staticmethod
     def create(src):
@@ -17919,7 +17925,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.7")  # graal python support
+version = VersionSpec("6.1.8")  # archives
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

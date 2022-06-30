@@ -133,7 +133,7 @@ def intellij_read_sdks():
     mx.log("Using SDK definitions from {}".format(xmlSdk))
 
     versionRegexes = {}
-    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^version\s+(.+)$|^([\d._]+)$')
+    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^(Oracle OpenJDK )?version\s+(.+)$|^([\d._]+)$')
     versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
     # Examples:
     #   truffleruby 19.2.0-dev-2b2a7f81, like ruby 2.6.2, Interpreted JVM [x86_64-linux]
