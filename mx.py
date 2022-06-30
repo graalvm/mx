@@ -17925,7 +17925,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.7")  # graal python support
+version = VersionSpec("6.1.8")  # archives
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
