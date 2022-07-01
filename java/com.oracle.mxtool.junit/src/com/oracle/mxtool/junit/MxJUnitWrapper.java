@@ -26,8 +26,9 @@ package com.oracle.mxtool.junit;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.util.zip.GZIPOutputStream;
+import java.io.OutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -79,6 +80,9 @@ public class MxJUnitWrapper {
         public String recordFailed;
         public String recordPassed;
         public String jsonResults;
+        /**
+         * This field is ignored and is only retained for backwards compatibility.
+         */
         public String jsonResultTags;
     }
 
@@ -183,8 +187,6 @@ public class MxJUnitWrapper {
                     config.repeatCount = parseIntArg(system, expandedArgs, each, ++i);
                 } else if (each.contentEquals("-JUnitJsonResults")) {
                     config.jsonResults = parseStringArg(system, expandedArgs, each, ++i);
-                } else if (each.contentEquals("-JUnitJsonResultTags")) {
-                    config.jsonResultTags = parseStringArg(system, expandedArgs, each, ++i);
                 } else {
                     system.out().println("Unknown command line argument: " + each);
                 }
@@ -254,9 +256,12 @@ public class MxJUnitWrapper {
     private static PrintStream openFile(JUnitSystem system, String name) {
         File file = new File(name).getAbsoluteFile();
         try {
-            FileOutputStream fos = new FileOutputStream(file);
-            return new PrintStream(fos, true);
-        } catch (FileNotFoundException e) {
+            OutputStream os = new FileOutputStream(file);
+            if (name.endsWith(".gz")) {
+                os = new GZIPOutputStream(os);
+            }
+            return new PrintStream(os, true);
+        } catch (IOException e) {
             system.out().println("Could not open " + file + " for writing: " + e);
             System.exit(1);
             return null;
@@ -305,7 +310,7 @@ public class MxJUnitWrapper {
 
         if (config.jsonResults != null) {
             system.out().println("generate json reports.....");
-            mxListener = new JsonResultsDecorator(mxListener, openFile(system, config.jsonResults), config.jsonResultTags);
+            mxListener = new JsonResultsDecorator(mxListener, openFile(system, config.jsonResults));
         }
 
         mxListener = new FullThreadDumpDecorator(mxListener);

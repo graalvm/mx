@@ -25,48 +25,48 @@
 package com.oracle.mxtool.junit;
 
 import java.io.PrintStream;
-import java.util.Arrays;
-import java.util.Formatter;
-import java.util.Locale;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.runner.Description;
 import org.junit.runner.notification.Failure;
 import org.junit.runner.Result;
+import java.util.Formatter;
+
+import java.util.Locale;
 
 public class JsonResultsDecorator extends MxRunListenerDecorator {
     private final PrintStream output;
-    private final String jsonResultTags;
     private boolean hasContent;
     private long startTime;
+    private final List<TestResult> testResults = new ArrayList<>();
 
-    JsonResultsDecorator(MxRunListener l, PrintStream output, String jsonResultTags) {
+    static class TestResult {
+        final String description;
+        final String result;
+        final long duration;
+
+        TestResult(String description, String result, long duration) {
+            this.description = description;
+            this.result = result;
+            this.duration = duration;
+        }
+    }
+
+    JsonResultsDecorator(MxRunListener l, PrintStream output) {
         super(l);
         this.output = output;
-        if (jsonResultTags != null) {
-            String[] tags = jsonResultTags.split(",");
-            if (tags.length > 0) {
-                this.jsonResultTags = Arrays.stream(tags).distinct().map(JsonResultsDecorator::escape).collect(Collectors.joining("\",\"", "\",\"", ""));
-
-            } else {
-                this.jsonResultTags = null;
-            }
-        } else {
-            this.jsonResultTags = null;
-        }
     }
 
     @Override
     public void testRunStarted(Description description) {
         super.testRunStarted(description);
-        output.print('[');
     }
 
     @Override
     public void testRunFinished(Result result) {
         super.testRunFinished(result);
-        output.print(']');
+        outputTestResults();
         output.close();
     }
 
@@ -74,54 +74,59 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
     public void testSucceeded(Description description) {
         super.testSucceeded(description);
         String result = "SUCCESS";
-        outputItem(description.getDisplayName(), result);
+        long duration = System.nanoTime() - startTime;
+        testResults.add(new TestResult(description.getDisplayName(), result, duration));
     }
 
     @Override
     public void testFailed(Failure failure) {
         super.testFailed(failure);
         String result = "FAILED";
-        outputItem(failure.getDescription().getDisplayName(), result);
+        long duration = System.nanoTime() - startTime;
+        testResults.add(new TestResult(failure.getDescription().getDisplayName(), result, duration));
     }
 
     @Override
     public void testIgnored(Description description) {
         super.testIgnored(description);
         String result = "IGNORED";
-        outputItem(description.getDisplayName(), result);
+        long duration = System.nanoTime() - startTime;
+        testResults.add(new TestResult(description.getDisplayName(), result, duration));
     }
 
     @Override
     public void testStarted(Description description) {
         super.testStarted(description);
+        // start each time an atomic test is started
+        // then substract it from current time once the test is finished
         startTime = System.nanoTime();
     }
 
     @Override
     public void testClassStarted(Class<?> clazz) {
         super.testClassStarted(clazz);
-        startTime = System.nanoTime();
     }
 
-    private void outputItem(String name, String result) {
-        long totalTime = System.nanoTime() - startTime;
+    private void outputTestResults() {
         if (hasContent) {
             output.print(',');
         }
-        output.print("{\"type\":\"test-result\",\"test\":\"");
-        output.print(escape(name));
-        output.print("\",\"result\":\"");
-        output.print(escape(result));
-        output.print("\",\"time\":");
-        output.print(TimeUnit.NANOSECONDS.toMicros(totalTime));
-        output.print(",\"tags\":[\"java");
-        output.print(getJavaSpecificationVersion());
-        if (this.jsonResultTags != null) {
-            output.print(this.jsonResultTags);
+        output.print("[");
+        for (int i = 0; i < testResults.size(); i++) {
+            output.print("{\"name\":\"");
+            output.print(escape(testResults.get(i).description));
+            output.print("\", \"status\":\"");
+            output.print(testResults.get(i).result);
+            output.print("\", \"duration\":\"");
+            output.print(String.format("%.2f", testResults.get(i).duration / 1000000.0f));
+            if (i == testResults.size() - 1) {
+                output.print("\"}");
+                break;
+            }
+            output.print("\"},");
         }
-        output.print("\"]}");
+        output.print("]");
         hasContent = true;
-        startTime = 0;
     }
 
     private static String escape(String s) {
@@ -175,23 +180,5 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
             }
         }
         return sb.toString();
-    }
-
-    private static String getJavaSpecificationVersion() {
-        String value = System.getProperty("java.specification.version");
-
-        /*
-         * Sometimes retrieving version property may not return a value, or other times the string
-         * "java7" may be returned when java is not utilized for the purpose of the test; for these
-         * cases "no-java" is returned
-         */
-        if (value == null || value.isEmpty() || value.equalsIgnoreCase("java7")) {
-            return "no-java";
-        }
-
-        if (value.startsWith("1.")) {
-            value = value.substring(2);
-        }
-        return value;
     }
 }
