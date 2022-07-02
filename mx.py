@@ -7670,6 +7670,8 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs += ['-proc:none']
         c = str(compliance)
         javacArgs += ['-target', c, '-source', c]
+        if c == '19' and self.jdk.javaCompliance == '19':
+            javacArgs += ['--enable-preview']
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
