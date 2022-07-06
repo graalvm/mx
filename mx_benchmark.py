@@ -443,11 +443,10 @@ class BenchmarkSuite(object):
         :return: actual version.
         :rtype: str
         """
-        current_version = self.defaultSuiteVersion()
-        selected_version = self.desiredVersion() if self.desiredVersion() else current_version
-        if selected_version not in self.availableSuiteVersions():
+        if self.desiredVersion() and self.desiredVersion() not in self.availableSuiteVersions():
             mx.abort("Available suite versions are: {}".format(self.availableSuiteVersions()))
-        return selected_version
+
+        return self.desiredVersion() if self.desiredVersion() else self.defaultSuiteVersion()
 
     def defaultSuiteVersion(self):
         """ The default benchmark version to use.
@@ -463,7 +462,7 @@ class BenchmarkSuite(object):
         :return: if the current suite version is the default one.
         :rtype: bool
         """
-        return self.version() == self.defaultSuiteVersion()
+        return len(self.availableSuiteVersions()) <= 1 or self.version() == self.defaultSuiteVersion()
 
     def availableSuiteVersions(self):
         """List of available versions of that benchmark suite.
@@ -471,7 +470,7 @@ class BenchmarkSuite(object):
         :return: list of version strings.
         :rtype: list[str]
         """
-        return [self.defaultSuiteVersion()]
+        return [self.defaultSuiteVersion()] if self.defaultSuiteVersion() != "unknown" else []
 
     def desiredVersion(self):
         """Returns the benchmark suite version that is requested for execution.
@@ -482,6 +481,11 @@ class BenchmarkSuite(object):
         return self._desired_version
 
     def setDesiredVersion(self, version):
+        if len(self.availableSuiteVersions()) <= 1:
+            mx.abort("The suite is not versioned. So one cannot explicitly request a suite version.")
+        if version not in self.availableSuiteVersions():
+            mx.abort("Version '{}' unknown! Available suite versions are: {}".format(version,
+                                                                                     self.availableSuiteVersions()))
         self._desired_version = version
 
     def validateEnvironment(self):
