@@ -28,7 +28,8 @@ import os, re, time, datetime, json
 import tempfile
 import atexit
 import zipfile
-from os.path import join, exists
+import urllib
+from os.path import join, exists, basename
 from argparse import ArgumentParser
 
 import mx
@@ -298,6 +299,9 @@ def gate(args):
     jacoco.add_argument('--jacocout', help='specify the output directory for jacoco report')
     jacoco.add_argument('--jacoco-zip', help='specify the output zip file for jacoco report')
     parser.add_argument('--jacoco-omit-excluded', action='store_true', help='omit excluded files from jacoco report')
+    parser.add_argument('--jacoco-omit-src-gen', action='store_true', help='omit excluded files from jacoco report')
+    parser.add_argument('--jacoco-format', default=None, help='Jacoco output format', choices=['html', 'xml', 'lcov'])
+    parser.add_argument('--jacoco-generic-paths', action='store_true', help='Replace LCOV output source files paths with one starting with the project name e.g graal/compiler/...')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
@@ -652,6 +656,12 @@ def _run_gate(cleanArgs, args, tasks):
         jacoco_args = [args.jacocout]
         if args.jacoco_omit_excluded:
             jacoco_args = ['--omit-excluded'] + jacoco_args
+        if args.jacoco_format:
+            jacoco_args = ['--format', args.jacoco_format] + jacoco_args
+        if args.jacoco_generic_paths:
+            jacoco_args += ['--generic-paths']
+        if args.jacoco_omit_src_gen:
+            jacoco_args += ['--exclude-src-gen']
         mx.command_function('jacocoreport')(jacoco_args)
         _jacoco = 'off'
     if args.jacoco_zip is not None:
@@ -818,8 +828,10 @@ def _jacocoreport(args, exec_files=None):
     jdk = mx.get_jdk(dist.javaCompliance)
 
     parser = ArgumentParser(prog='mx jacocoreport')
-    parser.add_argument('--format', help='Export format (HTML or XML)', default='html', choices=['html', 'xml'])
-    parser.add_argument('--omit-excluded', action='store_true', help='omit excluded files from report')
+    parser.add_argument('--format', help='Export format (HTML, XML or LCOV)', default='html', choices=['html', 'xml', 'lcov'])
+    parser.add_argument('--omit-excluded', action='store_true', help='Omit excluded files from report')
+    parser.add_argument('--exclude-src-gen', action='store_true', help='Omit generated source files from report')
+    parser.add_argument('--generic-paths', action='store_true', help='Replace LCOV output source files paths with one starting with the project name e.g graal/compiler/...')
     parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
     args = parser.parse_args(args)
 
@@ -834,7 +846,10 @@ def _jacocoreport(args, exec_files=None):
                     continue
                 source_dirs = []
                 if p.isJavaProject():
-                    source_dirs += p.source_dirs() + [p.source_gen_dir()]
+                    if args.exclude_src_gen:
+                        source_dirs += p.source_dirs()
+                    else:
+                        source_dirs += p.source_dirs() + [p.source_gen_dir()]
                 includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
                 includedprojects.append(p.name)
 
@@ -851,6 +866,25 @@ def _jacocoreport(args, exec_files=None):
                     (extra_args or []) +
                     sorted(includedirs),
                     jdk=jdk, addDefaultArgs=False)
+
+        if args.format == "lcov" and args.generic_paths:
+            generic_paths_replacements = {}
+            for s in mx.suites():
+                base, _ = os.path.splitext(basename(urllib.parse.urlparse(s.vc.default_pull(s.vc_dir)).path))
+                generic_paths_replacements[s.vc_dir] = base
+
+            updated_lcov = []
+            with open(os.path.join(args.output_directory, 'lcov.info')) as f:
+                for line in f:
+                    if line.startswith("SF:"):
+                        for path, project in generic_paths_replacements.items():
+                            if path in line:
+                                line = line.replace(path, project)
+                                break
+                    updated_lcov.append(line)
+
+            with open(os.path.join(args.output_directory, 'lcov.info'), 'w') as f:
+                f.writelines(updated_lcov)
 
     if not args.omit_excluded:
         _run_reporter()

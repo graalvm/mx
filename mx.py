@@ -17729,7 +17729,7 @@ update_commands("mx", {
     'help': [help_, '[command]'],
     'hg': [hg_command, '[options]'],
     'init' : [suite_init_cmd, '[options] name'],
-    'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml}] [output directory]'],
+    'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml,lcov}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
     'javadoc': [javadoc, '[options]'],
     'javap': [javap, '[options] <class name patterns>'],
@@ -18051,7 +18051,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.13")  # [GR-39652]
+version = VersionSpec("6.1.14")  # [GR-38822]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -30,6 +30,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -48,18 +50,20 @@ import org.jacoco.report.IReportVisitor;
 import org.jacoco.report.InputStreamSourceFileLocator;
 import org.jacoco.report.html.HTMLFormatter;
 import org.jacoco.report.xml.XMLFormatter;
+import org.objectweb.asm.ClassReader;
+
+import com.oracle.mxtool.jacoco.lcov.LcovFormatter;
 
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.NonOptionArgumentSpec;
 import joptsimple.OptionException;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
-import org.objectweb.asm.ClassReader;
 
 public class JacocoReport {
     private final List<String> excludes;
-    private ExecutionDataStore executionDataStore;
-    private SessionInfoStore sessionInfoStore;
+    private final ExecutionDataStore executionDataStore;
+    private final SessionInfoStore sessionInfoStore;
 
     public JacocoReport(List<String> excludes) {
         executionDataStore = new ExecutionDataStore();
@@ -100,7 +104,7 @@ public class JacocoReport {
 
     public static void main(String... args) throws IOException {
         OptionParser parser = new OptionParser();
-        ArgumentAcceptingOptionSpec<File> inputsSpec = parser.accepts("in", "Input converage file produced by JaCoCo").withRequiredArg().ofType(File.class).required();
+        ArgumentAcceptingOptionSpec<File> inputsSpec = parser.accepts("in", "Input coverage file produced by JaCoCo").withRequiredArg().ofType(File.class).required();
         NonOptionArgumentSpec<ProjectSpec> projectsSpec = parser.nonOptions("The project directories to analyse").ofType(ProjectSpec.class);
         ArgumentAcceptingOptionSpec<File> outSpec = parser.accepts("out").withRequiredArg().ofType(File.class).defaultsTo(new File("coverage"));
         ArgumentAcceptingOptionSpec<String> formatSpec = parser.accepts("format").withRequiredArg().ofType(String.class).defaultsTo("html");
@@ -143,16 +147,25 @@ public class JacocoReport {
             bundles.add(new BundleAndProject(analyseProject(project.binDir, project.projectDir.getName()), project.srcDirs));
             System.out.println("OK");
         }
-        if (format.equals("html")) {
-            System.out.print("Creating HTML report... ");
-            createHtmlReport(reportDirectory, bundles);
-            System.out.println("OK");
-        } else if (format.equals("xml")) {
-            System.out.print("Creating XML report... ");
-            createXmlReport(reportDirectory, bundles);
-            System.out.println("OK");
-        } else {
-            System.err.println("Unsupported format: " + format);
+        switch (format) {
+            case "html":
+                System.out.print("Creating HTML report... ");
+                createHtmlReport(reportDirectory, bundles);
+                System.out.println("OK");
+                break;
+            case "xml":
+                System.out.print("Creating XML report... ");
+                createXmlReport(reportDirectory, bundles);
+                System.out.println("OK");
+                break;
+            case "lcov":
+                System.out.print("Creating LCOV report... ");
+                createLcovReport(reportDirectory, bundles);
+                System.out.println("OK");
+                break;
+            default:
+                System.err.println("Unsupported format: " + format);
+                break;
         }
     }
 
@@ -185,20 +198,40 @@ public class JacocoReport {
         fis.close();
     }
 
-    private static class MultiDirectorySourceFileLocator extends InputStreamSourceFileLocator {
-        private File[] direcotries;
+    public static class MultiDirectorySourceFileLocator extends InputStreamSourceFileLocator {
+        private final File[] directories;
 
-        protected MultiDirectorySourceFileLocator(String encoding, int tabWidth, File... direcotries) {
+        protected MultiDirectorySourceFileLocator(String encoding, int tabWidth, File... directories) {
             super(encoding, tabWidth);
-            this.direcotries = direcotries;
+            this.directories = directories;
         }
 
         @Override
         protected InputStream getSourceStream(String path) throws IOException {
-            for (File directory : direcotries) {
+            for (File directory : directories) {
                 final File file = new File(directory, path);
                 if (file.exists()) {
                     return new FileInputStream(file);
+                }
+            }
+            return null;
+        }
+
+        public String getSourceFilePath(String packageName, String fileName) {
+            final String filename = fileName.replace("\\", File.separator).replace("/", File.separator);
+            final String packagename = packageName.replace("/", File.separator);
+
+            if (!Paths.get(filename).isAbsolute()) {
+                for (File directory : directories) {
+                    final File fileWithPackage = new File(directory, packagename + File.separator + filename);
+                    if (fileWithPackage.exists()) {
+                        return fileWithPackage.toPath().toString();
+                    }
+
+                    final File file = new File(directory, filename);
+                    if (file.exists()) {
+                        return file.toPath().toString();
+                    }
                 }
             }
             return null;
@@ -214,6 +247,14 @@ public class JacocoReport {
     public void createXmlReport(File reportDirectory, List<BundleAndProject> bundleAndProjects) throws IOException {
         final XMLFormatter htmlFormatter = new XMLFormatter();
         final IReportVisitor visitor = htmlFormatter.createVisitor(new FileOutputStream(reportDirectory.getAbsolutePath() + File.separator + "jacoco.xml"));
+        executeReportVisitor(bundleAndProjects, visitor);
+    }
+
+    public void createLcovReport(File reportDirectory, List<BundleAndProject> bundleAndProjects) throws IOException {
+        final LcovFormatter lcovFormatter = new LcovFormatter();
+        Path reportPath = reportDirectory.getAbsoluteFile().toPath().resolve("lcov.info");
+        Files.createDirectories(reportDirectory.toPath());
+        final IReportVisitor visitor = lcovFormatter.createVisitor(Files.newOutputStream(reportPath));
         executeReportVisitor(bundleAndProjects, visitor);
     }
 
