@@ -18051,7 +18051,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.13")  # [GR-39652]
+version = VersionSpec("6.1.14")  # [GR-38822]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
