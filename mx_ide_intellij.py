@@ -313,7 +313,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     # modules.xml - we have a problem, since that file has already been closed.
                     # So we need to reopen it, parse it again, and append the module in question.
                     declared_modules.add(project_name)
-                    modules_path = os.path.join('.idea', 'modules.xml')
+                    modules_path = os.path.join(mx.primary_suite().dir, '.idea', 'modules.xml')
                     parent_dir = os.path.join(path, os.pardir)
                     module_file_path = "$PROJECT_DIR$/" + os.path.relpath(os.path.relpath(moduleFile, parent_dir), "$PROJECT_DIR$")
 
