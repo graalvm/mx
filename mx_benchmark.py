@@ -1962,6 +1962,89 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     def rules(self, out, benchmarks, bmSuiteArgs):
         return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
 
+    def jmhArgs(self, bmSuiteArgs):
+        vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
+        args, _ = get_parser(self.jmhParserName()).parse_known_args(vmAndSuiteArgs)
+        return args
+
+class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
+    """Common superclass for JAR-based JMH suites. Provides utilities to extract the list of benchmarks or filter the
+    JMH command line to determine options or benchmark filters."""
+
+    def __init__(self, *args, **kwargs):
+        self._extracted_jmh_options = None
+        self._extracted_jmh_filters = None
+        super(JMHJarBasedBenchmarkSuiteBase, self).__init__(*args, **kwargs)
+
+    def _extractJMHBenchmarks(self, bmSuiteArgs):
+        benchmarks = None
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
+        out = mx.TeeOutputCapture(mx.OutputCapture())
+        # Do not pass any JVM args to extract the benchmark list since they can generate extra output that will be
+        # incorrectly interpreted as a benchmark name. We are only interested in the benchmark filters and any
+        # exclusions specified with -e flags.
+        benchmarkFilter = self.jmhBenchmarkFilter(bmSuiteArgs)
+        jmhOptions = self._extractJMHOptions(bmSuiteArgs)
+        if '-e' in jmhOptions:
+            excludeArgs = ['-e', jmhOptions[jmhOptions.index('-e') + 1]]
+        else:
+            excludeArgs = []
+        jmhListArgs = ["-jar", self.jmhJAR(bmSuiteArgs), "-l"] + benchmarkFilter + excludeArgs
+        exit_code = mx.get_jdk().run_java(jmhListArgs, out=out, err=out, cwd=cwd)
+        if exit_code != 0:
+            raise ValueError("JMH benchmark list extraction failed!")
+        benchs = out.underlying.data.splitlines()
+        # Discard everything before "Benchmarks:"
+        linenumber = -1
+        for linenumber in range(len(benchs)):
+            if benchs[linenumber].startswith("Benchmarks:"):
+                break
+        assert linenumber >= 0, "No benchmarks output list found"
+        benchnames = benchs[linenumber + 1:]
+        assert len(benchnames) >= 1, f"No benchmarks matching {self.jmhBenchmarkFilter(bmSuiteArgs)} and exclusions {excludeArgs} found"
+        return benchnames
+
+    def _extractJMHOptionsImpl(self, action, bmSuiteArgs):
+        """Run an external Java program to filter the JMH command line from our run arguments. `action` must be either
+        '--action=ExtractOptions' to extract options and their arguments, or '--action=ExtractFilters' to extract
+        benchmark filters.
+
+        The return value is a list of strings, with options separate from their arguments. Multiple arguments to the
+        same option are separated by commas within one string. Flags specified multiple times are grouped by the parser.
+        For example, a command line like '-bm avgt -bm thrpt' will be returned as ['-bm', 'avgt,thrpt']."""
+        benchmarks = None
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
+        out = mx.TeeOutputCapture(mx.OutputCapture())
+        mx.build(["--no-daemon", "--dependencies", ','.join(self.jmhFilterDeps())])
+        print("Filtering JMH command line:")
+        jmhOptionArgs = ["-cp", mx.classpath(names=self.jmhFilterDeps()), self.jmhFilterClassName(), action] + self.runArgs(bmSuiteArgs)
+        exit_code = mx.get_jdk().run_java(jmhOptionArgs, out=out, err=out, cwd=cwd)
+        if exit_code != 0:
+            raise ValueError("JMH benchmark option extraction failed")
+        return out.underlying.data.splitlines()
+
+    def _extractJMHOptions(self, bmSuiteArgs):
+        if self._extracted_jmh_options is None:
+            self._extracted_jmh_options = self._extractJMHOptionsImpl("--action=ExtractOptions", bmSuiteArgs)
+        return self._extracted_jmh_options
+
+    def _extractJMHFilters(self, bmSuiteArgs):
+        if self._extracted_jmh_filters is None:
+            self._extracted_jmh_filters = self._extractJMHOptionsImpl("--action=ExtractFilters", bmSuiteArgs)
+            # Sanity check: filters should be Java class names or regexes matching Java class names. Don't try to verify
+            # regex syntax, but at least ensure there is no initial '-', or '=' or whitespace which would indicate
+            # confusion with options.
+            for jmhFilter in self._extracted_jmh_filters:
+                assert jmhFilter and jmhFilter[0] != '-'
+                assert not re.search(r"[=\s]", jmhFilter)
+        return self._extracted_jmh_filters
+
+    def jmhFilterDeps(self):
+        return ["com.oracle.mxtool.jmh_1_21"]
+
+    def jmhFilterClassName(self):
+        return "com.oracle.mxtool.jmh_1_21.FilterJMHFlags"
+
 
 def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=True):
     vm_args = []
@@ -1990,7 +2073,7 @@ def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=Tr
     return vm_args
 
 
-class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
+class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
     """
     JMH benchmark suite that executes microbenchmark mx distribution.
 
@@ -2002,6 +2085,7 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     to ensure all desired --add-opens and --add-exports are added to the underlying command line.
 
     """
+    jmh_dist_parser_name = "jmh_dist_benchmark_suite_vm"
 
     def benchSuiteName(self, bmSuiteArgs=None):
         if self.dist:
@@ -2051,6 +2135,72 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
         # JMHArchiveParticipant ensures that mainClass is set correctly
         return [mx.distribution(self.dist).mainClass]
 
+    def jmhJAR(self, bmSuiteArgs):
+        # self.jmhJar must be set by runAndReturnStdOut
+        assert hasattr(self, 'jmhJar') and self.jmhJar is not None
+        return self.jmhJar
+
+    def parserNames(self):
+        return super(JMHDistBenchmarkSuite, self).parserNames() + [self.jmhParserName()]
+
+    def jmhParserName(self):
+        return JMHDistBenchmarkSuite.jmh_dist_parser_name
+
+    def jmhBenchmarkFilter(self, bmSuiteArgs):
+        return self._extractJMHFilters(bmSuiteArgs)
+
+    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
+        run_individually = self.jmhArgs(bmSuiteArgs).jmh_run_individually
+        if run_individually:
+            # Extract the list of benchmarks to run and the user's JMH options.
+            if len(benchmarks) != 1:
+                mx.abort(f"JMH Dist Suite runs only a single JMH distribution, got: {benchmarks}")
+            distribution = mx.distribution(benchmarks[0])
+            assert distribution.isJARDistribution()
+            self.jmhJar = distribution.path
+            vmArgs, _ = self.vmAndRunArgs(bmSuiteArgs)
+            extracted_jmh_benchmarks = self._extractJMHBenchmarks(bmSuiteArgs)
+            jmhOptions = self._extractJMHOptions(bmSuiteArgs)
+
+            # Run each benchmark individually. Record outputs and collect the JSON result files' contents.
+            allOut = ''
+            lastDims = None
+            jsons = []
+            for benchmark in extracted_jmh_benchmarks:
+                individualBmArgs = vmArgs + ['--'] + jmhOptions + [benchmark]
+                print("Individual JMH benchmark run:", benchmark)
+                retcode, out, dims = super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, individualBmArgs)
+                if retcode is not None and retcode != 0:
+                    mx.abort("Execution with args {} exited with non-zero return code {}.".format(individualBmArgs,
+                        retcode))
+                allOut += out
+                if lastDims is not None and lastDims != dims:
+                    mx.abort("Expected equal dims\nlast: {}\ncurr: {}".format(lastDims, dims))
+                lastDims = dims
+                json = open(JMHBenchmarkSuiteBase.jmh_result_file).read().strip()
+                assert json[0] == '[' and json[-1] == ']'
+                jsons += [json[1:-1]]
+
+            # Combine the collected JSON results into one result file.
+            with open(JMHBenchmarkSuiteBase.jmh_result_file, 'w') as result_file:
+                result_file.write('[')
+                for index, json in enumerate(jsons):
+                    result_file.write(json)
+                    if index < len(jsons) - 1:
+                        result_file.write(',\n')
+                result_file.write(']')
+            return 0, allOut, lastDims
+        else:
+            return super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, bmSuiteArgs)
+
+_jmh_dist_args_parser = ParserEntry(
+    ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
+    "\n\nOptions for JMH dist benchmark suites:\n"
+)
+_jmh_dist_args_parser.parser.add_argument("--jmh-run-individually", action='store_true')
+
+add_parser(JMHDistBenchmarkSuite.jmh_dist_parser_name, _jmh_dist_args_parser)
+
 
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
     """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
@@ -2094,7 +2244,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
         return ["org.openjdk.jmh.Main"]
 
 
-class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
+class JMHJarBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
     """
     JMH benchmark suite that executes microbenchmarks in a JMH jar.
 
@@ -2115,36 +2265,17 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         self._extracted_jmh_benchmarks = self._extractJMHBenchmarks(bmSuiteArgs)
         return self._extracted_jmh_benchmarks
 
-    def _extractJMHBenchmarks(self, bmSuiteArgs):
-        benchmarks = None
-        vm = self.getJavaVm(bmSuiteArgs)
-        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
-        # Do not pass any JVM args to extract the benchmark list since they can generate extra output that will be
-        # incorrectly interpreted as a benchmark name
-        exit_code, out, _ = vm.runWithSuite(self, cwd, ["-jar", self.jmhJAR(bmSuiteArgs), "-l"] + self.jmhBenchmarkFilter(bmSuiteArgs) + self.runArgs(bmSuiteArgs))
-        if exit_code != 0:
-            raise ValueError("JMH benchmark list extraction failed!")
-        benchs = out.splitlines()
-        linenumber = -1
-        for linenumber in range(len(benchs)):
-            if benchs[linenumber].startswith("Benchmarks:"):
-                break
-        assert linenumber >= 0, "No benchmarks output list found"
-        return benchs[linenumber + 1:]
-
     def benchSuiteName(self, bmSuiteArgs=None):
         return "jmh-" + self.jmhName(bmSuiteArgs)
-
-    def parserNames(self):
-        return super(JMHJarBenchmarkSuite, self).parserNames() + [JMHJarBenchmarkSuite.jmh_jar_parser_name]
 
     def getJMHEntry(self, bmSuiteArgs):
         return ["-jar", self.jmhJAR(bmSuiteArgs)]
 
-    def jmhArgs(self, bmSuiteArgs):
-        vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
-        args, _ = get_parser(JMHJarBenchmarkSuite.jmh_jar_parser_name).parse_known_args(vmAndSuiteArgs)
-        return args
+    def parserNames(self):
+        return super(JMHJarBenchmarkSuite, self).parserNames() + [self.jmhParserName()]
+
+    def jmhParserName(self):
+        return JMHJarBenchmarkSuite.jmh_jar_parser_name
 
     def jmhName(self, bmSuiteArgs):
         jmh_name = self.jmhArgs(bmSuiteArgs).jmh_name
