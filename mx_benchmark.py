@@ -2162,11 +2162,17 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
             extracted_jmh_benchmarks = self._extractJMHBenchmarks(bmSuiteArgs)
             jmhOptions = self._extractJMHOptions(bmSuiteArgs)
 
+            partSpecification = self.jmhArgs(bmSuiteArgs).jmh_individual_part
+            benchmarks_to_run = self._selectPart(extracted_jmh_benchmarks, partSpecification)
+            if benchmarks_to_run != extracted_jmh_benchmarks:
+                print("Run part {}: {} of {} benchmarks, {} to {}".format(partSpecification, len(benchmarks_to_run),
+                    len(extracted_jmh_benchmarks), benchmarks_to_run[0], benchmarks_to_run[-1]))
+
             # Run each benchmark individually. Record outputs and collect the JSON result files' contents.
             allOut = ''
             lastDims = None
             jsons = []
-            for benchmark in extracted_jmh_benchmarks:
+            for benchmark in benchmarks_to_run:
                 individualBmArgs = vmArgs + ['--'] + jmhOptions + [benchmark]
                 print("Individual JMH benchmark run:", benchmark)
                 retcode, out, dims = super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, individualBmArgs)
@@ -2193,11 +2199,45 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
         else:
             return super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, bmSuiteArgs)
 
+    def _selectPart(self, benchmarks, partSpecification):
+        """
+        Select part of the benchmark list based on a specification like "3/4", meaning "the third quarter of the list".
+        For example, selecting `3/4` from a list `[a, b, c, d, e, f, g, h]` will result in `[e, f]`. Cutting a list into
+        parts `1/n` to `n/n` will result in roughly equal-size lists that cover the entire list. For example, selecting
+        parts `1/3`, `2/3`, and `3/3` from a list `[a, b, c, d]` will give lists `[a]`, `[b]`, and `[c, d]`.
+        """
+        try:
+            n, m = partSpecification.split('/')
+            part = int(n)
+            parts = int(m)
+        except:
+            mx.abort("Benchmark part specification must be of the form n/m")
+        if not 1 <= part <= parts:
+            mx.abort("Benchmark part specification n/m requires 1 <= n <= m")
+        if parts > len(benchmarks):
+            mx.abort("Can't cut benchmark list of length {} into {} parts".format(len(benchmarks), parts))
+
+        start = (len(benchmarks) // parts) * (part - 1)
+        if part < parts:
+            end = start + (len(benchmarks) // parts)
+        else:
+            end = len(benchmarks)
+        selected = benchmarks[start:end]
+
+        # Make sure we don't lose elements around the edges.
+        if part == 1:
+            assert selected[0] == benchmarks[0]
+        if part == parts:
+            assert selected[-1] == benchmarks[-1]
+
+        return selected
+
 _jmh_dist_args_parser = ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
     "\n\nOptions for JMH dist benchmark suites:\n"
 )
 _jmh_dist_args_parser.parser.add_argument("--jmh-run-individually", action='store_true')
+_jmh_dist_args_parser.parser.add_argument("--jmh-individual-part", default="1/1")
 
 add_parser(JMHDistBenchmarkSuite.jmh_dist_parser_name, _jmh_dist_args_parser)
 
