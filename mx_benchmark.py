@@ -1980,6 +1980,22 @@ class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
         self._extracted_jmh_filters = None
         super(JMHJarBasedBenchmarkSuiteBase, self).__init__(*args, **kwargs)
 
+    def rules(self, out, benchmarks, bmSuiteArgs):
+        # Don't try to validate JSON data if we're only listing benchmarks.
+        jmhOptions = self._extractJMHOptions(bmSuiteArgs)
+        if jmhOptions is not None and '-l' in jmhOptions:
+            return []
+        else:
+            return super(JMHJarBasedBenchmarkSuiteBase, self).rules(out, benchmarks, bmSuiteArgs)
+
+    def successPatterns(self):
+        # Don't try to validate benchmark results if we're only listing benchmarks.
+        jmhOptions = self._extracted_jmh_options
+        if jmhOptions is not None and '-l' in jmhOptions:
+            return []
+        else:
+            return super(JMHJarBasedBenchmarkSuiteBase, self).successPatterns()
+
     def _extractJMHBenchmarks(self, bmSuiteArgs):
         benchmarks = None
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
@@ -2161,7 +2177,9 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         run_individually = self.jmhArgs(bmSuiteArgs).jmh_run_individually
-        if run_individually:
+        jmhOptions = self._extractJMHOptions(bmSuiteArgs)
+        list_only = '-l' in jmhOptions
+        if run_individually and not list_only:
             # Extract the list of benchmarks to run and the user's JMH options.
             if len(benchmarks) != 1:
                 mx.abort(f"JMH Dist Suite runs only a single JMH distribution, got: {benchmarks}")
@@ -2170,7 +2188,6 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
             self.jmhJar = distribution.path
             vmArgs, _ = self.vmAndRunArgs(bmSuiteArgs)
             extracted_jmh_benchmarks = self._extractJMHBenchmarks(bmSuiteArgs)
-            jmhOptions = self._extractJMHOptions(bmSuiteArgs)
 
             partSpecification = self.jmhArgs(bmSuiteArgs).jmh_individual_part
             benchmarks_to_run = self._selectPart(extracted_jmh_benchmarks, partSpecification)

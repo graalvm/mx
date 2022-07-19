@@ -100,6 +100,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
         ],
         run: [
             [mx, "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
+            ["python3", path("tests/jmh_filtering_tests.py")],
         ]
     },
 
