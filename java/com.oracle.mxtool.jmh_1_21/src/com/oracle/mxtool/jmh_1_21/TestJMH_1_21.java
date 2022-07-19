@@ -29,14 +29,20 @@ import org.openjdk.jmh.annotations.*;
 /**
  * This dummy class is used to verify that the JMH microbenchmarking environment is set up properly.
  */
-@Warmup(iterations = 2)
-@Measurement(iterations = 2)
+@Warmup(iterations = 2, time = 2)
+@Measurement(iterations = 2, time = 2)
 @Fork(2)
 public class TestJMH_1_21 {
 
     @Benchmark
     @BenchmarkMode(Mode.All)
     public void testJMH() {
+        // This method was intentionally left blank.
+    }
+
+    @Benchmark
+    @BenchmarkMode(Mode.All)
+    public void otherTest() {
         // This method was intentionally left blank.
     }
 }
