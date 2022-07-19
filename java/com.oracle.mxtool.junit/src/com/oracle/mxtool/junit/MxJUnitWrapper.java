@@ -309,7 +309,6 @@ public class MxJUnitWrapper {
         }
 
         if (config.jsonResults != null) {
-            system.out().println("generate json reports.....");
             mxListener = new JsonResultsDecorator(mxListener, openFile(system, config.jsonResults));
         }
 

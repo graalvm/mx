@@ -24,19 +24,20 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-import os, re, time, datetime, json
+import os, re, time, json
 import tempfile
 import atexit
 import zipfile
 import urllib
-from os.path import join, exists, basename
+import hashlib
+from os.path import join, exists, basename, abspath
 from argparse import ArgumentParser
+from datetime import datetime, timezone, timedelta
 
 import mx
 import mx_javacompliance
 import sys
 from mx_urlrewrites import rewriteurl
-
 
 """
 Predefined Task tags.
@@ -92,22 +93,32 @@ class Task:
     def _timestamp(self, suffix):
         stamp = time.strftime('gate: %d %b %Y %H:%M:%S')
         if Task.startTime:
-            duration = datetime.timedelta(seconds=time.time() - Task.startTime)
+            duration = timedelta(seconds=time.time() - Task.startTime)
             # Strip microseconds and convert to a string
-            duration = str(duration - datetime.timedelta(microseconds=duration.microseconds))
+            duration = str(duration - timedelta(microseconds=duration.microseconds))
             # Strip hours if 0
             if duration.startswith('0:'):
                 duration = duration[2:]
             stamp += '(+{})'.format(duration)
         return stamp + suffix
 
-    def __init__(self, title, tasks=None, disableJacoco=False, tags=None, legacyTitles=None, description=None):
+    def __init__(self, title,
+                 tasks=None,
+                 disableJacoco=False,
+                 tags=None,
+                 legacyTitles=None,
+                 description=None,
+                 report=False):
+        """
+        :param report: if True, then `make_test_report` is called when this task ends
+        """
         self.tasks = tasks
         self.title = title
         self.legacyTitles = legacyTitles or []
         self.skipped = False
         self.tags = tags
         self.description = description
+        self.report = report
         if tasks is not None:
             for t in tasks:
                 if t.title == title:
@@ -154,6 +165,13 @@ class Task:
             if self.disableJacoco:
                 global _jacoco
                 _jacoco = self.jacacoSave
+            if self.report:
+                test_results = [{
+                    'name': self.title,
+                    'status': "PASSED" if exc_value is None else "FAILED",
+                    'duration': str(self.duration)
+                }]
+                make_test_report(test_results, tags={'task' : self.title})
 
     @staticmethod
     def _human_fmt(num):
@@ -175,13 +193,13 @@ class Task:
     def stop(self):
         if Task.log:
             self.end = time.time()
-            self.duration = datetime.timedelta(seconds=self.end - self.start)
+            self.duration = timedelta(seconds=self.end - self.start)
             mx.log(self._timestamp(' END:   ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
         return self
     def abort(self, codeOrMessage):
         if Task.log:
             self.end = time.time()
-            self.duration = datetime.timedelta(seconds=self.end - self.start)
+            self.duration = timedelta(seconds=self.end - self.start)
             mx.log(self._timestamp(' ABORT: ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
             mx.abort(codeOrMessage)
         return self
@@ -1209,12 +1227,12 @@ def coverage_upload(args):
                 // Group index data by suite.
                 data = groupBy(data, 'suite');
 
-                // Get latest coverage data for each suite. 
+                // Get latest coverage data for each suite.
                 for (const [key, value] of Object.entries(data)) {
                     data[key] = value[0];
 
                 }
-                
+
                 for (const [suite_name, report] of Object.entries(data)) {
 
                     // Get Total Data for each suite for latest coverage report
@@ -1399,3 +1417,181 @@ def sonarqube_upload(args):
             fp.seek(0)
             mx.abort('SonarQube scanner terminated with non-zero exit code: {}\n  Properties file:\n{}'.format(
                 exit_code, ''.join(('    ' + l for l in fp.readlines()))))
+
+def _get_repo_name(suite):
+    vc = suite.vc
+    if vc is None:
+        return ''
+    repo_url = vc.default_pull(suite.vc_dir)
+    return str(repo_url).split('.git')[0].split('/')[-1]
+
+def _get_commit(suite):
+    """
+    Get commit revision of `suite`.
+    """
+    vc = suite.vc
+    if vc is None:
+        return ''
+    info = vc.parent(suite.vc_dir)
+    return str(info)
+
+def _unpack_test_results(test_results):
+    if not isinstance(test_results, list):
+        assert isinstance(test_results, str), f'test_results must be a string, not a {type(test_results)}'
+        if test_results.endswith('.gz'):
+            import gzip
+            with gzip.open(test_results, 'rt') as f_in:
+                test_results = json.load(f_in)
+        else:
+            with open(test_results, 'r') as f_in:
+                test_results = json.load(f_in)
+    assert isinstance(test_results, list), f'test results must be a list, not a {type(test_results)}'
+    expected_keys = frozenset(('name', 'status', 'duration'))
+    for i, e in enumerate(test_results):
+        assert isinstance(test_results, list), f'test result {i} must be a dict, not a {type(e)}'
+        assert frozenset(e.keys()) == expected_keys, f'fields of test result {i} must be {", ".join(expected_keys)}, not {", ".join(e.keys())}'
+
+    return test_results
+
+def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails=False):
+    """
+    Creates a test report based on `test_results`. The report is a dict with the following fields:
+        repo: simple name of git repository containing the primary suite (e.g., "graal")
+        commit: git commit hash of the primary suite (e.g., "5dc7ecdf43515028d4f40265b0e183af67e88b08")
+        timestamp: current time in ISO 8601 format in UTC (e.g., "2022-05-20T13:21:42+00:00")
+        testCollection: a name for the report. In combination with `tags`, this name uniquely
+            identifies the test report. The name is composed as follows:
+                f"{build}_{comp}"
+            where:
+                build = get_env('BUILD_NAME', 'unclassified')
+                comp = component or mx.primary_suite().name
+            Example: "gate-test-java11-compiler-linux-amd64-vectorization_compiler"
+        tags: key/value pairs describing the test configuration. (e.g., {"task": "BootstrapWithSystemAssertions"})
+        tests: `test_results`
+
+    If ${MX_TEST_REPORTS_LOCATION} is defined, then the report is uploaded as a gzipped JSON document
+    to an Artifactory server. The name of the JSON document is:
+                f"{testCollection}_{sha1(all_tags)}.json.gz"
+            where:
+                build = get_env('BUILD_NAME', 'unclassified')
+                all_tags = tags + predefined_tags
+                sha1(d) = sha1([f"{k}{v}".encode() for k,v in sorted(d.items())])
+            Example: gate-test-java11-compiler-linux-amd64-vectorization_compiler_9237330eb7a50c4b41a7a432ae143686dc9e7932.json.gz
+
+    Further details of uploading are configured by the following environment variables:
+
+    MX_TEST_REPORTS_LOCATION: Base URL of the Artifactory end point for the upload. If ".", the
+          document is saved in the current working directory.
+    MX_TEST_UPLOAD_API_USER: Authentication header key (e.g. "X-JFrog-Art-Api")
+    MX_TEST_UPLOAD_API_KEY_PATH_<OS>: OS specific path to a file containing the
+          authentication header value. OS must match `mx.get_os().upper()`.
+          Example: MX_TEST_UPLOAD_API_KEY_PATH_DARWIN=/private/secrets/artifactory_api_key
+
+    :param test_results: array of dicts (or name of a JSON file containing such an array),
+             one per test. Each dict must have exactly these keys:
+               name: unique name for the test
+               status: "PASSED", "FAILED" or "IGNORED"
+               duration: duration of test in milliseconds
+    :param component: name of the tested component. Defaults to the name of the primary suite.
+    :param tags: dict describing test details that make it unique compared to other test reports
+             with the same `testCollection` value (e.g., {'task': 'XcompUnitTests: hosted-product compiler' }).
+    :param fatalIfUploadFails: if uploading the report fails, mx.abort is called. Otherwise a warning is displayed on the console.
+    """
+    if mx.get_jdk():
+        java_version = str(mx.get_jdk().javaCompliance)
+    else:
+        java_version = "None"
+    primary_suite = mx.primary_suite()
+    component = component or primary_suite.name
+    results_commit = _get_commit(primary_suite)
+    results_repo_name = _get_repo_name(primary_suite)
+    results_timestamp = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
+    build = mx.get_env("BUILD_NAME", "unclassified")
+
+    # Ensure tags has a job_type entry
+    if 'job_type' not in tags:
+        job_types = {"gate", "post-merge", "ondemand", "daily", "weekly", "bench"}
+        tags['job_type'] = 'unclassified'
+        for job in job_types:
+            if job in build:
+                tags['job_type'] = job
+                break
+
+    # Add the predefined tags and ensure they are not already defined
+    predefined_tags = {
+        'os':  mx.get_os(),
+        'arch': mx.get_arch(),
+        'java_version': java_version,
+        'component': component,
+    }
+    conflicting_tags = frozenset(predefined_tags.keys()).intersection(tags.keys())
+    if conflicting_tags:
+        mx.abort(f'Cannot overwrite predefined tag(s): {", ".join(conflicting_tags)}')
+    tags.update(predefined_tags)
+
+    name = f'{build}_{component}'
+    test_results = _unpack_test_results(test_results)
+    test_report = {
+        'repo': results_repo_name,
+        'commit': results_commit,
+        'timestamp': results_timestamp,
+        'testCollection': name,
+        'tags': tags,
+        'tests': test_results
+    }
+
+    upload_url_base = mx.get_env('MX_TEST_REPORTS_LOCATION')
+    if upload_url_base is not None:
+
+        def test_report_for_console():
+            test_report_json = json.dumps(test_report)
+            if len(test_report_json) > 4000:
+                test_report_json = test_report_json[:4000] + ' ... (truncated)'
+            return test_report_json
+
+        # Compute the sha1 of the tags
+        d = hashlib.sha1()
+        for n, v in sorted(tags.items()):
+            d.update(n.encode())
+            d.update(v.encode())
+        tags_sha1 = d.hexdigest()
+
+        report_file = f'{name}_{tags_sha1}.json.gz'
+        import gzip
+        test_report_json = gzip.compress(json.dumps(test_report).encode())
+        if upload_url_base == '.':
+            local_path = abspath(report_file)
+            with open(local_path, 'wb') as fp:
+                fp.write(test_report_json)
+                mx.log(f'Saved report to {local_path}')
+                return test_report
+
+        upload_url = f'{upload_url_base}{results_repo_name}/{results_commit}/{report_file}'
+        auth_header = mx.get_env('MX_TEST_UPLOAD_API_USER', default='Authorization')
+        auth_value = None
+        api_key_path_name = 'MX_TEST_UPLOAD_API_KEY_PATH_' + mx.get_os().upper()
+        api_key_path = mx.get_env(api_key_path_name)
+        if api_key_path:
+            with open(api_key_path) as key:
+                auth_value = key.read().strip()
+        else:
+            mx.warn('{} is not defined, skipping authentication'.format(api_key_path_name))
+
+        already_uploaded = mx.download(report_file, [upload_url], verbose=False, abortOnError=False, verifyOnly=True)
+        if already_uploaded:
+            mx.warn(f'Cannot overwrite existing test report at {upload_url}.\nLocal test report: {test_report_for_console()}')
+        else:
+            req = urllib.request.Request(url=upload_url, data=test_report_json, method='PUT')
+            if auth_value:
+                req.add_header(auth_header, auth_value)
+            mx.log(f'uploading test report to {upload_url}')
+            try:
+                urllib.request.urlopen(req)
+            except:
+                ex = sys.exc_info()[0]
+                message = f'Uploading test report to {upload_url} failed: {ex}\nTest report: {test_report_for_console()}'
+                if fatalIfUploadFails:
+                    mx.abort(message)
+                else:
+                    mx.warn(message)
+    return test_report
