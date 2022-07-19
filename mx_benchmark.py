@@ -1967,6 +1967,10 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         args, _ = get_parser(self.jmhParserName()).parse_known_args(vmAndSuiteArgs)
         return args
 
+    def jmhLibrary(self):
+        return mx.library("JMH_1_21", fatalIfMissing=True)
+
+
 class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
     """Common superclass for JAR-based JMH suites. Provides utilities to extract the list of benchmarks or filter the
     JMH command line to determine options or benchmark filters."""
@@ -2040,10 +2044,16 @@ class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
         return self._extracted_jmh_filters
 
     def jmhFilterDeps(self):
-        return ["com.oracle.mxtool.jmh_1_21"]
+        return ["com.oracle.mxtool.jmh_" + self.jmhVersionString()]
 
     def jmhFilterClassName(self):
-        return "com.oracle.mxtool.jmh_1_21.FilterJMHFlags"
+        return self.jmhFilterDeps()[0] + ".FilterJMHFlags"
+
+    def jmhVersionString(self):
+        """A string like '1_21' corresponding to the current JMH library's version (in this case, 1.21)."""
+        library = self.jmhLibrary()
+        version = library.maven["version"]
+        return version.replace('.', '_')
 
 
 def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=True):
