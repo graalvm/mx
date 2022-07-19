@@ -182,7 +182,6 @@ def checkout_downstream(args):
     parser.add_argument('upstream', action='store', help='the name of the upstream suite (e.g., compiler)')
     parser.add_argument('downstream', action='store', help='the name of the downstream suite (e.g., graal-enterprise)')
     parser.add_argument('--no-fetch', action='store_true', help='do not fetch remote content for the upstream and downstream repositories')
-    parser.add_argument('--print-only', action='store_true', help='only print upstream revision and repo URL')
     args = parser.parse_args(args)
 
     def get_suite(name):
@@ -213,11 +212,6 @@ def checkout_downstream(args):
     # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
     upstream_commit_cmd = ['log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
     upstream_commit = _run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
-
-    if args.print_only:
-        mx.log("Upstream commit: {}".format(upstream_commit))
-        mx.log("Upstream Git repository: {}".format(git.default_pull(upstream_suite.vc_dir)))
-        return
 
     # We now need to find a revision in `downstream_suite` that imports `upstream_commit` of `upstream_suite`.
     # For doing this, we grep the log of a set of branches in `downstream_suite`, checking out the revision of the first branch that matches.
