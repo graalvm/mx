@@ -16960,9 +16960,12 @@ def _sversions_rev(rev, isdirty, with_color):
 def sversions(args):
     """print working directory revision for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sversions')
+    parser.add_argument('--print-related-repos', action='store_true', help='print a dict of associated repos and their revision')
     parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
     args = parser.parse_args(args)
     with_color = args.color
+    print_related_repos = args.print_related_repos
+    related_repos_dict = {}
     visited = set()
 
     def _sversions_import_visitor(s, suite_import, **extra_args):
@@ -16978,8 +16981,18 @@ def sversions(args):
             print(_sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name + ' ' + s.vc_dir)
         s.visit_imports(_sversions_import_visitor)
 
+    def _get_related_repos_dict(s, suite_import):
+        if s.vc is None or s.vc.default_pull(s.vc_dir) in related_repos_dict:
+            return related_repos_dict
+        related_repos_dict[s.vc.default_pull(s.vc_dir)] = s.vc.parent(s.vc_dir)
+        s.visit_imports(lambda _, si: _get_related_repos_dict(suite(si.name), si))
+
     if not isinstance(primary_suite(), MXSuite):
-        _sversions(primary_suite(), None)
+        if print_related_repos:
+            _get_related_repos_dict(primary_suite(), None)
+            print(json.dumps(related_repos_dict))
+        else:
+            _sversions(primary_suite(), None)
 
 ### ~~~~~~~~~~~~~ Java Compiler
 
