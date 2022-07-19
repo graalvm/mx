@@ -2327,6 +2327,7 @@ class JMHJarBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
         jmh_benchmarks = self.jmhArgs(bmSuiteArgs).jmh_benchmarks
         if not jmh_benchmarks:
             return []
+        mx.log_deprecation("The --jmh-benchmarks flag is deprecated, please list the benchmarks to run as JMH parameters (after the last '--').")
         return jmh_benchmarks.split(',')
 
     def jmhJAR(self, bmSuiteArgs):
