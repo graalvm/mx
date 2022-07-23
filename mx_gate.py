@@ -979,7 +979,7 @@ def coverage_upload(args):
     rev = primary.vc.parent(primary.dir)
     if len(remote_basedir) > 0 and not remote_basedir.endswith('/'):
         remote_basedir += '/'
-    remote_dir = '{}_{}_{}'.format(primary.name, datetime.datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
+    remote_dir = '{}_{}_{}'.format(primary.name, datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
     if args.build_name:
         remote_dir += '_' + args.build_name
     if args.build_number:
