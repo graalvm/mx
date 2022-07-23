@@ -108,9 +108,11 @@ class Task:
                  tags=None,
                  legacyTitles=None,
                  description=None,
-                 report=False):
+                 report=None):
         """
-        :param report: if True, then `make_test_report` is called when this task ends
+        :param report: if not None, then `make_test_report` is called when this task ends.
+                 The component used for the report will be the name of the primary suite
+                 if `report` is True otherwise it will use the value of `report`.
         """
         self.tasks = tasks
         self.title = title
@@ -165,13 +167,14 @@ class Task:
             if self.disableJacoco:
                 global _jacoco
                 _jacoco = self.jacacoSave
-            if self.report:
+            if self.report is not None:
                 test_results = [{
                     'name': self.title,
                     'status': "PASSED" if exc_value is None else "FAILED",
                     'duration': str(self.duration)
                 }]
-                make_test_report(test_results, tags={'task' : self.title})
+                component = mx.primary_suite().name if self.report is True else str(self.report)
+                make_test_report(test_results, component=component, tags={'task' : self.title})
 
     @staticmethod
     def _human_fmt(num):
