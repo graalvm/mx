@@ -108,9 +108,11 @@ class Task:
                  tags=None,
                  legacyTitles=None,
                  description=None,
-                 report=False):
+                 report=None):
         """
-        :param report: if True, then `make_test_report` is called when this task ends
+        :param report: if not None, then `make_test_report` is called when this task ends.
+                 The component used for the report will be the name of the primary suite
+                 if `report` is True otherwise it will use the value of `report`.
         """
         self.tasks = tasks
         self.title = title
@@ -165,13 +167,14 @@ class Task:
             if self.disableJacoco:
                 global _jacoco
                 _jacoco = self.jacacoSave
-            if self.report:
+            if self.report is not None:
                 test_results = [{
                     'name': self.title,
                     'status': "PASSED" if exc_value is None else "FAILED",
                     'duration': str(self.duration)
                 }]
-                make_test_report(test_results, tags={'task' : self.title})
+                component = mx.primary_suite().name if self.report is True else str(self.report)
+                make_test_report(test_results, component=component, tags={'task' : self.title})
 
     @staticmethod
     def _human_fmt(num):
@@ -976,7 +979,7 @@ def coverage_upload(args):
     rev = primary.vc.parent(primary.dir)
     if len(remote_basedir) > 0 and not remote_basedir.endswith('/'):
         remote_basedir += '/'
-    remote_dir = '{}_{}_{}'.format(primary.name, datetime.datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
+    remote_dir = '{}_{}_{}'.format(primary.name, datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
     if args.build_name:
         remote_dir += '_' + args.build_name
     if args.build_number:
