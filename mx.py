@@ -17487,6 +17487,13 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
 
     common_dirs = common_dirs or []
 
+    # we should always check ci_common directory if the directory exists
+    ci_common_dir = join('ci', 'ci_common')
+    if base_suite.getMxCompatibility().strict_verify_file_path() and\
+            (exists(join(base_suite.dir, ci_common_dir)) or exists(join(dest_suite.dir, ci_common_dir))) and\
+            (ci_common_dir not in common_dirs):
+        common_dirs.append(ci_common_dir)
+
     def _handle_error(msg, base_file, dest_file):
         if args.sync:
             log("Overriding {1} from {0}".format(os.path.normpath(base_file), os.path.normpath(dest_file)))
@@ -17515,6 +17522,16 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
     for d in common_dirs:
         base_dir = join(base_suite.dir, d)
         dest_dir = join(dest_suite.dir, d)
+
+        # check existence of user defined directories (ci/ci_common directory wouldn't be checked here since it was
+        # added only in case it exists)
+        if base_suite.getMxCompatibility().strict_verify_file_path():
+            if not exists(base_dir):
+                abort(f"Directory {base_dir} does not exist.")
+
+            if not exists(dest_dir):
+                abort(f"Directory {dest_dir} does not exist.")
+
 
         for root, _, files in os.walk(base_dir):
             rel_root = os.path.relpath(root, base_dir)
@@ -18079,7 +18096,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.7.0")   # ProGuard JDK19 - second attempt
+version = VersionSpec("6.8.0")   # GR-39227
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
