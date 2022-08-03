@@ -1781,11 +1781,11 @@ class Suite(object):
         else:
             return self._outputRoot
 
-    def get_mx_output_dir(self):
+    def get_mx_output_dir(self, platformDependent=False, jdkDependent=None):
         """
         Gets the directory into which mx bookkeeping artifacts should be placed.
         """
-        return join(self.get_output_root(), basename(self.mxDir))
+        return join(self.get_output_root(platformDependent, jdkDependent), basename(self.mxDir))
 
     def _preload_suite_dict(self):
         dictName = 'suite'
@@ -6374,7 +6374,7 @@ Common causes:
             fp.write(current_layout)
 
     def _persisted_layout_file(self):
-        return join(self.suite.get_mx_output_dir(), 'savedLayouts', self.name)
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'savedLayouts', self.name)
 
     @staticmethod
     def _layout_to_stable_str(d):
