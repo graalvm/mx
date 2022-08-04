@@ -6792,6 +6792,8 @@ class JavaProject(Project, ClasspathDependency):
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
         self.javaCompliance = JavaCompliance(javaCompliance, context=self)
+        javaPreviewNeeded = kwArgs.get('javaPreviewNeeded')
+        self.javaPreviewNeeded = JavaCompliance(javaPreviewNeeded, context=self) if javaPreviewNeeded else None
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
@@ -7673,6 +7675,8 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs += ['-proc:none']
         c = str(compliance)
         javacArgs += ['-target', c, '-source', c]
+        if project.javaPreviewNeeded and self.jdk.javaCompliance in project.javaPreviewNeeded:
+            javacArgs.append('--enable-preview')
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
