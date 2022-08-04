@@ -589,3 +589,9 @@ In particular, this helps ensure that all these suites are synchronized and test
 Note that a suite in a "big repo" should not have a dependency to a suite in a different repository that in turn has a transitive dependency to the same "big repo".
 In other words, there should be no back-and-forth to the same repo.
 
+
+### Preview features
+
+Java projects may use language or runtime features which are considered _preview features_ in certain Java versions, in which case preview features must be enabled for compilation (`--enable-preview`).
+This is specified using the `javaPreviewNeeded` attribute, which is a version specification in the same format as `javaCompliance`, for example: `"javaPreviewNeeded": "19..20"`
+If the compiling JDK matches that version or version range, preview features are enabled for compilation.
