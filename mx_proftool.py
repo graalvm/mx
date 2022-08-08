@@ -48,8 +48,16 @@ try:
 except ImportError:
     pass
 
-def vm_has_bb_dumping(java_command=None, bb_option='-Dgraal.PrintBBInfo=true'):
-    return True
+def vm_has_bb_dumping(java_command=None, vm=None, bb_option='PrintBBInfo'):
+    assert (java_command is None and vm) or (vm is None and java_command), "Only one should be provited not both"
+    args = ['-XX:+UnlockExperimentalVMOptions', '-XX:+EnableJVMCI', '-XX:+EagerJVMCI', '-XX:+JVMCIPrintProperties', '--version']
+    if java_command:
+        out = subprocess.check_output([java_command] + args)
+        return out.find(bb_option) >= 0
+    else:
+        out = mx.OutputCapture()
+        vm.run_java(args, out=out)
+        return out.data.find(bb_option) >= 0
 
 def check_capstone_import(name):
     try:
@@ -1620,6 +1628,12 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
 
     def setup(self, benchmarks, bmSuiteArgs):
         super(ProftoolProfiler, self).setup(benchmarks, bmSuiteArgs)
+        if self.with_bb_info:
+            # check that the vm have the PrintBBInfo option availible
+            vm = mx_benchmark.java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
+            if not vm_has_bb_dumping(vm=vm):
+                mx.abort("The vm does not allow dumping of basic block information.")
+        
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         if self.nextItemName:
@@ -1631,7 +1645,6 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
 if PerfOutput.is_supported():
     try:
         mx_benchmark.register_profiler(ProftoolProfiler())
-        if vm_has_bb_dumping():
-            mx_benchmark.register_profiler(ProftoolProfiler(with_bb_info=True))
+        mx_benchmark.register_profiler(ProftoolProfiler(with_bb_info=True))
     except AttributeError:
         mx.warn('proftool unable to register profiler')
