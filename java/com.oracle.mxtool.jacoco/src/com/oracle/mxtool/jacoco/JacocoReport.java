@@ -85,10 +85,11 @@ public class JacocoReport {
         private final File[] srcDirs;
 
         /**
-         * @param spec a specification string in the form "project-dir:binary-dir".
+         * @param spec a specification string in the form "project-dir:binary-dir[:source-dir]*". On
+         *            Windows, {@code ;} is used as the separator instead of {@code :}.
          */
         public ProjectSpec(String spec) {
-            String[] s = spec.split(":");
+            String[] s = spec.split(File.pathSeparator);
             if (s.length < 2) {
                 throw new RuntimeException(String.format("Unsupported project specification: %s", spec));
             }

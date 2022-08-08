@@ -871,7 +871,7 @@ def _jacocoreport(args, exec_files=None):
                         source_dirs += p.source_dirs()
                     else:
                         source_dirs += p.source_dirs() + [p.source_gen_dir()]
-                includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
+                includedirs.append(os.pathsep.join([p.dir, p.classpath_repr(jdk)] + source_dirs))
                 includedprojects.append(p.name)
 
     def _run_reporter(extra_args=None):
@@ -882,11 +882,18 @@ def _jacocoreport(args, exec_files=None):
             for exec_file in exec_files:
                 files_arg += ['--in', exec_file]
 
-        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--out',
-                     args.output_directory, '--format', args.format] + files_arg +
-                    (extra_args or []) +
-                    sorted(includedirs),
-                    jdk=jdk, addDefaultArgs=False)
+        jacaco_java_args = ['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--out',
+                 args.output_directory, '--format', args.format] + files_arg + (extra_args or []) + sorted(includedirs)
+        jacaco_java_args_file = join(os.getcwd(), 'jacoco_command_args.txt')
+        if jdk.javaCompliance > '8':
+            # Pass jacaco args in an args file to avoid command line length issues on Windows
+            with open(jacaco_java_args_file, mode="w") as fp:
+                fp.writelines((a + os.linesep for a in jacaco_java_args))
+                fp.flush()
+            jacaco_java_args = ['@' + jacaco_java_args_file]
+        mx.run_java(jacaco_java_args, jdk=jdk, addDefaultArgs=False)
+        if jdk.javaCompliance > '8':
+            os.unlink(jacaco_java_args_file)
 
         if args.format == "lcov" and args.generic_paths:
             generic_paths_replacements = {}
