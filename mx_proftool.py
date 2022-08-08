@@ -982,7 +982,7 @@ class GeneratedAssembly:
 
         :type files: ExperimentFiles
         """
-        self.executionId = None
+        self.execution_id = None
         self.code_info = []
         self.low_address = None
         self.high_address = None
@@ -1007,7 +1007,7 @@ class GeneratedAssembly:
             # try to attribute the nmethods to the JVMTI output so that compile ids are available
             with files.open_log_compilation_file() as fp:
                 tree = ElementTree.parse(fp)
-                self.executionId = tree.getroot().get('process')
+                self.execution_id = tree.getroot().get('process')
                 # build a map from the entry pc to the nmethod information
                 nmethods = {}
                 for nmethod in mx_logcompilation.collect_nmethods(tree):
@@ -1619,7 +1619,7 @@ def profjson(args):
     if options.output:
         fp = open(options.output, 'w')
     out = {
-        'executionId': assembly.executionId,
+        'executionId': assembly.execution_id,
         'totalPeriod': perf_data.total_period,
         'code': [
             {
