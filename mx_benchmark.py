@@ -923,6 +923,7 @@ class JMHJsonRule(Rule):
     """Parses a JSON file produced by JMH and creates a measurement result."""
 
     extra_jmh_keys = [
+        # parsed from the JMH JSON file
         "mode",
         "threads",
         "forks",
@@ -932,11 +933,17 @@ class JMHJsonRule(Rule):
         "measurementIterations",
         "measurementTime",
         "measurementBatchSize",
+
+        # set via extra_bench_properties
+        "mx-individual-run-mode",
         ]
 
-    def __init__(self, filename, suiteName):
+    def __init__(self, filename, suiteName, extra_bench_properties=None):
         self.filename = filename
         self.suiteName = suiteName
+        if extra_bench_properties is None:
+            extra_bench_properties = {}
+        self.extra_bench_properties = extra_bench_properties
 
     def shortenPackageName(self, benchmark):
         """
@@ -1011,9 +1018,18 @@ class JMHJsonRule(Rule):
                     for k, v in result["params"].items():
                         d["extra.jmh.param." + k] = str(v)
 
+                extra_properties = self.extra_bench_properties
+                if "mx-individual-run-mode" not in extra_properties:
+                    run_mode = "jmh-forking" if int(result["forks"]) >= 1 else "disabled"
+                    extra_properties["mx-individual-run-mode"] = run_mode
+
                 for k in self.getExtraJmhKeys():
+                    extra_value = None
                     if k in result:
-                        d["extra.jmh." + k] = str(result[k])
+                        extra_value = result[k]
+                    elif k in extra_properties:
+                        extra_value = extra_properties[k]
+                    d["extra.jmh." + k] = str(extra_value)
 
                 if 'rawData' not in pm:
                     # we don't have the raw results, e.g. for the `sample` mode
@@ -1960,7 +1976,8 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return []
 
     def rules(self, out, benchmarks, bmSuiteArgs):
-        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
+        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs),
+            self.extraBenchProperties(bmSuiteArgs))]
 
     def jmhArgs(self, bmSuiteArgs):
         vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
@@ -1969,6 +1986,9 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
 
     def jmhLibrary(self):
         return mx.library("JMH_1_21", fatalIfMissing=True)
+
+    def extraBenchProperties(self, bmSuiteArgs):
+        return {}
 
 
 class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
@@ -2258,6 +2278,13 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
             assert selected[-1] == benchmarks[-1]
 
         return selected
+
+    def extraBenchProperties(self, bmSuiteArgs):
+        properties = super(JMHDistBenchmarkSuite, self).extraBenchProperties(bmSuiteArgs)
+        run_individually = self.jmhArgs(bmSuiteArgs).jmh_run_individually
+        if run_individually:
+            properties["mx-individual-run-mode"] = "one-vm-per-benchmark"
+        return properties
 
 _jmh_dist_args_parser = ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
