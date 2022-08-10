@@ -1861,7 +1861,7 @@ class DefaultJavaVm(OutputCapturingJavaVm):
         return mx.get_jdk().generate_java_command(self.post_process_command_line_args(args))
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
-        return mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+        return mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False, command_mapper_hooks=self.command_mapper_hooks)
 
 
 class DummyJavaVm(OutputCapturingJavaVm):
