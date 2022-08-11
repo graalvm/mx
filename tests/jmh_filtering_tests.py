@@ -16,7 +16,8 @@ def checkListingExclusions(exclusions, expected):
     env = os.environ.copy()
     env["MX_PRIMARY_SUITE_PATH"] = parent_dir
     mx_bin = os.path.normpath(parent_dir + sep + "mx")
-    mx.run([mx_bin, 'benchmark', 'jmh-dist:MX_MICRO_BENCHMARKS', '--', '--', '-l'] + exclusions,
+    # we're parsing stdout, so we need to make sure that trackers are disabled such that no extra output is generated
+    mx.run([mx_bin, 'benchmark', 'jmh-dist:MX_MICRO_BENCHMARKS', '--tracker', 'none', '--', '--', '-l'] + exclusions,
             out=out, env=env, cwd=parent_dir)
 
     # Extract benchmark names from the output.
@@ -39,6 +40,8 @@ def checkListingExclusions(exclusions, expected):
 
 # Ensure attribute existence for test
 setattr(mx._opts, "verbose", False)
+setattr(mx._opts, "warn", True)
+setattr(mx._opts, "quiet", False)
 setattr(mx._opts, "exec_log", None)
 setattr(mx._opts, "ptimeout", 0)
 

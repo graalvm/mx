@@ -2080,7 +2080,12 @@ class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
         else:
             excludeArgs = []
         jmhListArgs = ["-jar", self.jmhJAR(bmSuiteArgs), "-l"] + benchmarkFilter + excludeArgs
+        # we must disable any tracker or hooks that may modify the command and potentially generate extra output
+        disable_tracker()
+        mx.disable_command_mapper_hooks()
         exit_code = mx.get_jdk().run_java(jmhListArgs, out=out, err=out, cwd=cwd)
+        mx.enable_command_mapper_hooks()
+        enable_tracker()
         if exit_code != 0:
             raise ValueError("JMH benchmark list extraction failed!")
         benchs = out.underlying.data.splitlines()
