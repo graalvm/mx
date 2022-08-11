@@ -1633,7 +1633,7 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
             vm = mx_benchmark.java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
             if not vm_has_bb_dumping(vm=vm):
                 mx.abort("The vm does not allow dumping of basic block information.")
-        
+
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         if self.nextItemName:
