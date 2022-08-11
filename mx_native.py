@@ -602,17 +602,17 @@ class DefaultNativeProject(NinjaProject):
         self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
         self.toolchain = kwargs.pop('toolchain', 'mx:DEFAULT_NINJA_TOOLCHAIN')
         if srcDirs:
-            raise mx.abort('"sourceDirs" is not supported for default native projects')
+            mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
         super(DefaultNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         try:
             self._kind = self._kinds[kind]
         except KeyError:
-            raise mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
+            mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
 
         include_dir = mx.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
-            raise mx.abort('include directory must have a flat structure')
+            mx.abort('include directory must have a flat structure')
 
         self.include_dirs = [include_dir]
         if kind == 'static_lib':
@@ -623,7 +623,7 @@ class DefaultNativeProject(NinjaProject):
         super(DefaultNativeProject, self).resolveDeps()
         self.toolchain = mx.distribution(self.toolchain, context=self)
         if not isinstance(self.toolchain, mx.AbstractDistribution) or not self.toolchain.get_output():
-            raise mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
+            mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
 
     @property
     def _target(self):

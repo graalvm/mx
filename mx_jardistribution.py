@@ -929,7 +929,7 @@ class _ArchiveStager(object):
                 jarPath = dep.path
                 jarSourcePath = dep.sourcesPath
             else:
-                raise mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+                mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
             if jarPath:
                 self.add_jar(dep, jarPath)
             if jarSourcePath:

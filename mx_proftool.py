@@ -48,6 +48,16 @@ try:
 except ImportError:
     pass
 
+def vm_has_bb_dumping(java_command=None, vm=None, bb_option='PrintBBInfo'):
+    assert (java_command is None and vm) or (vm is None and java_command), "Only one should be provited not both"
+    args = ['-XX:+UnlockExperimentalVMOptions', '-XX:+EnableJVMCI', '-XX:+EagerJVMCI', '-XX:+JVMCIPrintProperties', '--version']
+    if java_command:
+        out = subprocess.check_output([java_command] + args)
+        return out.find(bb_option) >= 0
+    else:
+        out = mx.OutputCapture()
+        vm.run_java(args, out=out)
+        return out.data.find(bb_option) >= 0
 
 def check_capstone_import(name):
     try:
@@ -92,6 +102,8 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
         experiment = ExperimentFiles.open_experiment(options.experiment)
         if experiment is None:
             mx.abort('Experiment \'{}\' does not exist'.format(options.experiment))
+        if hasattr(options, 'block_info') and options.block_info:
+            experiment.force_block_info(options.block_info)
         return experiment
 
     @abstractmethod
@@ -111,6 +123,10 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
         raise NotImplementedError()
 
     @abstractmethod
+    def ensure_perf_output(self):
+        raise NotImplementedError()
+
+    @abstractmethod
     def open_perf_output_file(self, mode='r'):
         raise NotImplementedError()
 
@@ -126,6 +142,35 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
     def open_log_compilation_file(self):
         raise NotImplementedError()
 
+    @abstractmethod
+    def force_block_info(self, forced_block_info_dir):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def has_block_info(self, compilation_id=None):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def open_block_info(self, compilation_id):
+        raise NotImplementedError()
+
+def find_basic_block_info_filename(compilation_id, files, block_extension='blocks'):
+    if compilation_id[-1] == '%':
+        # It is an OSR compilation id
+        reg = re.compile(f'HotSpotOSRCompilation-{compilation_id[:-1]}\\[.*\\]\\.{block_extension}')
+    else:
+        # Normal compilation
+        reg = re.compile(f'HotSpotCompilation-{compilation_id}\\[.*\\]\\.{block_extension}')
+    for f in files:
+        if reg.search(f):
+            return f
+
+def has_basic_block_info_file(files, block_extension='blocks'):
+    """Check that at least one file in the given collection is a .blocks file."""
+    for f in files:
+        if re.search(f'\\.{block_extension}', f):
+            return True
+    return False
 
 class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
@@ -133,15 +178,19 @@ class FlatExperimentFiles(ExperimentFiles):
     def __init__(self, directory, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
                  perf_output_name='perf_output_file', log_compilation_name='log_compilation'):
         super(FlatExperimentFiles, self).__init__()
-        self.dump_path = None
         if not os.path.isdir(directory):
             raise AssertionError('Must be directory')
         self.directory = os.path.abspath(directory)
-        self.jvmti_asm_filename = os.path.join(directory, jvmti_asm_name)
-        self.perf_binary_filename = os.path.join(directory, perf_binary_name)
-        self.perf_output_filename = os.path.join(directory, perf_output_name)
-        self.log_compilation_filename = os.path.join(directory, log_compilation_name)
+        self.jvmti_asm_filename = os.path.join(self.directory, jvmti_asm_name)
+        self.perf_binary_filename = os.path.join(self.directory, perf_binary_name)
+        self.perf_output_filename = os.path.join(self.directory, perf_output_name)
+        self.log_compilation_filename = os.path.join(self.directory, log_compilation_name)
 
+        self.dump_path = None
+        path = os.path.join(self.directory, 'graal_dump')
+        if os.path.exists(path):
+            assert os.path.isdir(path), f"{path} must be a directory"
+            self.dump_path = path
 
     @staticmethod
     def create(experiment, overwrite=False):
@@ -190,7 +239,7 @@ class FlatExperimentFiles(ExperimentFiles):
         if self.dump_path:
             return self.dump_path
         if self.directory:
-            self.dump_path = os.path.join(self.directory, 'dump')
+            self.dump_path = os.path.join(self.directory, 'graal_dump')
             os.mkdir(self.dump_path)
             return self.dump_path
         else:
@@ -218,6 +267,31 @@ class FlatExperimentFiles(ExperimentFiles):
             name = directory_name
         return shutil.make_archive(name, 'zip', root_dir=parent, base_dir=directory_name)
 
+    def force_block_info(self, forced_block_info_dir):
+        assert os.path.isdir(forced_block_info_dir), "Must be directory"
+        self.dump_path = os.path.abspath(forced_block_info_dir)
+
+    def has_block_info(self, compilation_id=None):
+        if self.dump_path is None:
+            return False
+
+        assert os.path.isdir(self.dump_path), f"{self.dump_path} either does not exist or is not a directory"
+        if compilation_id is None:
+            return has_basic_block_info_file(os.listdir(self.dump_path))
+
+        filename = find_basic_block_info_filename(compilation_id, os.listdir(self.dump_path))
+        if filename is None:
+            return False
+
+        filename = os.path.join(self.dump_path, filename)
+        return filename is not None and os.path.isfile(filename)
+
+    def open_block_info(self, compilation_id):
+        assert compilation_id is not None, "Must provide a compilation id"
+        assert self.has_block_info(compilation_id), f"Must have block information for compliation id {compilation_id}"
+        filename = find_basic_block_info_filename(compilation_id, os.listdir(self.dump_path))
+        filename = os.path.join(self.dump_path, filename)
+        return open(filename, mode='r')
 
 class ZipExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
@@ -228,6 +302,7 @@ class ZipExperimentFiles(ExperimentFiles):
         self.jvmti_asm_file = self.find_file('jvmti_asm_file')
         self.perf_output_filename = self.find_file('perf_output_file')
         self.log_compilation_filename = self.find_file('log_compilation', error=False)
+        self.dump_path = self.find_file('graal_dump' + os.sep, error=False)
 
     def find_file(self, name, error=True):
         for f in self.experiment_file.namelist():
@@ -245,6 +320,10 @@ class ZipExperimentFiles(ExperimentFiles):
 
     def has_assembly(self):
         return self.jvmti_asm_file is not None
+
+    def ensure_perf_output(self):
+        if self.perf_output_filename is None:
+            mx.abort('perf output missing in archive')
 
     def open_perf_output_file(self, mode='r'):
         return io.TextIOWrapper(self.experiment_file.open(self.perf_output_filename, mode), encoding='utf-8')
@@ -264,6 +343,23 @@ class ZipExperimentFiles(ExperimentFiles):
     def get_log_compilation_filename(self):
         mx.abort('Unable to output directly to zip file')
 
+    def force_block_info(self, forced_block_info_dir):
+        mx.abort('Unable to provide blocks directory when experiment is in a zip archive')
+
+    def has_block_info(self, compilation_id=None):
+        if self.dump_path is None:
+            return False
+
+        if compilation_id is None:
+            return has_basic_block_info_file(self.experiment_file.namelist())
+
+        return find_basic_block_info_filename(compilation_id, self.experiment_file.namelist())
+
+    def open_block_info(self, compilation_id):
+        assert compilation_id is not None, "Must provide a compilation id"
+        assert self.has_block_info(compilation_id), f"Must have block information for compilation id {compilation_id}"
+        filename = find_basic_block_info_filename(compilation_id, self.experiment_file.namelist())
+        return io.TextIOWrapper(self.experiment_file.open(filename, 'r'), encoding='utf-8')
 
 class Instruction:
     """A simple wrapper around a CapStone instruction to support data instructions."""
@@ -482,6 +578,16 @@ method_signature_re = re.compile(r'((?:\[*[VIJFDSCBZ])|(?:\[*L[^;]+;))')
 primitive_types = {'I': 'int', 'J': 'long', 'V': 'void', 'F': 'float', 'D': 'double',
                    'S': 'short', 'C': 'char', 'B': 'byte', 'Z': 'boolean'}
 
+class BasicBlock:
+    """A cfg basic block"""
+
+    def __init__(self, bb_id, start, end, freq):
+        self.id = bb_id
+        self.start = start
+        self.end = end
+        self.freq = freq
+        self.period = 0
+        self.samples = 0
 
 class Method:
     """A Java Method decoded from a JVMTI assembly dump."""
@@ -575,6 +681,7 @@ class CompiledCodeInfo:
         self.total_samples = 0
         self.methods = methods
         self.nmethod = None
+        self.basic_blocks = None
 
     def __str__(self):
         return '0x{:x}-0x{:x} {} {}-{}'.format(self.code_begin(), self.code_end(), self.name, self.timestamp,
@@ -607,6 +714,9 @@ class CompiledCodeInfo:
         # update the name to include the LogCompilation id and any truffle names
         self.name = str(nmethod)
 
+    def set_basic_blocks(self, basic_blocks):
+        self.basic_blocks = basic_blocks
+
     def set_unload_time(self, timestamp):
         self.unload_time = timestamp
 
@@ -628,6 +738,12 @@ class CompiledCodeInfo:
         self.events.append(event)
         self.total_period += event.period
         self.total_samples += event.samples
+        if self.basic_blocks:
+            # if we have basic block information, we search for the basic block the sample belongs to
+            for b in self.basic_blocks:
+                if self.code_begin() + b.start <= event.pc < self.code_begin() + b.end:
+                    b.period += event.period
+                    b.samples += event.samples
 
     def contains_timestamp(self, timestamp):
         return timestamp >= self.timestamp and \
@@ -686,6 +802,55 @@ class CompiledCodeInfo:
             hotpc[event.pc] = event
         decoder.disassemble(self, hotpc, short_class_names=short_class_names, threshold=threshold)
         decoder.print('')
+
+    def check_basic_blocks_0_rel_freq(self, fp=sys.stdout):
+        """Check the relative frequencies of each block with respect to block 0"""
+        assert self.basic_blocks and len(self.basic_blocks) > 0, "Must have basic blocks information"
+        b0 = self.basic_blocks[0]
+        assert b0.id == 0, "The first block must have id 0"
+        if b0.samples == 0:
+            print('[WARRNING] In method {}\n\tblock 0 got {} samples'.format(self.format_name(short_class_names=True), b0.samples), file=fp)
+            return
+
+        for b in self.basic_blocks[1:]:
+            perf_freq = b.period / b0.period
+            if not compare_freq(b.freq, perf_freq):
+                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to first block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, b.freq, perf_freq), file=fp)
+
+
+    def check_basic_blocks_rel_freq_most(self, fp=sys.stdout):
+        """Check the relative frequencies of each block with respect to the most frequent block"""
+        assert self.basic_blocks and len(self.basic_blocks) > 0, "Must have basic blocks information"
+
+        bmax_graal = sorted(self.basic_blocks, key=lambda b: b.freq, reverse=True)
+        bmax_perf = sorted(self.basic_blocks, key=lambda b: b.period, reverse=True)
+
+        if bmax_graal[0].id != bmax_perf[0].id:
+            print('[WARRNING] In method {}\n\tmost frequent basic block measured with perf (id={:3}) differs from most frequent basic block from graal (id={:3})'.format(self.format_name(short_class_names=True), bmax_perf[0].id, bmax_graal[0].id), file=fp)
+            print('\tTop 5 basic blocks from graal {}\n\tTop 5 basic blocks from perf {}'.format([(b.id, b.freq) for b in bmax_graal[:5]], [(b.id, b.samples, b.period) for b in bmax_perf[:5]]), file=fp)
+
+            graal_most_frequent = {b.id for b in bmax_graal[:5]}
+            if all([b.id not in graal_most_frequent for b in bmax_perf[:5]]):
+                print('[ERROR] Top 5 most frequent basic blocks from graal is disjoint from top 5 most frequent basic blocks from perf', file=fp)
+            return
+
+        bmax = bmax_graal[0]
+
+        for b in [bloop for bloop in self.basic_blocks if bloop.id != bmax.id]:
+            graal_freq = b.freq / bmax.freq
+            perf_freq = b.period / bmax.period
+
+            if not compare_freq(graal_freq, perf_freq):
+                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to most frequent basic block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, graal_freq, perf_freq), file=fp)
+
+def compare_freq(graal_freq, perf_freq, epsilon=1E-10):
+    """
+    Compare frequencies computed by graal and measured using perf.
+
+    For low frequencies computed by graal perf has less chance to get a sample in that block so the range gets bigger.
+    """
+    factor = 100 if graal_freq < 1 else 10 if graal_freq < 10 else 1.5
+    return 1 / factor <= (graal_freq + epsilon) / (perf_freq + epsilon) <= factor
 
 
 class PerfEvent:
@@ -819,6 +984,7 @@ class GeneratedAssembly:
         self.low_address = None
         self.high_address = None
         self.code_by_address = {}
+        self.code_by_id = {}
         self.map = {}
         self.bucket_size = 8192
         with files.open_jvmti_asm_file() as fp:
@@ -859,8 +1025,27 @@ class GeneratedAssembly:
                 if matches:
                     found = matches.pop(0)
                     code.set_nmethod(found)
+                    self.code_by_id[code.get_compile_id()] = code
                     continue
                 mx.abort('Unable to find matching nmethod for code {}'.format(code))
+
+        if files.has_block_info():
+            for code in self.code_info:
+                if not code.nmethod:
+                    continue
+
+                compile_id = code.get_compile_id()
+
+                if not files.has_block_info(compile_id):
+                    # methods that are not compiled with graal don't have a block info file
+                    continue
+
+                with files.open_block_info(compile_id) as block_file:
+                    blocks = []
+                    for line in block_file:
+                        [block_id, start, end, freq] = line.split(',')[:4]
+                        blocks.append(BasicBlock(int(block_id), int(start), int(end), float(freq)))
+                    code.set_basic_blocks(blocks)
 
     def decoder(self, fp=sys.stdout):
         if self.arch == 'amd64':
@@ -908,7 +1093,7 @@ class GeneratedAssembly:
                 code_info = CompiledCodeInfo(name, timestamp, code_addr, code_size, code, True)
                 self.add(code_info)
                 if verbose:
-                    print('Parsed {}'.format(code_info))
+                    print('Parsed DynamicCode {}'.format(code_info))
             elif tag == CompiledMethodUnloadTag:
                 timestamp = self.read_timestamp()
                 code_addr = self.read_unsigned_jlong()
@@ -917,6 +1102,8 @@ class GeneratedAssembly:
                     message = "missing code for {}".format(code_addr)
                     mx.abort(message)
                 nmethod.set_unload_time(timestamp)
+                if verbose:
+                    print('Parsed CompiledMethodUnload {}'.format(code_info))
             elif tag == CompiledMethodLoadTag:
                 timestamp = self.read_timestamp()
                 code_addr = self.read_unsigned_jlong()
@@ -957,7 +1144,7 @@ class GeneratedAssembly:
                                            False, debug_infos, methods)
                 self.add(nmethod)
                 if verbose:
-                    print('Parsed {}'.format(nmethod))
+                    print('Parsed CompiledMethod {}'.format(nmethod))
             else:
                 raise AssertionError("Unexpected tag {}".format(tag))
 
@@ -1127,6 +1314,9 @@ def profrecord(args):
                         action='store', required=True)
     parser.add_argument('-O', '--overwrite', help='Overwrite an existing dump directory',
                         action='store_true')
+    parser.add_argument('-B', '--with-bb-info',
+                        help='Enables dumping of the basic block information used by the checkblocks command',
+                        action='store_true')
     parser.add_argument('-D', '--dump-hot',
                         help='Run the program and then rerun it with dump options enabled for the hottest methods',
                         action='store_true')
@@ -1151,7 +1341,12 @@ def profrecord(args):
     if not PerfOutput.is_supported() and not options.script:
         mx.abort('Linux perf is unsupported on this platform')
 
-    full_cmd = build_capture_command(files, options.command, options=options)
+    vm_extra_args = None
+    if options.with_bb_info:
+        assert vm_has_bb_dumping(options.command[0]), 'The given vm does not allow dumpling of basic block information!'
+        vm_extra_args = [f'-Dgraal.DumpPath={files.create_dump_dir()}', '-Dgraal.PrintBBInfo=true']
+
+    full_cmd = build_capture_command(files, options.command, extra_vm_args=vm_extra_args, options=options)
     convert_cmd = PerfOutput.perf_convert_binary_command(files)
     if options.script:
         print(mx.list_to_cmd_line(full_cmd))
@@ -1175,6 +1370,8 @@ def profrecord(args):
             dump_arguments = ['-Dgraal.Dump=:{}'.format(options.dump_level),
                               '-Dgraal.MethodFilter=' + method_filter,
                               '-Dgraal.DumpPath=' + dump_path]
+            if options.with_bb_info:
+                dump_arguments.append('-Dgraal.PrintBBInfo=true')
 
             # rerun the program with the new options capturing the dump in the experiment directory.
             # This overwrites the original profile information with a new profile that might be different
@@ -1212,7 +1409,7 @@ def profpackage(args):
                        action='store', nargs='*', default=[])
     options = parser.parse_args(args)
     if options.experiment:
-        options.experiments = list(options.experiment)
+        options.experiments = [options.experiment]
     for experiment in options.experiments:
         files = FlatExperimentFiles(directory=experiment)
         files.ensure_perf_output()
@@ -1294,6 +1491,7 @@ def profhot(args):
                        action=SuppressNoneArgs, nargs=OPTIONAL)
     options = parser.parse_args(args)
     files = ExperimentFiles.open(options)
+    files.ensure_perf_output()
     perf_data = PerfOutput(files)
     assembly = GeneratedAssembly(files)
     assembly.attribute_events(perf_data)
@@ -1324,6 +1522,53 @@ def profhot(args):
     if fp != sys.stdout:
         fp.close()
 
+@mx.command('mx', 'checkblocks', '[options]')
+@mx.suite_context_free
+def checkblocks(args):
+    """Check that block frequencies computed by graal match frequecies measured using pref"""
+    parser = ArgumentParser(description='Check that block frequencies computed by graal match frequecies measured using pref', prog='mx checkblocks')
+    parser.add_argument('-n', '--limit', help='Check block frequencies for the top n functions;', action='store', default=10, type=int)
+    parser.add_argument('-o', '--output', help='Write output to named file.  Writes to stdout by default.',
+                        action='store')
+    parser.add_argument('experiment',
+                       help='The directory containing the data files from the experiment',
+                       action='store')
+    parser.add_argument('-b', '--block_info',
+                       help='The directory containing the block information data files from the experiment if the given experiment does not have a graal_dump directory with basic block info files in it',
+                       action='store', default=None)
+    parser.add_argument('-r', '--raw',
+                        help='Write the raw frequencies of the basic blocks to the output',
+                        action='store_true')
+    options = parser.parse_args(args)
+    files = ExperimentFiles.open(options)
+    files.ensure_perf_output()
+    if not files.has_block_info():
+        mx.abort('No directory containing basic block information found!')
+    perf_data = PerfOutput(files)
+    assembly = GeneratedAssembly(files)
+    assembly.attribute_events(perf_data)
+    fp = sys.stdout
+    if options.output:
+        fp = open(options.output, 'w')
+
+    hot = assembly.top_methods(lambda x: x.total_period > 0 and x.basic_blocks)
+    hot = hot[:options.limit]
+
+    for code in hot:
+        print(f"for hot method {code.name} with {len(code.basic_blocks)} basic blocks, got {code.total_samples} samples", file=fp)
+        if code.basic_blocks:
+            code.check_basic_blocks_0_rel_freq(fp=fp)
+            code.check_basic_blocks_rel_freq_most(fp=fp)
+
+    if options.raw:
+        for code in hot:
+            print(f'\nBasic blocks info for {code.name}')
+            for b in code.basic_blocks:
+                print(f'id = {b.id:4}, graal freq = {b.freq:.6e}, samples = {b.samples:10}, period = {b.period:15}, period normalized = {b.period / code.total_period:.5f}')
+            print('')
+
+    if fp != sys.stdout:
+        fp.close()
 
 @mx.command('mx', 'profasm', '[options]')
 @mx.suite_context_free
@@ -1341,7 +1586,7 @@ def profasm(args):
     options = parser.parse_args(args)
     files = ExperimentFiles.open(options)
     assembly = GeneratedAssembly(files)
-    assembly.print_all()
+    assembly.print_all(threshold=0)
 
 
 class ProftoolProfiler(mx_benchmark.JVMProfiler):
@@ -1349,12 +1594,16 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
     Use perf on linux and a JVMTI agent to capture Java profiles.
     """
 
-    def __init__(self):
+    def __init__(self, with_bb_info=False):
         super(ProftoolProfiler, self).__init__()
         self.filename = None
+        self.with_bb_info = with_bb_info
 
     def name(self):
-        return "proftool"
+        if self.with_bb_info:
+            return "proftool-with-bb"
+        else:
+            return "proftool"
 
     def version(self):
         return "1.0"
@@ -1370,7 +1619,8 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
             return [], []
         directory = os.path.join(dump_path, self.filename)
         files = FlatExperimentFiles.create(directory, overwrite=True)
-        perf_cmd, vm_args = build_capture_args(files)
+        extra_vm_args = ["-Dgraal.PrintBBInfo=true", f"-Dgraal.DumpPath={files.create_dump_dir()}"] if self.with_bb_info else None
+        perf_cmd, vm_args = build_capture_args(files, extra_vm_args=extra_vm_args)
 
         # reset the next item name since it has just been consumed
         self.nextItemName = None
@@ -1378,6 +1628,12 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
 
     def setup(self, benchmarks, bmSuiteArgs):
         super(ProftoolProfiler, self).setup(benchmarks, bmSuiteArgs)
+        if self.with_bb_info:
+            # check that the vm have the PrintBBInfo option availible
+            vm = mx_benchmark.java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
+            if not vm_has_bb_dumping(vm=vm):
+                mx.abort("The vm does not allow dumping of basic block information.")
+
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         if self.nextItemName:
@@ -1389,5 +1645,6 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
 if PerfOutput.is_supported():
     try:
         mx_benchmark.register_profiler(ProftoolProfiler())
+        mx_benchmark.register_profiler(ProftoolProfiler(with_bb_info=True))
     except AttributeError:
         mx.warn('proftool unable to register profiler')
