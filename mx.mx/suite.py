@@ -188,6 +188,11 @@ suite = {
       "sha1" : "9dfbd99283078a9820c3797310a1d21e0a23e8f6",
     },
 
+    "SPOTBUGS_4.7.1" : {
+      "urls" : ["https://github.com/spotbugs/spotbugs/releases/download/4.7.1/spotbugs-4.7.1.zip"],
+      "sha1" : "6a2086b56b1d66cf8718a1d156847773766e37a7",
+    },
+
     "SIGTEST_1_2" : {
       "maven": {
         "groupId": "org.netbeans.tools",
