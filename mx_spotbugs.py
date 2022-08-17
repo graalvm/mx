@@ -32,6 +32,25 @@ import zipfile
 import shutil
 from os.path import join, exists
 
+def _max_jdk_version_supported(spotbugs_version):
+    """
+    Gets the max JDK version supported by `spotbugs_version`.
+
+    Information is derived from https://github.com/spotbugs/spotbugs/blob/master/CHANGELOG.md
+    """
+    v = mx.VersionSpec(spotbugs_version)
+    if v >= mx.VersionSpec('4.7.0'):
+        return 19
+    if v >= mx.VersionSpec('4.3.0'):
+        return 18
+    if v >= mx.VersionSpec('4.2.2'):
+        return 17
+    if v >= mx.VersionSpec('4.1.4'):
+        return 16
+    if v >= mx.VersionSpec('3.1.9'):
+        return 11
+    return 8
+
 def defaultFindbugsArgs():
     args = ['-textui', '-low', '-maxRank', '15']
     if mx.is_interactive():
@@ -62,10 +81,9 @@ def _should_test_project(p):
     if p.is_test_project():
         return False
     if p.javaCompliance >= '9':
-        # We no longer use p.suite.getMxCompatibility().filterFindbugsProjectsByJavaCompliance()
-        # as we don't want projects with Java compliance greater than 8 to ever prevent FindBugs
-        # being run on projects with compliance less than or equal to 8.
-        return False
+        compat = p.suite.getMxCompatibility()
+        if compat.spotbugs_limited_to_8():
+            return False
     return True
 
 def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs.jar'):
@@ -149,6 +167,10 @@ def _spotbugs(args, fbArgs, suite, projectsToTest, spotbugsVersion):
     outputDirs = [mx._cygpathU2W(p.output_dir()) for p in projectsToTest]
     javaCompliance = max([p.javaCompliance for p in projectsToTest])
     jdk = mx.get_jdk(javaCompliance)
+    max_jdk_version = _max_jdk_version_supported(spotbugsVersion)
+    if max_jdk_version < jdk.javaCompliance.value:
+        mx.warn(f'Spotbugs {spotbugsVersion} only runs on JDK {max_jdk_version} or lower, not {jdk}. Skipping {projectsToTest}')
+        return 0
 
     spotbugsResults = join(suite.dir, 'spotbugs.results')
 

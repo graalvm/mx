@@ -255,6 +255,12 @@ class MxCompatibility500(object):
         place it explicitly on the command line."""
         return False
 
+    def spotbugs_limited_to_8(self):
+        """
+        Specifies if running spotbugs limited to projects whose javaCompliance is JDK 8.
+        """
+        return True
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -582,6 +588,16 @@ class MxCompatibility531615(MxCompatibility53169):
     def jmh_dist_benchmark_extracts_add_opens_from_manifest(self):
         return True
 
+class MxCompatibility655(MxCompatibility531615):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.5.5")
+
+    def spotbugs_version(self):
+        return "4.7.1"
+
+    def spotbugs_limited_to_8(self):
+        return False
 
 def minVersion():
     _ensureCompatLoaded()
