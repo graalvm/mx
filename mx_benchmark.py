@@ -2157,7 +2157,7 @@ def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=Tr
             lines = manifest.splitlines()
     else:
         # may happen with exploded jar files
-        path = jarfile + "/META-INF/MANIFEST.MF"
+        path = os.path.join(jarfile, "META-INF", "MANIFEST.MF")
         mx.log(path)
         if os.path.exists(path):
             with open(path) as f:
