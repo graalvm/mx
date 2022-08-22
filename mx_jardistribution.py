@@ -1148,7 +1148,7 @@ class _Archive(object):
         if self.exploded:
             # write manifest even if exploded other components may depend on it
             if manifest_contents:
-                metainf = os.path.join(self.path, 'META-INF');
+                metainf = os.path.join(self.path, 'META-INF')
                 os.makedirs(metainf, exist_ok=True)
                 with open(os.path.join(metainf, 'MANIFEST.MF'), 'w') as f:
                     f.write(manifest_contents)
@@ -1156,7 +1156,7 @@ class _Archive(object):
             with zipfile.ZipFile(self.path, 'w', compression=compression) as zf:
                 if manifest_contents:
                     zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
-    
+
                 # Add explicit archive entries for directories and
                 # remove them from self.entries in the process
                 new_entries = {}
@@ -1167,7 +1167,7 @@ class _Archive(object):
                     else:
                         new_entries[name] = entry
                 self.entries = new_entries
-    
+
                 for dirpath, _, filenames in os.walk(self.staging_dir):
                     for filename in filenames:
                         if filename == self.jdk_8268216:
