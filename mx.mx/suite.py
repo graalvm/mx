@@ -645,7 +645,7 @@ suite = {
     "NINJA_SYNTAX" : {
       "packedResource" : True,
       "version" : "1.7.2",
-      "urls" : ["https://pypi.org/packages/source/n/ninja_syntax/ninja_syntax-{version}.tar.gz"],
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja_syntax-1.7.2.tar.gz"],
       "sha1" : "702ca2d0ae93841c5ab75e4d119b29780ec0b7d9"
     },
 

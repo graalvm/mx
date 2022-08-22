@@ -2149,10 +2149,20 @@ class JMHJarBasedBenchmarkSuiteBase(JMHBenchmarkSuiteBase):
 
 def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=True):
     vm_args = []
-    archive = zipfile.ZipFile(jarfile, "r")
-    if "META-INF/MANIFEST.MF" in archive.namelist():
-        manifest = archive.read("META-INF/MANIFEST.MF").decode('utf-8')
-        lines = manifest.splitlines()
+    lines = None
+    if os.path.isfile(jarfile):
+        archive = zipfile.ZipFile(jarfile, "r")
+        if "META-INF/MANIFEST.MF" in archive.namelist():
+            manifest = archive.read("META-INF/MANIFEST.MF").decode('utf-8')
+            lines = manifest.splitlines()
+    else:
+        # may happen with exploded jar files
+        path = os.path.join(jarfile, "META-INF", "MANIFEST.MF")
+        mx.log(path)
+        if os.path.exists(path):
+            with open(path) as f:
+                lines = f.readlines()
+    if lines:
         if add_opens:
             add_opens_entries = [line for line in lines if line.strip().startswith("Add-Opens:")]
             if len(add_opens_entries) > 1:
@@ -2171,6 +2181,7 @@ def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=Tr
                 raise ValueError("Manifest file of {} contains multiple Add-Exports lines!".format(jarfile))
             if add_exports_entries:
                 vm_args += ["--add-exports={}=ALL-UNNAMED".format(package.strip()) for package in add_exports_entries[-1][len("Add-Exports:"):].strip().split(" ")]
+
     return vm_args
 
 

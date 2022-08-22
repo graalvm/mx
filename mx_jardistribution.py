@@ -1138,41 +1138,49 @@ class _Archive(object):
         """
         self.finalize_staging_directory()
 
+        manifest_contents = None
+        if manifest:
+            version = manifest.pop('Manifest-Version', '1.0')
+            manifest_contents = 'Manifest-Version: ' + version + '\n'
+            for manifestKey, manifestValue in manifest.items():
+                manifest_contents = manifest_contents + manifestKey + ': ' + manifestValue + '\n'
+
         if self.exploded:
-            return
+            # write manifest even if exploded other components may depend on it
+            if manifest_contents:
+                metainf = os.path.join(self.path, 'META-INF')
+                os.makedirs(metainf, exist_ok=True)
+                with open(os.path.join(metainf, 'MANIFEST.MF'), 'w') as f:
+                    f.write(manifest_contents)
+        else:
+            with zipfile.ZipFile(self.path, 'w', compression=compression) as zf:
+                if manifest_contents:
+                    zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
 
-        with zipfile.ZipFile(self.path, 'w', compression=compression) as zf:
-            if manifest:
-                version = manifest.pop('Manifest-Version', '1.0')
-                manifest_contents = 'Manifest-Version: ' + version + '\n'
-                for manifestKey, manifestValue in manifest.items():
-                    manifest_contents = manifest_contents + manifestKey + ': ' + manifestValue + '\n'
-                zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
+                # Add explicit archive entries for directories and
+                # remove them from self.entries in the process
+                new_entries = {}
+                for name, entry in self.entries.items():
+                    if name == entry:
+                        assert entry.endswith('/'), entry
+                        zf.writestr(entry, '')
+                    else:
+                        new_entries[name] = entry
+                self.entries = new_entries
 
-            # Add explicit archive entries for directories and
-            # remove them from self.entries in the process
-            new_entries = {}
-            for name, entry in self.entries.items():
-                if name == entry:
-                    assert entry.endswith('/'), entry
-                    zf.writestr(entry, '')
-                else:
-                    new_entries[name] = entry
-            self.entries = new_entries
-
-            for dirpath, _, filenames in os.walk(self.staging_dir):
-                for filename in filenames:
-                    if filename == self.jdk_8268216:
-                        # Do not include placeholder file
-                        continue
-                    filepath = join(dirpath, filename)
-                    arcname = filepath[len(self.staging_dir) + 1:]
-                    with open(filepath, 'rb') as fp:
-                        contents = fp.read()
-                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(filepath))[:6])
-                    info.compress_type = compression
-                    info.external_attr = S_IMODE(os.stat(filepath).st_mode) << 16
-                    zf.writestr(info, contents)
+                for dirpath, _, filenames in os.walk(self.staging_dir):
+                    for filename in filenames:
+                        if filename == self.jdk_8268216:
+                            # Do not include placeholder file
+                            continue
+                        filepath = join(dirpath, filename)
+                        arcname = filepath[len(self.staging_dir) + 1:]
+                        with open(filepath, 'rb') as fp:
+                            contents = fp.read()
+                        info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(filepath))[:6])
+                        info.compress_type = compression
+                        info.external_attr = S_IMODE(os.stat(filepath).st_mode) << 16
+                        zf.writestr(info, contents)
 
     # Name of non-symlink dummy file required workaround JDK-8267583 and JDK-8268216.
     jdk_8268216 = 'JDK_8268216'
