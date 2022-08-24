@@ -40,10 +40,9 @@ import mx
 import mx_subst
 
 # ProGuard version used for stripping/unstripping
-_proguard_supported_jdk_version = 19
+_proguard_supported_jdk_version = 17
 
 _proguard_libs = {
-    'CORE': '9_0_3',
     'BASE':'7_2_0_beta1',
     'RETRACE':'7_2_0_beta1'
 }
