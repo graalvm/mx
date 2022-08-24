@@ -508,6 +508,33 @@ suite = {
       }
     },
 
+    "PROGUARD_BASE_7_1_0" : {
+      "sha1" : "e295aed38344b46315e0e76a4e3c5f6f28c6891c",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.1.0",
+      }
+    },
+
+    "PROGUARD_CORE_7_1_0" : {
+      "sha1" : "31f0a0122b30aa6c2d18cb62d6770731a957b28d",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-core",
+        "version" : "7.1.0",
+      }
+    },
+
+    "PROGUARD_RETRACE_7_1_0" : {
+      "sha1" : "77b606e91563c178d0ab821804d828988cd869d8",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-retrace",
+        "version" : "7.1.0",
+      }
+    },
+
     "PROGUARD_CORE_9_0_3" : {
       "sha1" : "8cfcd5081ffa946d4b166874579ad4fe6f6aba79",
       "maven" : {
