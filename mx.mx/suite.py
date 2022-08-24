@@ -535,15 +535,6 @@ suite = {
       }
     },
 
-    "PROGUARD_CORE_9_0_3" : {
-      "sha1" : "8cfcd5081ffa946d4b166874579ad4fe6f6aba79",
-      "maven" : {
-        "groupId" : "com.guardsquare",
-        "artifactId" : "proguard-core",
-        "version" : "9.0.3",
-      }
-    },
-
     "LOG4J_API_2_15_0" : {
       "sha1" : "4a5aa7e55a29391c6f66e0b259d5189aa11e45d0",
       "maven" : {
