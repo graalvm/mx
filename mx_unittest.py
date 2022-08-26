@@ -310,6 +310,35 @@ def add_config_participant(p):
     _config_participants.append(p)
 
 
+class MxUnittestConfig:
+    def __init__(self, name, force_cp=False):
+        self.name = name
+        self.force_cp = force_cp
+
+    def apply(self, config):
+        return config
+
+    def processDeps(self, deps):
+        pass
+
+# the default config that applies unittest participants
+class DefaultMxUnittestConfig(MxUnittestConfig):
+    def __init__(self):
+        super(DefaultMxUnittestConfig, self).__init__("default")
+
+    def apply(self, config):
+        for p in _config_participants:
+            config = p(config)
+        return config
+
+
+_unittest_configs = dict()
+def register_unittest_config(cfg):
+    name = cfg.name
+    assert not name in _unittest_configs, 'duplicate unittest config'
+    _unittest_configs[name] = cfg
+
+
 def get_config_participants_copy():
     """
     Returns a copy of the currently registered config participants. A config participant is a
@@ -347,8 +376,23 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         if '-JUnitGCAfterTest' in junit_args:
             prefixArgs.append('-XX:-DisableExplicitGC')
 
+        unittestConfig = None
+        for d in unittestDeps:
+            if hasattr(d, 'unittestConfig'):
+                cfg = d.unittestConfig
+                if unittestConfig is None:
+                    unittestConfig = cfg
+                elif unittestConfig != cfg:
+                    mx.abort("conflicting unittest configs " + unittestConfig + " and " + cfg)
+        if unittestConfig is None:
+            unittestConfig = DefaultMxUnittestConfig()
+        else:
+            unittestConfig = _unittest_configs[unittestConfig]
+
+        unittestConfig.processDeps(unittestDeps)
+
         jdk = vmLauncher.jdk()
-        force_cp = '-JUnitForceClassPath' in junit_args
+        force_cp = unittestConfig.force_cp or '-JUnitForceClassPath' in junit_args
         vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk, force_cp=force_cp)
 
         # suppress menubar and dock when running on Mac
@@ -374,8 +418,7 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             mainClassArgs = junit_args + ['@' + mx._cygpathU2W(testfile)]
 
         config = (vmArgs, mainClass, mainClassArgs)
-        for p in _config_participants:
-            config = p(config)
+        config = unittestConfig.apply(config)
         vmLauncher.launcher(*config)
 
     vmLauncher = _vm_launcher
