@@ -18077,7 +18077,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.6.1")   # Revert ProGuard JDK19
+version = VersionSpec("6.6.2")   # Print one line per repository instead of one line per suite for sversions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
