@@ -16960,9 +16960,12 @@ def _sversions_rev(rev, isdirty, with_color):
 def sversions(args):
     """print working directory revision for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sversions')
+    parser.add_argument('--print-repositories', action='store_true', help='Print one line per repository instead of one line per suite')
+    parser.add_argument('--json', action='store_true', help='Print repositories in JSON format')
     parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
     args = parser.parse_args(args)
     with_color = args.color
+    repos_dict = {}
     visited = set()
 
     def _sversions_import_visitor(s, suite_import, **extra_args):
@@ -16978,8 +16981,26 @@ def sversions(args):
             print(_sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name + ' ' + s.vc_dir)
         s.visit_imports(_sversions_import_visitor)
 
+    def _get_repos_dict(s, suite_import):
+        if s.dir in visited:
+            return
+        visited.add(s.dir)
+
+        if s.vc is not None:
+            repos_dict[s.vc.default_pull(s.vc_dir)] = s.vc.parent(s.vc_dir)
+
+        s.visit_imports(lambda _, si: _get_repos_dict(suite(si.name), si))
+
     if not isinstance(primary_suite(), MXSuite):
-        _sversions(primary_suite(), None)
+        if args.print_repositories:
+            _get_repos_dict(primary_suite(), None)
+            if args.json:
+                print(json.dumps(repos_dict, sort_keys=True, indent=4, separators=(',', ': ')))
+            else:
+                for repo, commit in repos_dict.items():
+                    print(commit + " " + repo)
+        else:
+            _sversions(primary_suite(), None)
 
 ### ~~~~~~~~~~~~~ Java Compiler
 
@@ -18058,7 +18079,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.6.1")   # Revert ProGuard JDK19
+version = VersionSpec("6.6.2")   # Print one line per repository instead of one line per suite for sversions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
