@@ -16965,8 +16965,6 @@ def sversions(args):
     parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
     args = parser.parse_args(args)
     with_color = args.color
-    print_repositories = args.print_repositories
-    print_json = args.json
     repos_dict = {}
     visited = set()
 
@@ -16984,15 +16982,19 @@ def sversions(args):
         s.visit_imports(_sversions_import_visitor)
 
     def _get_repos_dict(s, suite_import):
-        if s.vc is None or s.vc.default_pull(s.vc_dir) in repos_dict:
-            return repos_dict
-        repos_dict[s.vc.default_pull(s.vc_dir)] = s.vc.parent(s.vc_dir)
+        if s.dir in visited:
+            return
+        visited.add(s.dir)
+
+        if s.vc is not None:
+            repos_dict[s.vc.default_pull(s.vc_dir)] = s.vc.parent(s.vc_dir)
+
         s.visit_imports(lambda _, si: _get_repos_dict(suite(si.name), si))
 
     if not isinstance(primary_suite(), MXSuite):
-        if print_repositories:
+        if args.print_repositories:
             _get_repos_dict(primary_suite(), None)
-            if print_json:
+            if args.json:
                 print(json.dumps(repos_dict, sort_keys=True, indent=4, separators=(',', ': ')))
             else:
                 for repo, commit in repos_dict.items():
