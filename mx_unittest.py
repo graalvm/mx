@@ -599,6 +599,10 @@ def unittest(args, test_report_tags=None):
         if make_test_report:
             import mx_gate
             return mx_gate.make_test_report(test_results, tags=test_report_tags)
+    except UnicodeDecodeError as e:
+        mx.log(f"Cannot decode '{test_results}'")
+        delete_test_results = False
+        raise e
     finally:
         if delete_test_results:
             os.unlink(test_results)

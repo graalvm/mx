@@ -29,11 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.runner.Description;
-import org.junit.runner.notification.Failure;
 import org.junit.runner.Result;
-import java.util.Formatter;
-
-import java.util.Locale;
+import org.junit.runner.notification.Failure;
 
 public class JsonResultsDecorator extends MxRunListenerDecorator {
     private final PrintStream output;
@@ -129,12 +126,15 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
         hasContent = true;
     }
 
+    /**
+     * Escapes non-ascii printable characters as well as special JSON characters
+     * (https://tools.ietf.org/html/rfc4627#section-2.5) in {@code s}.
+     */
     private static String escape(String s) {
         // try to do nothing
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            // see https://tools.ietf.org/html/rfc4627#section-2.5
-            if (c < 0x20 || c == '\\' || c == '"') {
+            if (c < 0x20 || c == '\\' || c == '"' || c > 0x7F) {
                 return escape(s, i);
             }
         }
@@ -171,8 +171,8 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
                     sb.append("\\r");
                     break;
                 default:
-                    if (c < 0x20) {
-                        new Formatter(sb, Locale.US).format("\\u%04x", (int) c);
+                    if (c < 0x20 || c > 0x7F) {
+                        sb.append(String.format("\\u%04x", (int) c));
                     } else {
                         sb.append(c);
                     }

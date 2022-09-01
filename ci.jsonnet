@@ -11,6 +11,9 @@ local versions = {
     binutils: "2.34",
     capstone: "4.0.2",
 };
+local catch_files = common.catch_files + [
+  "Cannot decode '(?P<filename>[^']+)'"
+];
 
 # this uses <os>_<arch> or <os> depending on what field is available in 'common.json'
 # if 'common.json' is migrated to jsonnet, we could simplify this by providing reasonable defaults there
@@ -38,6 +41,8 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     with_name(prefix):: self + {
         name: "%s-jdk%s-%s-%s" % [prefix, java_release, os, arch],
     },
+
+    catch_files: catch_files,
 
     python_version: "3",
     targets: ["gate"],
@@ -214,10 +219,11 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     specVersion: "3",
 
     # Overlay
-    overlay: "35accb484712f25209a2bafd6cf699162a302c78",
+    overlay: "ed35b353e2a3596ed44063d56d4c29a93e584c72",
 
     # For use by overlay
     versions:: versions,
+    catch_files:: catch_files,
 
     builds: [
         with("linux",   "amd64", 17).gate,
