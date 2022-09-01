@@ -261,6 +261,22 @@ class MxCompatibility500(object):
         """
         return True
 
+    def proguard_supported_jdk_version(self):
+        """
+        Returns the maximum JDK version supported by ProGuard.
+        """
+        return 17
+
+    def proguard_libs(self):
+        """
+        Returns the list of ProGuard libraries.
+        """
+        return {
+            'BASE': '7_2_0_beta1',
+            'RETRACE': '7_2_0_beta1',
+        }
+
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -588,6 +604,7 @@ class MxCompatibility531615(MxCompatibility53169):
     def jmh_dist_benchmark_extracts_add_opens_from_manifest(self):
         return True
 
+
 class MxCompatibility655(MxCompatibility531615):
     @staticmethod
     def version():
@@ -598,6 +615,23 @@ class MxCompatibility655(MxCompatibility531615):
 
     def spotbugs_limited_to_8(self):
         return False
+
+
+class MxCompatibility670(MxCompatibility655):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.7.0")
+
+    def proguard_supported_jdk_version(self):
+        return 19
+
+    def proguard_libs(self):
+        return {
+            'CORE': '9_0_3',
+            'BASE': '7_2_0_beta1',
+            'RETRACE': '7_2_0_beta1',
+        }
+
 
 def minVersion():
     _ensureCompatLoaded()

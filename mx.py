@@ -18079,7 +18079,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.6.4")   # GR-40788
+version = VersionSpec("6.7.0")   # ProGuard JDK19 - second attempt
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
