@@ -566,6 +566,15 @@ suite = {
       "dependencies" : ["LOG4J_CORE_2_15_0", "LOG4J_API_2_15_0"],
     },
 
+    "PROGUARD_CORE_9_0_3" : {
+      "sha1" : "8cfcd5081ffa946d4b166874579ad4fe6f6aba79",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-core",
+        "version" : "9.0.3",
+      }
+    },
+
     "PROGUARD_RETRACE_7_2_0_beta1" : {
       "sha1" : "b49442f6e2eb905b1b812316d68b4fd811046f32",
       "maven" : {

@@ -39,13 +39,6 @@ from stat import S_IMODE
 import mx
 import mx_subst
 
-# ProGuard version used for stripping/unstripping
-_proguard_supported_jdk_version = 17
-
-_proguard_libs = {
-    'BASE':'7_2_0_beta1',
-    'RETRACE':'7_2_0_beta1'
-}
 
 class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     """
@@ -125,7 +118,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
-            self.buildDependencies.extend((l.suite.name + ':' + l.name for l in mx.classpath_entries('PROGUARD_BASE_' + _proguard_libs['BASE'])))
+            self.buildDependencies.extend((l.suite.name + ':' + l.name for l in mx.classpath_entries('PROGUARD_BASE_' + self.suite.getMxCompatibility().proguard_libs()['BASE'])))
 
     def post_init(self):
         # paths are initialized late to be able to figure out the max jdk
@@ -372,7 +365,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         assert self.is_stripped()
 
         jdk = mx.get_jdk(tag='default')
-        if jdk.javaCompliance.value > _proguard_supported_jdk_version and mx.get_opts().proguard_cp is None:
+        if jdk.javaCompliance.value > self.suite.getMxCompatibility().proguard_supported_jdk_version() and mx.get_opts().proguard_cp is None:
             mx.abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
 
         mx.logv('Stripping {}...'.format(self.name))
@@ -383,7 +376,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         # add mapping files
         assert all((os.path.isabs(f) for f in self.stripMapping))
 
-        proguard = ['-cp', _get_proguard_cp(), 'proguard.ProGuard']
+        proguard = ['-cp', _get_proguard_cp(self.suite), 'proguard.ProGuard']
 
         prefix = [
             '-dontusemixedcaseclassnames', # https://sourceforge.net/p/proguard/bugs/762/
@@ -627,13 +620,13 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def get_declaring_module_name(self):
         return mx.get_module_name(self)
 
-def _get_proguard_cp():
+def _get_proguard_cp(suite=mx.primary_suite()):
     """
     Gets the class path required to run ProGuard (either the main app or the retrace app).
     """
     proguard_cp = mx.get_opts().proguard_cp
     if not proguard_cp:
-        proguard_cp = mx.classpath(['PROGUARD_' + name + '_' + version for name, version in _proguard_libs.items()])
+        proguard_cp = mx.classpath(['PROGUARD_' + name + '_' + version for name, version in suite.getMxCompatibility().proguard_libs().items()])
     return proguard_cp
 
 class _StagingGuard:
