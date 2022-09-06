@@ -276,6 +276,12 @@ class MxCompatibility500(object):
             'RETRACE': '7_2_0_beta1',
         }
 
+    def strict_verify_file_path(self):
+        """
+        Returns whether we use strict verify of ci file paths or not
+        """
+        return False
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -631,6 +637,15 @@ class MxCompatibility670(MxCompatibility655):
             'BASE': '7_2_0_beta1',
             'RETRACE': '7_2_0_beta1',
         }
+
+
+class MxCompatibility680(MxCompatibility670):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.8.0")
+
+    def strict_verify_file_path(self):
+        return True
 
 
 def minVersion():
