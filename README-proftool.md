@@ -18,11 +18,12 @@ imported to make the commands available through mx.
 ### Recording a profile
 
 There are currently 2 ways to capture profiles.  The direct way is to use the `profrecord` command
-which takes a full Java command line as an argument and launches it with extra arguments
-to collect the data.
+which takes either a full Java command line or a Truffle language launcher command line as arguments
+and launches it with extra arguments to collect the data.
 
 ```
 $ mx profrecord -E fop /home/graal/oraclejdk1.8.0_291-jvmci-21.1-b03/bin/java -jar dacapo.jar fop -n 56
+$ mx profrecord -E myprofile /.../graalvm/bin/js ...
 ```
 
 The required argument `-E <name>` specifies the directory that will contain the output the files.  It's an error if it
@@ -156,20 +157,20 @@ Hot generated code:
     0.07%   7877: "SplayTree.splay_#1" OptimizedCallTarget.profiledPERoot(Object[])
 ```
 
-OptimizedCallTarget is the Java method that is used by the partial evaluator when compiling Truffle methods and the name
-in quotes should correspond to the compiled JavaScript function.  More support is planned for future versions of prftool. 
+`OptimizedCallTarget.profiledPERoot` is the Java method that is used by the partial evaluator when compiling Truffle methods and the name
+in quotes should correspond to the compiled JavaScript function.  More support is planned for future versions of proftool.
 
 Other options to profhot give more control over how this is printed.  It's possible to strip package names from the output
-using the '-s' option which can make the output more compact.  The debug information associated with a pc can be
+using the '-s' option which can make the output more compact.  The debug information associated with a `pc` can be
 quite deep which will overwhelm the actual assembly output.  The '-c' option can be used to control the number of frames printed,
 so passing `0` will hide the frame information completely and `1` will show just deepest inline frame.
 
 ### Checking basic block relative frequencies
 
 Proftool has a functionality to check the relative frequencies of the basic blocks that the graal compiler computes during its transformations.
-It works by telling the compiler to dump the relative frequencies of blocks during the code emittion. To enable it, use the debug option `-Dgraal.PrintBBInfoPath` with the path where to dump the basic block information. During compilation the compiler will create a new file in the provided directory (if provided otherwise nothing is dumped) for each compilation and write the block information in it. To simplify its use, proftool can automotically manage this option. By using the `-B` or `--with-basic-block-info` option of the `mx profrecord` command, it will create a directory called `block_info` inside the experiment directory and tell the compiler to dump the block information into it. Similarly with `mx benchmarks`, one can use the `proftool-with-blocks` profiler to enable the dumping of block information in the experiment directory.
+It works by telling the compiler to dump the relative frequencies of blocks during the code emittion. To enable it, use the debug option `-Dgraal.PrintBBInfoPath` with the path where to dump the basic block information. During compilation the compiler will create a new file in the provided directory (if provided otherwise nothing is dumped) for each compilation and write the block information in it. To simplify its use, proftool can automatically manage this option. By using the `-B` or `--with-basic-block-info` option of the `mx profrecord` command, it will create a directory called `block_info` inside the experiment directory and tell the compiler to dump the block information into it. Similarly with `mx benchmarks`, one can use the `proftool-with-blocks` profiler to enable the dumping of block information in the experiment directory.
 
 To check the blocks relative frequencies, use the `mx checkblocks` command. It requires a path to a proftool experiment directory. If the `block_info` directory is missing from this experiment or if an other one should be used, it can be provided using the `-b` or `--block-info` options. Otherwise it will use the `block_info` directory from the proftool experiment. Checkblocks firstly counts the number of perf sample and their total period for each blocks. Then for the hottest methods, it performs two kind of checks. 
 - The first one computes the relative frequency of each block with respect to the first block and compares it with the relative frequency from the compiler. Note that if the first block didn't got any sample this check won't be done and a warning will be printed.
-- The second check computes and compares the relative frequency of each block with respect to the most frequent block. Note that if the hottest block from the compiler and from perf aren't the same the check won't be performed and a warning will be printed. Additionally if the 5 hottest blocks from the compiler and from perf are disjoint sets then something is probabily wrong so an error is printed.
+- The second check computes and compares the relative frequency of each block with respect to the most frequent block. Note that if the hottest block from the compiler and from perf aren't the same the check won't be performed and a warning will be printed. Additionally if the 5 hottest blocks from the compiler and from perf are disjoint sets then something is probably wrong so an error is printed.
 These checks are not perfect and so to manually look at the data, checkblocks can print it using the `-r` or `--raw` flag. 

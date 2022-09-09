@@ -1448,10 +1448,16 @@ def build_capture_args(files, extra_vm_args=None, options=None):
 
 
 def build_capture_command(files, command_line, extra_vm_args=None, options=None):
-    java_cmd = command_line[0]
-    java_args = command_line[1:]
+    executable = command_line[0]
+    user_args = command_line[1:]
     perf_cmd, vm_args = build_capture_args(files, extra_vm_args, options)
-    full_cmd = perf_cmd + [java_cmd] + vm_args + java_args
+
+    # Transform JVM options for Truffle language launchers
+    if os.path.exists(executable) and re.search(r'/languages/\w+/bin/', os.path.realpath(executable)):
+        for i in range(len(vm_args)):
+            vm_args[i] = '--vm.' + vm_args[i][1:]
+
+    full_cmd = perf_cmd + [executable] + vm_args + user_args
     return full_cmd
 
 
