@@ -18096,7 +18096,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.8.0")   # GR-39227
+version = VersionSpec("6.9.0")   # Support Truffle languages launchers for "mx proftool"
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
