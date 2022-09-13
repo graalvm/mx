@@ -553,6 +553,33 @@ suite = {
       }
     },
 
+    "LOG4J_API_2_17_1" : {
+      "sha1" : "d771af8e336e372fb5399c99edabe0919aeaf5b2",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-api",
+        "version" : "2.17.1",
+      }
+    },
+
+    "LOG4J_CORE_2_17_1" : {
+      "sha1" : "779f60f3844dadc3ef597976fcb1e5127b1f343d",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-core",
+        "version" : "2.17.1",
+      }
+    },
+
+    "ORG_JSON_20211205" : {
+      "sha1" : "47032dcf2f69880f07dab3dc60b4b0ad97318308",
+      "maven" : {
+        "groupId" : "org.json",
+        "artifactId" : "json",
+        "version" : "20211205",
+      }
+    },
+
     # As of 8.0.0, the versioning of ProGuardCORE is unlinked from ProguardBASE and ProguardRETRACE
     # since ProGuardCORE is a general library used by other projects.
     # https://github.com/Guardsquare/proguard/issues/132#issuecomment-887610759
@@ -572,7 +599,8 @@ suite = {
         "groupId" : "com.guardsquare",
         "artifactId" : "proguard-core",
         "version" : "9.0.3",
-      }
+      },
+      "dependencies" : ["LOG4J_CORE_2_17_1", "LOG4J_API_2_17_1"],
     },
 
     "PROGUARD_RETRACE_7_2_0_beta1" : {
@@ -593,6 +621,31 @@ suite = {
         "version" : "7.2.0-beta1",
       },
       "dependencies" : ["PROGUARD_CORE_8_0_0"],
+    },
+
+    "PROGUARD_RETRACE_7_3_0_beta1" : {
+      "sha1" : "fee932ba149e8193ae0de7537535b17467027336",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-retrace",
+        "version" : "7.3.0-beta1",
+      },
+      "dependencies" : ["PROGUARD_BASE_7_3_0_beta1"],
+    },
+
+    "PROGUARD_BASE_7_3_0_beta1" : {
+      "sha1" : "18c2e2bdb58f348d402066ed99e4f6be9f2ae3b4",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.3.0-beta1",
+      },
+      "dependencies" : [
+        "PROGUARD_CORE_9_0_3",
+        "LOG4J_CORE_2_17_1",
+        "LOG4J_API_2_17_1",
+        "ORG_JSON_20211205"
+      ],
     },
 
     "NINJA" : {

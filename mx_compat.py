@@ -648,6 +648,18 @@ class MxCompatibility680(MxCompatibility670):
         return True
 
 
+class MxCompatibility691(MxCompatibility680):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.9.1")
+
+    def proguard_libs(self):
+        return {
+            'BASE': '7_3_0_beta1',
+            'RETRACE': '7_3_0_beta1',
+        }
+
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]

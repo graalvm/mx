@@ -18096,7 +18096,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.0")   # Support Truffle languages launchers for "mx proftool"
+version = VersionSpec("6.9.1")   # Update ProGuard libs to 7.3.0-beta1
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
