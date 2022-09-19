@@ -585,6 +585,7 @@ class DefaultNativeProject(NinjaProject):
     """
     include = 'include'
     src = 'src'
+    _isObjcSelectorWorkaroundNeeded = None
 
     _kinds = dict(
         static_lib=dict(
@@ -631,6 +632,7 @@ class DefaultNativeProject(NinjaProject):
 
     @property
     def cflags(self):
+        super_cflags = super(DefaultNativeProject, self).cflags
         default_cflags = []
         if self._kind == self._kinds['shared_lib']:
             default_cflags += dict(
@@ -649,7 +651,22 @@ class DefaultNativeProject(NinjaProject):
             default_cflags += [add_debug_prefix(_get_target_jdk().home)]
             default_cflags += ['-gno-record-gcc-switches']
 
-        return default_cflags + super(DefaultNativeProject, self).cflags
+            if mx.get_os() == 'darwin':
+                # Workaround for GR-41115
+                #
+                # > ld: Assertion failed: (dylib != NULL), function classicOrdinalForProxy, file LinkEditClassic.hpp
+                #
+                # Apple introduced an optimization for msgSend in ObjC in Xcode14. Alas this seems to trigger
+                # a linker assert (see above) under certain conditions, that happens in SubstrateV. Thus disable
+                # it for now if we build with a Xcode version that knowns this flag.
+                if self._isObjcSelectorWorkaroundNeeded is None:
+                    rc = mx.run('clang -E -fno-objc-msgsend-selector-stubs /dev/null'.split(' '), out=mx.OutputCapture(), err=mx.OutputCapture(), nonZeroIsFatal=False)
+                    self._isObjcSelectorWorkaroundNeeded = rc == 0
+
+                if self._isObjcSelectorWorkaroundNeeded and '-ObjC' in super_cflags:
+                    default_cflags += ['-fno-objc-msgsend-selector-stubs']
+
+        return default_cflags + super_cflags
 
     @property
     def ldflags(self):
@@ -679,7 +696,7 @@ class DefaultNativeProject(NinjaProject):
         return self._source['files'].get('.S', [])
 
     def generate_manifest(self, path):
-        unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S'})
+        unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S', '.swp'})
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
