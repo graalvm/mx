@@ -657,8 +657,8 @@ class DefaultNativeProject(NinjaProject):
                 # > ld: Assertion failed: (dylib != NULL), function classicOrdinalForProxy, file LinkEditClassic.hpp
                 #
                 # Apple introduced an optimization for msgSend in ObjC in Xcode14. Alas this seems to trigger
-                # a linker assert (see above) under certain conditions, that happens in SubstrateV. Thus disable
-                # it for now if we build with a Xcode version that knowns this flag.
+                # a linker assert (see above) under certain conditions, that happens in SubstrateVM. Thus disable
+                # it for now if we build with a Xcode version that knows this flag.
                 if self._isObjcSelectorWorkaroundNeeded is None:
                     rc = mx.run('clang -E -fno-objc-msgsend-selector-stubs /dev/null'.split(' '), out=mx.OutputCapture(), err=mx.OutputCapture(), nonZeroIsFatal=False)
                     self._isObjcSelectorWorkaroundNeeded = rc == 0
