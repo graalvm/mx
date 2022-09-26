@@ -18096,7 +18096,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.2")   # Add Xcode14 ObjC build workaround
+version = VersionSpec("6.9.3")   # Ninja: Use relativ path for project root
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
