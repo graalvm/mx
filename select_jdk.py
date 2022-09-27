@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-import os, tempfile, pipes
+import os, tempfile, shlex
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
 from io import StringIO
@@ -112,7 +112,7 @@ def get_shell_commands(args, jdk, extra_jdks):
             path = [e if e != replace else jdk_bin for e in path]
         else:
             path = [jdk_bin] + path
-        path = [pipes.quote(e) for e in path]
+        path = [shlex.quote(e) for e in path]
         print(setvar_format % ('PATH', get_PATH_sep(args.shell).join(path)), file=shell_commands)
     return shell_commands.getvalue().strip()
 
