@@ -8259,7 +8259,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         super(NativeBuildTask, self).__init__(args, project)
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
-        elif (is_darwin() and is_continuous_integration()) and not _opts.cpu_count:
+        elif (is_darwin() and get_arch() == 'amd64' and is_continuous_integration()) and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             self.parallelism = 1
         self._newestOutput = None
@@ -18096,7 +18096,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.3")   # Ninja: Use relativ path for project root
+version = VersionSpec("6.9.4")   # Remove workaround for GR-38863 ("No such file or directory on macOS") on AArch64
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
