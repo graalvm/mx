@@ -18095,7 +18095,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.4")   # Remove workaround for GR-38863 ("No such file or directory on macOS") on AArch64
+version = VersionSpec("6.9.5") # [GR-41390] Replace pipes library use with shlex
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
