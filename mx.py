@@ -52,7 +52,6 @@ from functools import cmp_to_key
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 from xml.dom.minidom import parseString as minidomParseString
 import shutil, re
-import pipes
 import difflib
 import urllib
 import glob
@@ -7965,7 +7964,7 @@ class CompilerDaemon(Daemon):
         args = [jdk.java] + jvmArgs + cpArgs + [mainClass] + verbose + jobs
         start_new_session, creationflags = _get_new_progress_group_args()
         if _opts.verbose:
-            log(' '.join(map(pipes.quote, args)))
+            log(' '.join(map(shlex.quote, args)))
         p = subprocess.Popen(args, start_new_session=start_new_session, creationflags=creationflags, stdout=subprocess.PIPE) #pylint: disable=subprocess-popen-preexec-fn
 
         # scan stdout to capture the port number
@@ -9868,7 +9867,7 @@ class GitConfig(VC):
     def git_command(self, vcdir, args, abortOnError=False, quiet=True):
         args = ['git', '--no-pager'] + args
         if not quiet:
-            print(' '.join(map(pipes.quote, args)))
+            print(' '.join(map(shlex.quote, args)))
         out = OutputCapture()
         err = OutputCapture()
         rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out, err=err)
@@ -9876,7 +9875,7 @@ class GitConfig(VC):
             return out.data
         else:
             if abortOnError:
-                abort("Running '{}' in '{}' returned '{}'.\nStdout:\n{}Stderr:\n{}".format(' '.join(map(pipes.quote, args)), vcdir, rc, out.data, err.data))
+                abort("Running '{}' in '{}' returned '{}'.\nStdout:\n{}Stderr:\n{}".format(' '.join(map(shlex.quote, args)), vcdir, rc, out.data, err.data))
             return None
 
     def add(self, vcdir, path, abortOnError=True):
@@ -10206,7 +10205,7 @@ class GitConfig(VC):
                     cmd.append(refspec)
             if lock:
                 cmd = self._locked_cmd(vcdir, cmd)
-            logvv(' '.join(map(pipes.quote, cmd)))
+            logvv(' '.join(map(shlex.quote, cmd)))
             return subprocess.check_call(cmd, cwd=vcdir)
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -11273,7 +11272,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
     action = 'Installing' if repo == maven_local_repository() else 'Deploying'
     log('{} {}:{}...'.format(action, groupId, artifactId))
     if dryRun:
-        logv(' '.join((pipes.quote(t) for t in cmd)))
+        logv(' '.join((shlex.quote(t) for t in cmd)))
     else:
         run_maven(cmd)
 
@@ -13312,7 +13311,7 @@ def _get_new_progress_group_args():
     return start_new_session, creationflags
 
 def list_to_cmd_line(args):
-    return _list2cmdline(args) if is_windows() else ' '.join(pipes.quote(arg) for arg in args)
+    return _list2cmdline(args) if is_windows() else ' '.join(shlex.quote(arg) for arg in args)
 
 def _list2cmdline(seq):
     """
@@ -13414,11 +13413,11 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 working_directory = _original_directory
             s += '# Directory: ' + os.path.abspath(working_directory) + os.linesep
         if _opts.very_verbose:
-            s += 'env -i ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env.items()]) + ' \\' + os.linesep
+            s += 'env -i ' + ' '.join([n + '=' + shlex.quote(v) for n, v in env.items()]) + ' \\' + os.linesep
         else:
             env_diff = [(k, env[k]) for k in env if k not in _original_environ]
             if env_diff:
-                s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
+                s += 'env ' + ' '.join([n + '=' + shlex.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
         s += cmd_line
         if _opts.verbose:
             log(s)
@@ -13519,7 +13518,7 @@ def quiet_run(args):
     parsed_args = parser.parse_args(args)
 
     with open(parsed_args.output_file, 'w') as out:
-        out.write('$ {}\n'.format(' '.join(pipes.quote(c) for c in parsed_args.cmd)))
+        out.write('$ {}\n'.format(' '.join(shlex.quote(c) for c in parsed_args.cmd)))
         out.flush()
         retcode = run(parsed_args.cmd, nonZeroIsFatal=False, out=out, err=out)
 
@@ -16703,7 +16702,7 @@ def scloneimports(args):
         abort(args.source + ' is not a directory')
 
     if args.nonKWArgs:
-        warn("Some extra arguments were ignored: " + ' '.join((pipes.quote(a) for a in args.nonKWArgs)))
+        warn("Some extra arguments were ignored: " + ' '.join((shlex.quote(a) for a in args.nonKWArgs)))
 
     if args.manual:
         warn("--manual argument is deprecated and has been ignored")
@@ -17866,7 +17865,7 @@ _mx_args = []
 _mx_command_and_args = []
 
 def shell_quoted_args(args):
-    args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
+    args_string = ' '.join([shlex.quote(str(arg)) for arg in args])
     if args_string != '':
         args_string = ' ' + args_string
     return args_string

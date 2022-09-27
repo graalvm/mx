@@ -26,7 +26,7 @@
 #
 
 import os
-import pipes
+import shlex
 import re
 import urllib.parse
 from os.path import join, exists, isabs, basename, dirname
@@ -256,7 +256,7 @@ def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
     output = (git.git_command(vc_dir, cmd, abortOnError=abortOnError) or '').strip()
     if regex is not None and re.match(regex, output, re.MULTILINE) is None:
         if abortOnError:
-            mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
+            mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(shlex.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
         return None
     return output
 
