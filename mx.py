@@ -58,7 +58,7 @@ import urllib
 import glob
 import filecmp
 import json
-from collections import OrderedDict, namedtuple, deque
+from collections import OrderedDict, namedtuple, deque, ChainMap
 from datetime import datetime, timedelta
 from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
@@ -6597,6 +6597,9 @@ Common causes:
 class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
     pass
 
+class NISupportDistribution(LayoutTARDistribution):  # pylint: disable=too-many-ancestors
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, **kw_args):
+        super(NISupportDistribution, self).__init__(suite=suite, name=name, deps=deps, layout=layout, path=path, platformDependent=platformDependent, theLicense=theLicense, **ChainMap({'archive_factory': NISupportComponentArchiver}, kw_args))
 
 class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):
     def __init__(self, *args, **kw_args):
@@ -15465,6 +15468,38 @@ class NullArchiver(Archiver):
 
     def __exit__(self, exc_type, exc_value, traceback):
         pass
+
+class NISupportComponentArchiver(Archiver):
+    def __init__(self, path, **kw_args):
+        """
+        :type path: str
+        :type kind: str
+        :type reset_user_group: bool
+        :type duplicates_action: str
+        :type context: object
+        """
+        super(NISupportComponentArchiver, self).__init__(path, **kw_args)
+        self.filelist = []
+
+    def add(self, filename, archive_name, provenance):
+        self.filelist.append('{}'.format(archive_name))
+        super(NISupportComponentArchiver, self).add(filename, archive_name, provenance)
+
+    def add_str(self, data, archive_name, provenance):
+        self.filelist.append('{}'.format(archive_name))
+        super(NISupportComponentArchiver, self).add_str(data, archive_name, provenance)
+
+    def add_link(self, target, archive_name, provenance):
+        self.filelist.append('{}'.format(archive_name))
+        super(NISupportComponentArchiver, self).add_link(target, archive_name, provenance)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        _filelist_str = '\n'.join(self.filelist)
+        _filelist_arc_name = 'native-image.filelist'
+
+        self.add_str(_filelist_str, _filelist_arc_name, '{}<-string:{}'.format(_filelist_str, _filelist_arc_name))
+
+        super(NISupportComponentArchiver, self).__exit__(exc_type, exc_value, traceback)
 
 def make_unstrip_map(dists):
     """
