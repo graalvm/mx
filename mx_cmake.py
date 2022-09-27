@@ -98,10 +98,9 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
     def cmake_config(self):
         return [CMakeNinjaProject.config_entry(k, v) for k, v in sorted(self._cmake_config_raw.items())]
 
-    def generate_manifest(self, path, extra_cmake_config=None):
+    def generate_manifest(self, output_dir, filename, extra_cmake_config=None):
         source_dir = self.source_dirs()[0]
-        out_dir = os.path.dirname(path)
-        cmakefile = os.path.join(out_dir, 'CMakeCache.txt')
+        cmakefile = os.path.join(output_dir, 'CMakeCache.txt')
         if os.path.exists(cmakefile):
             # remove cache file if it exist
             os.remove(cmakefile)
@@ -117,9 +116,10 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         # cmake will always create build.ninja - there is nothing we can do about it ATM
         cmdline = ["-G", "Ninja", source_dir] + cmake_config
         CMakeNinjaProject.check_cmake()
-        CMakeNinjaProject.run_cmake(cmdline, silent=self.silent, cwd=out_dir, log_error=True)
+        CMakeNinjaProject.run_cmake(cmdline, silent=self.silent, cwd=output_dir, log_error=True)
         # move the build.ninja to the temporary path (just move it back later ... *sigh*)
-        shutil.copyfile(os.path.join(out_dir, mx_native.Ninja.default_manifest), path)
+        path = os.path.join(output_dir, filename)
+        shutil.copyfile(os.path.join(output_dir, mx_native.Ninja.default_manifest), path)
         return True
 
     def _build_task(self, target_arch, args):
