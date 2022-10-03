@@ -800,7 +800,7 @@ def get_jacoco_dest_file():
     return JACOCO_EXEC or mx.get_opts().jacoco_dest_file
 
 def get_jacoco_agent_path(resolve):
-    return mx.library('JACOCOAGENT_0.8.7_CUSTOM', True).get_path(resolve)
+    return mx.library('JACOCOAGENT_0.8.8').get_path(resolve)
 
 def get_jacoco_agent_args(jacoco=None):
     '''
@@ -812,21 +812,24 @@ def get_jacoco_agent_args(jacoco=None):
 
     if jacoco in ('on', 'append'):
         excludes, includes = _jacoco_excludes_includes()
-        with tempfile.NamedTemporaryFile(prefix="jacoco_excludes", mode="w", delete=False) as excludesfile:
-            # Make sure to remove temporary file when program exits
-            atexit.register(os.remove, excludesfile.name)
-            excludesfile.write(':'.join(excludes))
-            excludesfile.flush()
-            agentOptions = {
-                            'append' : 'true' if jacoco == 'append' else 'false',
-                            'inclbootstrapclasses' : 'true',
-                            'includes' : ':'.join(includes),
-                            'excludesfile' : excludesfile.name,
-                            'destfile' : get_jacoco_dest_file(),
-            }
-        return ['-javaagent:' + get_jacoco_agent_path(True) + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
-    return None
+        agent_options = ','.join((k + '=' + v for k, v in {
+            'append' : 'true' if jacoco == 'append' else 'false',
+            'inclbootstrapclasses' : 'true',
+            'includes' : ':'.join(includes),
+            'excludes' : ':'.join(excludes),
+            'destfile' : get_jacoco_dest_file(),
+        }.items()))
 
+        agent_path = get_jacoco_agent_path(True)
+        agent_args = f'-javaagent:{agent_path}={agent_options}'
+        # Use java arg file to handle long command lines
+        with tempfile.NamedTemporaryFile(prefix="jacoco_agent", mode="w", delete=False) as args_file:
+            # Make sure to remove temporary file when program exits
+            atexit.register(os.remove, args_file.name)
+            args_file.write(agent_args)
+            args_file.flush()
+            return [f'@{args_file.name}']
+    return None
 
 def jacocoreport(args, exec_files=None):
     """Create a JaCoCo coverage report
