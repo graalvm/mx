@@ -902,6 +902,8 @@ def _jacocoreport(args, exec_files=None):
         if jdk.javaCompliance > '8':
             os.unlink(jacaco_java_args_file)
 
+        lcov_info = abspath(join(args.output_directory, 'lcov.info'))
+
         # Current working directory to be used when running genhtml
         genhtml_cwd = None
 
@@ -921,9 +923,7 @@ def _jacocoreport(args, exec_files=None):
                 elif repo_dir_parent != genhtml_cwd and args.format == 'lcov+html':
                     mx.abort(f'Local repositories {genhtml_cwd_repo} and {repo_dir} do not share a common parent directory as required by --relativize-paths')
 
-            lcov_info = abspath(join(args.output_directory, 'lcov.info'))
             lcov_info_tmp = lcov_info + '.tmp'
-
             with open(lcov_info) as fp_in, open(lcov_info_tmp, 'w') as fp_out:
                 for line in fp_in:
                     if line.startswith("SF:"):
@@ -947,15 +947,15 @@ def _jacocoreport(args, exec_files=None):
                 # of the primary suite's repo root.
                 genhtml_cwd = dirname(mx.primary_suite().vc_dir)
 
-            def fixup_lcov(lcov_info):
+            def copy_lcov(lcov, fp_out):
                 """
-                Processes the `lcov_info` file to make file paths use the separator for the current OS
-                as well as to remove coverage data for files that do not exist (e.g., a file that has
-                subsequently been deleted or renamed since coverage data was gathered).
+                Copies the LCOV data in the `lcov` file to `fp`. In the copying process:
+                  - file paths are transformed to use the separator for the current OS.
+                  - coverage data is removed for files that do not exist (e.g., a file
+                    that has subsequently been deleted or renamed since coverage data
+                    was gathered).
                 """
-                tmp = lcov_info + '.tmp'
-                updated = False
-                with open(lcov_info) as fp_in, open(tmp, 'w') as fp_out:
+                with open(lcov) as fp_in:
                     skipping = False
                     line_no = 1
                     for line in fp_in:
@@ -970,30 +970,27 @@ def _jacocoreport(args, exec_files=None):
                             if not isabs(sf_path):
                                 full_path = join(genhtml_cwd, sf_path)
                             if not exists(full_path):
-                                mx.warn(f'{lcov_info}:{line_no}: {full_path} does not exist - skipping')
+                                mx.warn(f'{lcov}:{line_no}: {full_path} does not exist - skipping')
                                 skipping = True
-                                updated = True
                         elif line.startswith('end_of_record\n'):
                             skipping = False
 
                         if not skipping:
                             fp_out.write(line)
                         line_no += 1
-                if updated:
-                    atexit.register(os.remove, tmp)
-                    return tmp
-                else:
-                    os.remove(tmp)
-                    return lcov_info
 
-            lcovs = [lcov_info]
-            if args.extra_lcov_files:
-                for e in args.extra_lcov_files.split(','):
-                    lcovs.extend((abspath(p) for p in glob.glob(e)))
+            genhtml_lcov_info = abspath(join(args.output_directory, 'genhtml_lcov.info'))
+            if exists(genhtml_lcov_info):
+                os.remove(genhtml_lcov_info)
+            shutil.copy(lcov_info, genhtml_lcov_info)
 
-            lcovs = [fixup_lcov(lcov_info) for lcov_info in lcovs]
+            if args.extra_lcov:
+                with open(genhtml_lcov_info, 'a') as fp:
+                    for e in args.extra_lcov.split(','):
+                        for lcov in (abspath(p) for p in glob.glob(e)):
+                            copy_lcov(lcov, fp)
 
-            genhtml_args = ['--legend', '-o', abspath(args.output_directory)] + lcovs
+            genhtml_args = ['--legend', '-o', abspath(args.output_directory), genhtml_lcov_info]
             mx.run(['genhtml'] + genhtml_args, cwd=genhtml_cwd)
 
     if not args.omit_excluded:
