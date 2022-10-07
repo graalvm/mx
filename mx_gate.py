@@ -30,7 +30,9 @@ import atexit
 import zipfile
 import urllib
 import hashlib
-from os.path import join, exists, basename, abspath
+import shutil
+import glob
+from os.path import join, exists, basename, abspath, dirname, isabs
 from argparse import ArgumentParser
 from datetime import datetime, timezone, timedelta
 
@@ -322,7 +324,7 @@ def gate(args):
     parser.add_argument('--jacoco-omit-excluded', action='store_true', help='omit excluded files from jacoco report')
     parser.add_argument('--jacoco-omit-src-gen', action='store_true', help='omit excluded files from jacoco report')
     parser.add_argument('--jacoco-format', default=None, help='Jacoco output format', choices=['html', 'xml', 'lcov'])
-    parser.add_argument('--jacoco-generic-paths', action='store_true', help='Replace LCOV output source files paths with one starting with the project name e.g graal/compiler/...')
+    parser.add_argument('--jacoco-relativize-paths', '--jacoco-generic-paths', action='store_true', help='Make source file paths in LCOV repo based (i.e. <repo name>/<repo path>)')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
@@ -679,8 +681,8 @@ def _run_gate(cleanArgs, args, tasks):
             jacoco_args = ['--omit-excluded'] + jacoco_args
         if args.jacoco_format:
             jacoco_args = ['--format', args.jacoco_format] + jacoco_args
-        if args.jacoco_generic_paths:
-            jacoco_args += ['--generic-paths']
+        if args.jacoco_relativize_paths:
+            jacoco_args += ['--relativize-paths']
         if args.jacoco_omit_src_gen:
             jacoco_args += ['--exclude-src-gen']
         mx.command_function('jacocoreport')(jacoco_args)
@@ -846,18 +848,19 @@ def jacocoreport(args, exec_files=None):
 
 
 def _jacocoreport(args, exec_files=None):
+    parser = ArgumentParser(prog='mx jacocoreport')
+    parser.add_argument('--format', help='Export format', default='html', choices=['html', 'xml', 'lcov', 'lcov+html'])
+    parser.add_argument('--omit-excluded', action='store_true', help='Omit excluded files from report')
+    parser.add_argument('--exclude-src-gen', action='store_true', help='Omit generated source files from report')
+    parser.add_argument('--relativize-paths', '--generic-paths', action='store_true', help='Make source file paths in LCOV repo based (i.e. <repo name>/<repo path>)')
+    parser.add_argument('--extra-lcov', help='Comma separated files or globs with existing LCOV output that should also be processed when --format=lcov+html')
+    parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
+    args = parser.parse_args(args)
+
     dist_name = "MX_JACOCO_REPORT"
     mx.command_function("build")(['--dependencies', dist_name])
     dist = mx.distribution(dist_name)
     jdk = mx.get_jdk(dist.javaCompliance)
-
-    parser = ArgumentParser(prog='mx jacocoreport')
-    parser.add_argument('--format', help='Export format (HTML, XML or LCOV)', default='html', choices=['html', 'xml', 'lcov'])
-    parser.add_argument('--omit-excluded', action='store_true', help='Omit excluded files from report')
-    parser.add_argument('--exclude-src-gen', action='store_true', help='Omit generated source files from report')
-    parser.add_argument('--generic-paths', action='store_true', help='Replace LCOV output source files paths with one starting with the project name e.g graal/compiler/...')
-    parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
-    args = parser.parse_args(args)
 
     # list of strings of the form "project-dir:binary-dir"
     includedirs = []
@@ -885,7 +888,8 @@ def _jacocoreport(args, exec_files=None):
             for exec_file in exec_files:
                 files_arg += ['--in', exec_file]
 
-        jacaco_java_args = ['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--out',
+        # Generate report
+        jacaco_java_args = ['-jar', dist.path, '--out',
                  args.output_directory, '--format', args.format] + files_arg + (extra_args or []) + sorted(includedirs)
         jacaco_java_args_file = join(os.getcwd(), 'jacoco_command_args.txt')
         if jdk.javaCompliance > '8':
@@ -898,24 +902,99 @@ def _jacocoreport(args, exec_files=None):
         if jdk.javaCompliance > '8':
             os.unlink(jacaco_java_args_file)
 
-        if args.format == "lcov" and args.generic_paths:
-            generic_paths_replacements = {}
+        # Current working directory to be used when running genhtml
+        genhtml_cwd = None
+
+        # Transform file paths in LCOV to repo based paths
+        if args.format.startswith('lcov') and args.relativize_paths:
+            genhtml_cwd_repo = None
+            relativize_map = {}
             for s in mx.suites():
-                base, _ = os.path.splitext(basename(urllib.parse.urlparse(s.vc.default_pull(s.vc_dir)).path))
-                generic_paths_replacements[s.vc_dir] = base
+                repo_name, _ = os.path.splitext(basename(urllib.parse.urlparse(s.vc.default_pull(s.vc_dir)).path))
+                repo_dir = s.vc_dir
+                relativize_map[repo_dir] = repo_name
 
-            updated_lcov = []
-            with open(os.path.join(args.output_directory, 'lcov.info')) as f:
-                for line in f:
+                repo_dir_parent = dirname(repo_dir)
+                if genhtml_cwd is None:
+                    genhtml_cwd_repo = repo_dir
+                    genhtml_cwd = repo_dir_parent
+                elif repo_dir_parent != genhtml_cwd and args.format == 'lcov+html':
+                    mx.abort(f'Local repositories {genhtml_cwd_repo} and {repo_dir} do not share a common parent directory as required by --relativize-paths')
+
+            lcov_info = abspath(join(args.output_directory, 'lcov.info'))
+            lcov_info_tmp = lcov_info + '.tmp'
+
+            with open(lcov_info) as fp_in, open(lcov_info_tmp, 'w') as fp_out:
+                for line in fp_in:
                     if line.startswith("SF:"):
-                        for path, project in generic_paths_replacements.items():
-                            if path in line:
-                                line = line.replace(path, project)
+                        sf_path = line[3:]
+                        for repo_dir, repo_name in relativize_map.items():
+                            if sf_path.startswith(repo_dir):
+                                line = line.replace(repo_dir, repo_name, 1)
                                 break
-                    updated_lcov.append(line)
+                    fp_out.write(line)
+            shutil.move(lcov_info_tmp, lcov_info)
 
-            with open(os.path.join(args.output_directory, 'lcov.info'), 'w') as f:
-                f.writelines(updated_lcov)
+        if args.format == 'lcov+html':
+            import subprocess
+            try:
+                subprocess.run('genhtml --version'.split(), check=True)
+            except OSError as e:
+                mx.abort(f'The genhtml utility appears to be missing (error: {e}). You can probably fix this with a package manager (e.g., `brew install lcov` or `dnf install lcov`)')
+
+            if genhtml_cwd is None:
+                # If no CWD has been determined yet, use the parent directory
+                # of the primary suite's repo root.
+                genhtml_cwd = dirname(mx.primary_suite().vc_dir)
+
+            def fixup_lcov(lcov_info):
+                """
+                Processes the `lcov_info` file to make file paths use the separator for the current OS
+                as well as to remove coverage data for files that do not exist (e.g., a file that has
+                subsequently been deleted or renamed since coverage data was gathered).
+                """
+                tmp = lcov_info + '.tmp'
+                updated = False
+                with open(lcov_info) as fp_in, open(tmp, 'w') as fp_out:
+                    skipping = False
+                    line_no = 1
+                    for line in fp_in:
+                        if line.startswith("SF:"):
+                            if os.sep == '/':
+                                if '\\' in line: line = line.replace('\\', '/')
+                            else:
+                                if '/' in line: line = line.replace('/', '\\')
+
+                            sf_path = line[3:].strip()
+                            full_path = sf_path
+                            if not isabs(sf_path):
+                                full_path = join(genhtml_cwd, sf_path)
+                            if not exists(full_path):
+                                mx.warn(f'{lcov_info}:{line_no}: {full_path} does not exist - skipping')
+                                skipping = True
+                                updated = True
+                        elif line.startswith('end_of_record\n'):
+                            skipping = False
+
+                        if not skipping:
+                            fp_out.write(line)
+                        line_no += 1
+                if updated:
+                    atexit.register(os.remove, tmp)
+                    return tmp
+                else:
+                    os.remove(tmp)
+                    return lcov_info
+
+            lcovs = [lcov_info]
+            if args.extra_lcov_files:
+                for e in args.extra_lcov_files.split(','):
+                    lcovs.extend((abspath(p) for p in glob.glob(e)))
+
+            lcovs = [fixup_lcov(lcov_info) for lcov_info in lcovs]
+
+            genhtml_args = ['--legend', '-o', abspath(args.output_directory)] + lcovs
+            mx.run(['genhtml'] + genhtml_args, cwd=genhtml_cwd)
 
     if not args.omit_excluded:
         _run_reporter()
