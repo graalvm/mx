@@ -28,13 +28,15 @@ import os, re, time, json
 import tempfile
 import atexit
 import zipfile
-import urllib
+import urllib.parse
+import urllib.request
 import hashlib
 import shutil
 import glob
 from os.path import join, exists, basename, abspath, dirname, isabs
 from argparse import ArgumentParser
 from datetime import datetime, timezone, timedelta
+from html.parser import HTMLParser
 
 import mx
 import mx_javacompliance
@@ -853,7 +855,7 @@ def _jacocoreport(args, exec_files=None):
     parser.add_argument('--omit-excluded', action='store_true', help='Omit excluded files from report')
     parser.add_argument('--exclude-src-gen', action='store_true', help='Omit generated source files from report')
     parser.add_argument('--relativize-paths', '--generic-paths', action='store_true', help='Make source file paths in LCOV repo based (i.e. <repo name>/<repo path>)')
-    parser.add_argument('--extra-lcov', help='Comma separated files or globs with existing LCOV output that should also be processed when --format=lcov+html')
+    parser.add_argument('--extra-lcov', help='Comma separated urls, files or globs with existing LCOV output that should also be processed when --format=lcov+html')
     parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
     args = parser.parse_args(args)
 
@@ -940,44 +942,44 @@ def _jacocoreport(args, exec_files=None):
             try:
                 subprocess.run('genhtml --version'.split(), check=True)
             except OSError as e:
-                mx.abort(f'The genhtml utility appears to be missing (error: {e}). You can probably fix this with a package manager (e.g., `brew install lcov` or `dnf install lcov`)')
+                mx.abort(f'The genhtml utility appears to be missing (error: {e}) and needs to be installed (e.g., `brew install lcov` or `dnf install lcov`)')
 
             if genhtml_cwd is None:
                 # If no CWD has been determined yet, use the parent directory
                 # of the primary suite's repo root.
                 genhtml_cwd = dirname(mx.primary_suite().vc_dir)
 
-            def copy_lcov(lcov, fp_out):
+            def copy_lcov(source, fp_in, fp_out):
                 """
-                Copies the LCOV data in the `lcov` file to `fp`. In the copying process:
+                Copies the LCOV data from `fp_in` originating from `source` to `fp_out`.
+                In the copying process:
                   - file paths are transformed to use the separator for the current OS.
                   - coverage data is removed for files that do not exist (e.g., a file
                     that has subsequently been deleted or renamed since coverage data
                     was gathered).
                 """
-                with open(lcov) as fp_in:
-                    skipping = False
-                    line_no = 1
-                    for line in fp_in:
-                        if line.startswith("SF:"):
-                            if os.sep == '/':
-                                if '\\' in line: line = line.replace('\\', '/')
-                            else:
-                                if '/' in line: line = line.replace('/', '\\')
+                skipping = False
+                line_no = 1
+                for line in fp_in:
+                    if line.startswith("SF:"):
+                        if os.sep == '/':
+                            if '\\' in line: line = line.replace('\\', '/')
+                        else:
+                            if '/' in line: line = line.replace('/', '\\')
 
-                            sf_path = line[3:].strip()
-                            full_path = sf_path
-                            if not isabs(sf_path):
-                                full_path = join(genhtml_cwd, sf_path)
-                            if not exists(full_path):
-                                mx.warn(f'{lcov}:{line_no}: {full_path} does not exist - skipping')
-                                skipping = True
-                        elif line.startswith('end_of_record\n'):
-                            skipping = False
+                        sf_path = line[3:].strip()
+                        full_path = sf_path
+                        if not isabs(sf_path):
+                            full_path = join(genhtml_cwd, sf_path)
+                        if not exists(full_path):
+                            mx.warn(f'{source}:{line_no}: {full_path} does not exist - skipping')
+                            skipping = True
+                    elif line.startswith('end_of_record\n'):
+                        skipping = False
 
-                        if not skipping:
-                            fp_out.write(line)
-                        line_no += 1
+                    if not skipping:
+                        fp_out.write(line)
+                    line_no += 1
 
             genhtml_lcov_info = abspath(join(args.output_directory, 'genhtml_lcov.info'))
             if exists(genhtml_lcov_info):
@@ -987,10 +989,48 @@ def _jacocoreport(args, exec_files=None):
             if args.extra_lcov:
                 with open(genhtml_lcov_info, 'a') as fp:
                     for e in args.extra_lcov.split(','):
-                        for lcov in (abspath(p) for p in glob.glob(e)):
-                            copy_lcov(lcov, fp)
+                        if e.startswith('https://') or e.startswith('http://'):
+                            def download_and_cache(url):
+                                tmpdir = tempfile.gettempdir()
+                                d = hashlib.sha1()
+                                d.update(url.encode())
+                                url_hash = d.hexdigest()
+                                cache = join(mx.ensure_dir_exists(join(tmpdir, 'mx_jacocoreport_cache')), url_hash)
+                                if not exists(cache):
+                                    with open(cache, 'wb') as cache_fp:
+                                        cache_fp.write(urllib.request.urlopen(url).read())
+                                        mx.log(f'cached {url} in {cache}')
+                                    with open(cache + '.url', 'w') as cache_fp:
+                                        print(url, file=cache_fp)
+                                return cache
 
-            genhtml_args = ['--legend', '-o', abspath(args.output_directory), genhtml_lcov_info]
+                            urls = []
+                            if e.endswith('/'):
+                                class AnchorParser(HTMLParser):
+                                    def handle_starttag(self, tag, attrs):
+                                        if tag == 'a':
+                                            urls.extend((e + value for key, value in attrs if key == 'href' and value != '../'))
+                                parser = AnchorParser()
+                                data = urllib.request.urlopen(e).read().decode()
+                                parser.feed(data)
+                            else:
+                                urls = [e]
+                            for url in urls:
+                                if url.endswith('.lcov'):
+                                    with open(download_and_cache(url)) as lcov_in:
+                                        copy_lcov(url, lcov_in, fp)
+                                elif url.endswith('.lcov.gz'):
+                                    import gzip
+                                    with gzip.open(download_and_cache(url), 'rt') as lcov_in:
+                                        copy_lcov(url, lcov_in, fp)
+                                else:
+                                    mx.log(f'unsupported URL {url} - skipping')
+                        else:
+                            for lcov in (abspath(p) for p in glob.glob(e)):
+                                with open(lcov) as fp_in:
+                                    copy_lcov(lcov, fp_in, fp)
+
+            genhtml_args = ['--legend', '--prefix', genhtml_cwd, '-o', abspath(args.output_directory), genhtml_lcov_info]
             mx.run(['genhtml'] + genhtml_args, cwd=genhtml_cwd)
 
     if not args.omit_excluded:
