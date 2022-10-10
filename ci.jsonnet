@@ -136,8 +136,8 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
         local base_dir = "./fetch-jdk-test-folder",
 
         run: [
-            [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-11", "--to", base_dir, "--alias", "jdk-11"],
-            [exe(base_dir + "/jdk-11/bin/java"), "-version"],
+            [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-19", "--to", base_dir, "--alias", "jdk-19"],
+            [exe(base_dir + "/jdk-19/bin/java"), "-version"],
             [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-17", "--to", base_dir, "--alias", "jdk-17"],
             [exe(base_dir + "/jdk-17/bin/java"), "-version"],
         ],
@@ -219,25 +219,25 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     specVersion: "3",
 
     # Overlay
-    overlay: "ed35b353e2a3596ed44063d56d4c29a93e584c72",
+    overlay: "b83990a5afcd4d1e527125c572ecd7e060748f05",
 
     # For use by overlay
     versions:: versions,
     catch_files:: catch_files,
 
     builds: [
-        with("linux",   "amd64", 17).gate,
-        with("linux",   "amd64", 17).fetchjdk_test,
-        with("linux",   "amd64", 17).bisect_test,
-        with("windows", "amd64", 17).gate,
-        with("darwin",  "amd64", 17, timelimit="25:00").gate,
-        with("linux",   "amd64", 17).bench_test,
-        with("linux",   "amd64", 17).jmh_test,
-        with("linux",   "amd64", 17, timelimit="20:00").proftool_test,
-        with("linux",   "amd64", 11, timelimit="20:00").build_truffleruby,
-        with("linux",   "amd64", 11, timelimit="20:00").build_graalvm_ce,
-        with("linux",   "amd64", 17).mx_unit_test,
-        with("linux",   "amd64", 17).version_update_check,
-        with("linux",   "amd64", 17).post_merge_tag_version,
+        with("linux",   "amd64", 19).gate,
+        with("linux",   "amd64", 19).fetchjdk_test,
+        with("linux",   "amd64", 19).bisect_test,
+        with("windows", "amd64", 19).gate,
+        with("darwin",  "amd64", 19, timelimit="25:00").gate,
+        with("linux",   "amd64", 19).bench_test,
+        with("linux",   "amd64", 19).jmh_test,
+        with("linux",   "amd64", 19, timelimit="20:00").proftool_test,
+        with("linux",   "amd64", 19, timelimit="20:00").build_truffleruby,
+        with("linux",   "amd64", 19, timelimit="20:00").build_graalvm_ce,
+        with("linux",   "amd64", 19).mx_unit_test,
+        with("linux",   "amd64", 19).version_update_check,
+        with("linux",   "amd64", 19).post_merge_tag_version,
     ]
 }
