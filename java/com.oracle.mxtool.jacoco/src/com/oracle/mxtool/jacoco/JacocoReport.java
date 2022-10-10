@@ -159,6 +159,7 @@ public class JacocoReport {
                 createXmlReport(reportDirectory, bundles);
                 System.out.println("OK");
                 break;
+            case "lcov+html":
             case "lcov":
                 System.out.print("Creating LCOV report... ");
                 createLcovReport(reportDirectory, bundles);

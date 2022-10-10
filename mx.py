@@ -18097,7 +18097,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.6") # [GR-41493] update to JaCoCo 0.8.8
+version = VersionSpec("6.9.7") # [GR-41609] add support to jacacoreport for running genhtml
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
