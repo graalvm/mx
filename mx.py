@@ -2318,7 +2318,14 @@ class Suite(object):
         """:rtype : Distribution"""
         assert not '>' in name
         context = 'distribution ' + name
-        niResourcesFilelist = attrs.pop('niResourcesFilelist', False)
+        resourcesFilelist = attrs.pop('resourcesFilelist', None)
+        if resourcesFilelist:
+            if isinstance(resourcesFilelist, str):
+                if not re.match("^([a-zA-Z0-9\\-\\._])+$", resourcesFilelist):
+                    raise abort('The value \"{}\" of attribute \"resourcesFilelist\" of distribution {} is not a valid file name.'.format(resourcesFilelist, name))
+            else:
+                raise abort('The value of attribute \"resourcesFilelist\" of distribution {} is not a string.'.format(name))
+
         className = attrs.pop('class', None)
         native = attrs.pop('native', False)
         theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
@@ -2332,6 +2339,9 @@ class Suite(object):
         path = attrs.pop('path', None)
         layout = attrs.pop('layout', None)
 
+        def create_resource_filelist_archiver(path, **_kw_args):
+            return ResourcesFilelistArchiver(path, resourcesFilelist, **_kw_args)
+
         def create_layout(default_type):
             layout_type = attrs.pop('type', default_type)
             if layout_type == 'tar':
@@ -2342,8 +2352,8 @@ class Suite(object):
                 layout_class = LayoutZIPDistribution
             else:
                 raise abort("Unknown layout distribution type: {}".format(layout_type), context=context)
-            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, archive_factory=(NIResourcesFilelistArchiver if niResourcesFilelist else None), **attrs)
-        if niResourcesFilelist:
+            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, archive_factory=(create_resource_filelist_archiver if resourcesFilelist else None), **attrs)
+        if resourcesFilelist:
             if className:
                 raise abort('A custom class {} is not allowed for distribution {} because it defines a native image resources filelist'.format(className, name))
             if layout is None:
@@ -6080,7 +6090,7 @@ class LayoutDistribution(AbstractDistribution):
                 yield (destination, source_dict)
 
     def _install_source(self, source, output, destination, archiver):
-        file_list_only = isinstance(archiver, NIResourcesFilelistArchiver)
+        file_list_only = isinstance(archiver, ResourcesFilelistArchiver)
         clean_destination = destination
         if destination.startswith('./'):
             clean_destination = destination[2:]
@@ -15485,8 +15495,8 @@ class NullArchiver(Archiver):
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
-class NIResourcesFilelistArchiver(Archiver):
-    def __init__(self, path, **kw_args):
+class ResourcesFilelistArchiver(Archiver):
+    def __init__(self, path, filelistName, **kw_args):
         """
         :type path: str
         :type kind: str
@@ -15494,7 +15504,8 @@ class NIResourcesFilelistArchiver(Archiver):
         :type duplicates_action: str
         :type context: object
         """
-        super(NIResourcesFilelistArchiver, self).__init__(path, **kw_args)
+        super(ResourcesFilelistArchiver, self).__init__(path, **kw_args)
+        self.filelistName = filelistName
         self.filelist = []
 
     def add(self, filename, archive_name, provenance):
@@ -15502,19 +15513,18 @@ class NIResourcesFilelistArchiver(Archiver):
 
     def add_str(self, data, archive_name, provenance):
         self.filelist.append(archive_name)
-        if archive_name == 'native-image-resources.filelist':
-            super(NIResourcesFilelistArchiver, self).add_str(data, archive_name, provenance)
+        if archive_name == self.filelistName:
+            super(ResourcesFilelistArchiver, self).add_str(data, archive_name, provenance)
 
     def add_link(self, target, archive_name, provenance):
         self.filelist.append(archive_name)
 
     def __exit__(self, exc_type, exc_value, traceback):
         _filelist_str = '\n'.join(self.filelist)
-        _filelist_arc_name = 'native-image-resources.filelist'
 
-        self.add_str(_filelist_str, _filelist_arc_name, '{}<-string:{}'.format(_filelist_str, _filelist_arc_name))
+        self.add_str(_filelist_str, self.filelistName, '{}<-string:{}'.format(_filelist_str, self.filelistName))
 
-        super(NIResourcesFilelistArchiver, self).__exit__(exc_type, exc_value, traceback)
+        super(ResourcesFilelistArchiver, self).__exit__(exc_type, exc_value, traceback)
 
 def make_unstrip_map(dists):
     """
