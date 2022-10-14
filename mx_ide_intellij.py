@@ -311,10 +311,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
                 if module_files_only:
                     declared_modules.add(project_name)
-
                     modules_path = os.path.join(mx.primary_suite().dir, '.idea', 'modules.xml')
-                    parent_dir = os.path.join(path, os.pardir)
-                    module_file_path = "$PROJECT_DIR$/" + os.path.relpath(os.path.relpath(moduleFile, parent_dir), "$PROJECT_DIR$")
+                    module_file_path = mx.relpath_or_absolute(moduleFile, mx.primary_suite().dir, prefix='$PROJECT_DIR$')
 
                     # If we are not in primary suite, and we want to add some other module to
                     # modules.xml - we have a problem, since that file has already been closed.
