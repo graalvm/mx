@@ -18097,7 +18097,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.8") # [GR-41847] Default to JDT=builtin in the "build with ECJ" gate task.
+version = VersionSpec("6.9.9") # [GR-39028] Collect docs accross repo
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

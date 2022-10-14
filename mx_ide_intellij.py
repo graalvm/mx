@@ -31,8 +31,6 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
-from xml.etree.ElementTree import SubElement
-
 import os
 import sys
 # TODO use defusedexpat?
@@ -214,6 +212,13 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
     project_dir = s.dir
     ideaProjectDirectory = join(project_dir, '.idea')
 
+    # supported types for intellij modules
+    module_types = {'ruby': 'RUBY_MODULE',
+                    'python': 'PYTHON_MODULE',
+                    'web': 'WEB_MODULE',
+                    'docs': 'DOCS_MODULE',
+                    'ci': 'CI_MODULE'}
+
     modulesXml = mx.XMLDoc()
     if not module_files_only and not s.isBinarySuite():
         mx.ensure_dir_exists(ideaProjectDirectory)
@@ -259,11 +264,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
                 moduleXml = mx.XMLDoc()
                 moduleXml.open('module',
-                               attributes={'type': {'ruby': 'RUBY_MODULE',
-                                                    'python': 'PYTHON_MODULE',
-                                                    'web': 'WEB_MODULE',
-                                                    'docs': 'DOCS_MODULE',
-                                                    'ci': 'CI_MODULE'}.get(module_type, 'UKNOWN_MODULE'),
+                               attributes={'type': module_types.get(module_type, 'UKNOWN_MODULE'),
                                            'version': '4'})
                 moduleXml.open('component',
                                attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
@@ -309,19 +310,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 moduleFile = join(path, project_name + '.iml')
                 mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
-                if module_files_only:
-                    declared_modules.add(project_name)
-
-                    modules_path = os.path.join(mx.primary_suite().dir, '.idea', 'modules.xml')
-                    parent_dir = os.path.join(path, os.pardir)
-                    module_file_path = "$PROJECT_DIR$/" + os.path.relpath(os.path.relpath(moduleFile, parent_dir), "$PROJECT_DIR$")
-
-                    # If we are not in primary suite, and we want to add some other module to
-                    # modules.xml - we have a problem, since that file has already been closed.
-                    # So we need to reopen it, parse it again, and append the module in question.
-                    add_intellij_module(modules_path, module_file_path)
-
-                else:
+                if not module_files_only:
                     declared_modules.add(project_name)
                     moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                     modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
@@ -340,24 +329,24 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
     s.visit_imports(collect_suites)
 
     root_projects_paths = set([suite.vc_dir for suite in visited_suites.values() if suite.vc_dir])
-    ci_search_paths = [suite.dir for suite in visited_suites.values()]
-    ci_search_paths.extend(root_projects_paths)
-    ci_search_paths = set(ci_search_paths)
+    resource_search_paths = [suite.dir for suite in visited_suites.values()]
+    resource_search_paths.extend(root_projects_paths)
+    resource_search_paths = set(resource_search_paths)
 
-    for ci_search_path in ci_search_paths:
-        ci_directory = join(ci_search_path, "ci")
-        if isdir(ci_directory):
-            ci_name = basename(ci_search_path)
+    def create_intellij_module(resource_path, module_type):
+        directory_path = join(resource_path, module_type)
+        if isdir(directory_path):
+            resource_name = basename(resource_path)
             project_name = ''
-            if ci_search_path not in root_projects_paths:
-                project_name = basename(dirname(ci_search_path)) + '_'
+            if resource_path not in root_projects_paths:
+                project_name = basename(dirname(resource_path)) + '_'
 
-            # the "ci" prefix groups all files into ci module
-            module_name = f"ci.{project_name}{ci_name}"
+            # the type is used as prefix in order to group all files into one module
+            module_name = f"{module_type}.{project_name}{resource_name}"
             module_file_name = module_name + ".iml"
 
             moduleXml = mx.XMLDoc()
-            moduleXml.open('module', attributes={'type': 'CI_MODULE', 'version': '4'})
+            moduleXml.open('module', attributes={'type': module_types[module_type], 'version': '4'})
             moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
 
             moduleXml.element('exclude-output')
@@ -367,13 +356,17 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             moduleXml.close('component')
             moduleXml.close('module')
 
-            moduleFile = join(ci_directory, module_file_name)
+            moduleFile = join(directory_path, module_file_name)
             mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
             if not module_files_only:
                 module_file_path = mx.relpath_or_absolute(moduleFile, mx.primary_suite().dir, prefix='$PROJECT_DIR$')
                 declared_modules.add(module_name)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + module_file_path, 'filepath': module_file_path})
+
+    for resource_search_path in resource_search_paths:
+        create_intellij_module(resource_search_path, "ci")
+        create_intellij_module(resource_search_path, "docs")
 
     if generate_external_projects:
         for p in s.projects_recursive() + mx._mx_suite.projects_recursive():
@@ -973,26 +966,3 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
             declared_modules.add(p.name)
             moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
-
-
-def add_intellij_module(modules_path, module_file_path):
-    """
-    :param modules_path: path to modules.xml file
-    :param module_file_path: path to module_file.iml file
-
-    Function opens existing modules file, converts it into xml tree and inserts new module tag.
-    """
-    tree = etreeParse(modules_path)
-    root = tree.getroot()
-    assert root.tag == 'project'
-
-    assert root.find('component') is not None
-    component_node = root.find('component')
-
-    assert component_node.find('modules') is not None
-    modules_node = component_node.find('modules')
-
-    attributes = {"filepath": module_file_path, "fileurl": "file://" + module_file_path}
-    SubElement(modules_node, "module", attrib=attributes)
-
-    tree.write(modules_path)
