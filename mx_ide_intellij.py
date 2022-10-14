@@ -312,17 +312,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 moduleFile = join(path, project_name + '.iml')
                 mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
-                if module_files_only:
-                    declared_modules.add(project_name)
-                    modules_path = os.path.join(mx.primary_suite().dir, '.idea', 'modules.xml')
-                    module_file_path = mx.relpath_or_absolute(moduleFile, mx.primary_suite().dir, prefix='$PROJECT_DIR$')
-
-                    # If we are not in primary suite, and we want to add some other module to
-                    # modules.xml - we have a problem, since that file has already been closed.
-                    # So we need to reopen it, parse it again, and append the module in question.
-                    add_intellij_module(modules_path, module_file_path)
-
-                else:
+                if not module_files_only:
                     declared_modules.add(project_name)
                     moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                     modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
@@ -978,26 +968,3 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
             declared_modules.add(p.name)
             moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
-
-
-def add_intellij_module(modules_path, module_file_path):
-    """
-    :param modules_path: path to modules.xml file
-    :param module_file_path: path to module_file.iml file
-
-    Function opens existing modules file, converts it into xml tree and inserts new module tag.
-    """
-    tree = etreeParse(modules_path)
-    root = tree.getroot()
-    assert root.tag == 'project'
-
-    assert root.find('component') is not None
-    component_node = root.find('component')
-
-    assert component_node.find('modules') is not None
-    modules_node = component_node.find('modules')
-
-    attributes = {"filepath": module_file_path, "fileurl": "file://" + module_file_path}
-    SubElement(modules_node, "module", attrib=attributes)
-
-    tree.write(modules_path)
