@@ -18097,7 +18097,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.7") # [GR-41609] add support to jacacoreport for running genhtml
+version = VersionSpec("6.9.8") # [GR-41847] Default to JDT=builtin in the "build with ECJ" gate task.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
