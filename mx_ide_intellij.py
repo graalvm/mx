@@ -31,8 +31,6 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
-from xml.etree.ElementTree import SubElement
-
 import os
 import sys
 # TODO use defusedexpat?
