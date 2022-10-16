@@ -36,12 +36,12 @@ import glob
 from os.path import join, exists, basename, abspath, dirname, isabs
 from argparse import ArgumentParser
 from datetime import datetime, timezone, timedelta
-from html.parser import HTMLParser
 
 import mx
 import mx_javacompliance
 import sys
 from mx_urlrewrites import rewriteurl
+from collections import OrderedDict
 
 """
 Predefined Task tags.
@@ -986,7 +986,14 @@ def _jacocoreport(args, exec_files=None):
             shutil.copy(lcov_info, genhtml_lcov_info)
 
             if args.extra_lcov:
+                def has_gzip_magic_number(path):
+                    """Determines if `path` is gzipped"""
+                    with open(path, 'rb') as cache_fp:
+                        gzip_header = cache_fp.read(2)
+                        return len(gzip_header) == 2 and gzip_header == b'\x1f\x8b'
+
                 with open(genhtml_lcov_info, 'a') as fp:
+                    lcovs = OrderedDict()
                     for e in args.extra_lcov.split(','):
                         if e.startswith('https://') or e.startswith('http://'):
                             def download_and_cache(url):
@@ -1001,33 +1008,21 @@ def _jacocoreport(args, exec_files=None):
                                         mx.log(f'cached {url} in {cache}')
                                     with open(cache + '.url', 'w') as cache_fp:
                                         print(url, file=cache_fp)
-                                return cache
-
-                            urls = []
-                            if e.endswith('/'):
-                                class AnchorParser(HTMLParser):
-                                    def handle_starttag(self, tag, attrs):
-                                        if tag == 'a':
-                                            urls.extend((e + value for key, value in attrs if key == 'href' and value != '../'))
-                                parser = AnchorParser()
-                                data = urllib.request.urlopen(e).read().decode()
-                                parser.feed(data)
-                            else:
-                                urls = [e]
-                            for url in urls:
-                                if url.endswith('.lcov'):
-                                    with open(download_and_cache(url)) as lcov_in:
-                                        copy_lcov(url, lcov_in, fp)
-                                elif url.endswith('.lcov.gz'):
-                                    import gzip
-                                    with gzip.open(download_and_cache(url), 'rt') as lcov_in:
-                                        copy_lcov(url, lcov_in, fp)
                                 else:
-                                    mx.log(f'unsupported URL {url} - skipping')
+                                    mx.log(f'reading cached {url} from {cache}')
+                                return cache
+                            lcovs[e] = download_and_cache(e)
                         else:
-                            for lcov in (abspath(p) for p in glob.glob(e)):
-                                with open(lcov) as fp_in:
-                                    copy_lcov(lcov, fp_in, fp)
+                            for p in glob.glob(e):
+                                lcovs[abspath(p)] = abspath(p)
+                        for source, lcov in lcovs.items():
+                            if has_gzip_magic_number(lcov):
+                                import gzip
+                                with gzip.open(lcov, 'rt') as lcov_in:
+                                    copy_lcov(source, lcov_in, fp)
+                            else:
+                                with open(lcov) as lcov_in:
+                                    copy_lcov(source, lcov_in, fp)
 
             genhtml_args = ['--legend', '--prefix', genhtml_cwd, '-o', abspath(args.output_directory), genhtml_lcov_info]
             mx.run(['genhtml'] + genhtml_args, cwd=genhtml_cwd)
