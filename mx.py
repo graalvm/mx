@@ -11334,7 +11334,7 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
     suite_revision_file = dump_metadata_json(suite_revisions, "suiteRevisions")
     extra_metadata_file = dump_metadata_json(extra_metadata, "extraMetadata")
 
-    cmd = ["python", uploader, "--version", version, "--revision", dist.suite.vc.parent(dist.suite.vc_dir),
+    cmd = [uploader, "--version", version, "--revision", dist.suite.vc.parent(dist.suite.vc_dir),
            "--suite-revisions", suite_revision_file,
            "--extra-metadata", extra_metadata_file,
            "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
