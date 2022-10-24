@@ -2323,6 +2323,8 @@ class Suite(object):
             if isinstance(resourcesFilelist, str):
                 if not re.match("^([a-zA-Z0-9\\-\\._])+$", resourcesFilelist):
                     raise abort('The value \"{}\" of attribute \"resourcesFilelist\" of distribution {} is not a valid file name.'.format(resourcesFilelist, name))
+                if resourcesFilelist == 'native-image-resources.filelist':
+                    raise abort('The value \"{}\" of attribute \"resourcesFilelist\" of distribution {} is reserved and cannot be used.'.format(resourcesFilelist, name))
             else:
                 raise abort('The value of attribute \"resourcesFilelist\" of distribution {} is not a string.'.format(name))
 
@@ -2352,7 +2354,7 @@ class Suite(object):
                 layout_class = LayoutZIPDistribution
             else:
                 raise abort("Unknown layout distribution type: {}".format(layout_type), context=context)
-            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, archive_factory=(create_resource_filelist_archiver if resourcesFilelist else None), **attrs)
+            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, archive_factory=(create_resource_filelist_archiver if resourcesFilelist else None), resourcesFilelist=resourcesFilelist, **attrs)
         if resourcesFilelist:
             if className:
                 raise abort('A custom class {} is not allowed for distribution {} because it defines a native image resources filelist'.format(className, name))
@@ -5343,7 +5345,7 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, resourcesFilelist=None, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
@@ -5355,6 +5357,7 @@ class Distribution(Dependency):
             self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
         else:
             self.testDistribution = testDistribution
+        self.resourcesFilelist = resourcesFilelist
 
     def is_test_distribution(self):
         return self.testDistribution
@@ -6090,7 +6093,6 @@ class LayoutDistribution(AbstractDistribution):
                 yield (destination, source_dict)
 
     def _install_source(self, source, output, destination, archiver):
-        file_list_only = isinstance(archiver, ResourcesFilelistArchiver)
         clean_destination = destination
         if destination.startswith('./'):
             clean_destination = destination[2:]
@@ -6100,8 +6102,7 @@ class LayoutDistribution(AbstractDistribution):
 
         def add_symlink(source_file, src, abs_dest, archive_dest, archive=True):
             destination_directory = dirname(abs_dest)
-            if not file_list_only:
-                ensure_dir_exists(destination_directory)
+            ensure_dir_exists(destination_directory)
             resolved_output_link_target = normpath(join(destination_directory, src))
             if archive:
                 if not resolved_output_link_target.startswith(output):
@@ -6114,16 +6115,15 @@ class LayoutDistribution(AbstractDistribution):
             if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
                 os.remove(abs_dest)
-            if not file_list_only:
-                if is_windows():
-                    link_template_name = join(_mx_suite.mxDir, 'exe_link_template.cmd')
-                    with open(link_template_name, 'r') as template, SafeFileCreation(abs_dest) as sfc, open(sfc.tmpPath, 'w') as link:
-                        _template_subst = mx_subst.SubstitutionEngine(mx_subst.string_substitutions)
-                        _template_subst.register_no_arg('target', normpath(strip_suffix(src)))
-                        for line in template:
-                            link.write(_template_subst.substitute(line))
-                else:
-                    os.symlink(src, abs_dest)
+            if is_windows():
+                link_template_name = join(_mx_suite.mxDir, 'exe_link_template.cmd')
+                with open(link_template_name, 'r') as template, SafeFileCreation(abs_dest) as sfc, open(sfc.tmpPath, 'w') as link:
+                    _template_subst = mx_subst.SubstitutionEngine(mx_subst.string_substitutions)
+                    _template_subst.register_no_arg('target', normpath(strip_suffix(src)))
+                    for line in template:
+                        link.write(_template_subst.substitute(line))
+            else:
+                os.symlink(src, abs_dest)
 
         def merge_recursive(src, dst, src_arcname, excludes, archive=True):
             """
@@ -6135,36 +6135,31 @@ class LayoutDistribution(AbstractDistribution):
             if islink(src):
                 link_target = os.readlink(src)
                 src_target = join(dirname(src), os.readlink(src))
-                if not file_list_only:
-                    if LayoutDistribution._is_linky(absolute_destination) and not isabs(link_target) and normpath(relpath(src_target, output)).startswith('..'):
-                        add_symlink(src, normpath(relpath(src_target, dirname(absolute_destination))), absolute_destination, dst, archive=archive)
-                    else:
-                        if archive and isabs(link_target):
-                            abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
-                        add_symlink(src, link_target, absolute_destination, dst, archive=archive)
+                if LayoutDistribution._is_linky(absolute_destination) and not isabs(link_target) and normpath(relpath(src_target, output)).startswith('..'):
+                    add_symlink(src, normpath(relpath(src_target, dirname(absolute_destination))), absolute_destination, dst, archive=archive)
+                else:
+                    if archive and isabs(link_target):
+                        abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
+                    add_symlink(src, link_target, absolute_destination, dst, archive=archive)
             elif isdir(src):
-                if not file_list_only:
-                    ensure_dir_exists(absolute_destination, lstat(src).st_mode)
+                ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
                     new_dst = (dst if len(dst) == 0 or dst[-1] == '/' else dst + '/') + name
                     merge_recursive(join(src, name), new_dst, join(src_arcname, name), excludes, archive=archive)
             else:
-                if not file_list_only:
-                    ensure_dir_exists(dirname(absolute_destination))
+                ensure_dir_exists(dirname(absolute_destination))
                 if archive:
                     archiver.add(src, dst, provenance)
                 if LayoutDistribution._is_linky(absolute_destination):
                     if lexists(absolute_destination):
                         os.remove(absolute_destination)
-                    if not file_list_only:
-                        os.symlink(os.path.relpath(src, dirname(absolute_destination)), absolute_destination)
+                    os.symlink(os.path.relpath(src, dirname(absolute_destination)), absolute_destination)
                 else:
-                    if not file_list_only:
-                        shutil.copy(src, absolute_destination)
+                    shutil.copy(src, absolute_destination)
 
         def _install_source_files(files, include=None, excludes=None, optional=False, archive=True):
             excludes = excludes or []
-            if destination.endswith('/') and not file_list_only:
+            if destination.endswith('/'):
                 ensure_dir_exists(absolute_destination)
             first_file = True
             for _source_file, _arcname in files:
@@ -6317,44 +6312,40 @@ class LayoutDistribution(AbstractDistribution):
                             arcname = dest_arcname(new_name)
                             if tarinfo.issym():
                                 if dereference == "always" or (root_match and dereference == "root"):
-                                    if not file_list_only:
-                                        tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
+                                    tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:
-                                    if not file_list_only:
-                                        original_name = tarinfo.name
-                                        tarinfo.name = new_name
-                                        tf.extract(tarinfo, unarchiver_dest_directory)
-                                        tarinfo.name = original_name
-                                    archiver.add_link(tarinfo.linkname, arcname, provenance)
-                            else:
-                                if not file_list_only:
                                     original_name = tarinfo.name
                                     tarinfo.name = new_name
                                     tf.extract(tarinfo, unarchiver_dest_directory)
                                     tarinfo.name = original_name
+                                    archiver.add_link(tarinfo.linkname, arcname, provenance)
+                            else:
+                                original_name = tarinfo.name
+                                tarinfo.name = new_name
+                                tf.extract(tarinfo, unarchiver_dest_directory)
+                                tarinfo.name = original_name
                                 archiver.add(extracted_file, arcname, provenance)
-                                if tarinfo.isdir() and not file_list_only:
+                                if tarinfo.isdir():
                                     # use a safe mode while extracting, fix later
                                     os.chmod(extracted_file, 0o700)
                                     new_tarinfo = copy(tarinfo)
                                     new_tarinfo.name = new_name
                                     directories.append(new_tarinfo)
 
-                        if not file_list_only:
-                            # Reverse sort directories.
-                            directories.sort(key=operator.attrgetter('name'))
-                            directories.reverse()
+                        # Reverse sort directories.
+                        directories.sort(key=operator.attrgetter('name'))
+                        directories.reverse()
 
-                            # Set correct owner, mtime and filemode on directories.
-                            for tarinfo in directories:
-                                dirpath = join(absolute_destination, tarinfo.name)
-                                try:
-                                    tf.chown(tarinfo, dirpath, False)
-                                    tf.utime(tarinfo, dirpath)
-                                    tf.chmod(tarinfo, dirpath)
-                                except tarfile.ExtractError as e:
-                                    abort("tarfile: " + str(e))
+                        # Set correct owner, mtime and filemode on directories.
+                        for tarinfo in directories:
+                            dirpath = join(absolute_destination, tarinfo.name)
+                            try:
+                                tf.chown(tarinfo, dirpath, False)
+                                tf.utime(tarinfo, dirpath)
+                                tf.chmod(tarinfo, dirpath)
+                            except tarfile.ExtractError as e:
+                                abort("tarfile: " + str(e))
                 else:
                     abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
                 if first_file_box[0] and path is not None and not source['optional']:
@@ -6398,11 +6389,10 @@ Common causes:
         elif source_type == 'string':
             if destination.endswith('/'):
                 abort("Can not use `string` source with a destination ending with `/` ({})".format(destination), context=self)
+            ensure_dir_exists(dirname(absolute_destination))
             s = source['value']
-            if not file_list_only:
-                ensure_dir_exists(dirname(absolute_destination))
-                with open(absolute_destination, 'w') as f:
-                    f.write(s)
+            with open(absolute_destination, 'w') as f:
+                f.write(s)
             archiver.add_str(s, clean_destination, provenance)
         elif source_type == 'skip':
             pass
@@ -6626,6 +6616,7 @@ Common causes:
 
 class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
     pass
+
 
 class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):
     def __init__(self, *args, **kw_args):
@@ -15498,11 +15489,7 @@ class NullArchiver(Archiver):
 class ResourcesFilelistArchiver(Archiver):
     def __init__(self, path, filelistName, **kw_args):
         """
-        :type path: str
-        :type kind: str
-        :type reset_user_group: bool
-        :type duplicates_action: str
-        :type context: object
+        :param filelistName file name of an extra file archived by this Archiver containing a complete file list of the archived files.
         """
         super(ResourcesFilelistArchiver, self).__init__(path, **kw_args)
         self.filelistName = filelistName
@@ -15510,14 +15497,15 @@ class ResourcesFilelistArchiver(Archiver):
 
     def add(self, filename, archive_name, provenance):
         self.filelist.append(archive_name)
+        super(ResourcesFilelistArchiver, self).add(filename, archive_name, provenance)
 
     def add_str(self, data, archive_name, provenance):
         self.filelist.append(archive_name)
-        if archive_name == self.filelistName:
-            super(ResourcesFilelistArchiver, self).add_str(data, archive_name, provenance)
+        super(ResourcesFilelistArchiver, self).add_str(data, archive_name, provenance)
 
     def add_link(self, target, archive_name, provenance):
         self.filelist.append(archive_name)
+        super(ResourcesFilelistArchiver, self).add_link(target, archive_name, provenance)
 
     def __exit__(self, exc_type, exc_value, traceback):
         _filelist_str = '\n'.join(self.filelist)
