@@ -11295,8 +11295,7 @@ def _deploy_skip_existing(args, dists, version, repo):
         return dists
 
 
-def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, artifact_repo_key,
-                     skip_existing=False, dry_run=False):
+def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, skip_existing=False, dry_run=False):
 
     def get_artifact_name(project_prefix, artifact_id, artifact_version, extension, is_release):
         import uuid
@@ -11351,8 +11350,6 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
         cmd.extend(["--platform", platform])
     if skip_existing:
         cmd.append("--skip-existing")
-    if artifact_repo_key:
-        cmd.extend(["--artifact-repo-key", artifact_repo_key])
     log("Uploading {}:{}".format(dist.maven_group_id(), dist.maven_artifact_id(platform)))
     try:
         if not dry_run:
@@ -11631,7 +11628,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         os.unlink(repo_metadata_name)
 
 
-def _deploy_dists(uploader, dists, version_getter, artifact_repo_key, skip_existing=False, dry_run=False):
+def _deploy_dists(uploader, dists, version_getter, skip_existing=False, dry_run=False):
     related_suites_revisions = [{"suite": s_.name, "revision": s_.vc.parent(s_.vc_dir)} for s_ in suites() if s_.vc]
     if _opts.very_verbose or (dry_run and _opts.verbose):
         log(related_suites_revisions)
@@ -11648,7 +11645,6 @@ def _deploy_dists(uploader, dists, version_getter, artifact_repo_key, skip_exist
                              platform=Distribution.platformName().replace("_", "-"),
                              suite_revisions=related_suites_revisions,
                              skip_existing=skip_existing,
-                             artifact_repo_key=artifact_repo_key,
                              dry_run=dry_run)
         finally:
             if pushed_file != to_deploy:
@@ -11794,7 +11790,6 @@ def deploy_artifacts(args):
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
     parser.add_argument('--tags', help='Comma-separated list of tags to match in the maven metadata of the distribution. When left unspecified, no filtering is done. The default tag is \'default\'', default=None)
-    parser.add_argument('--artifact-repo-key', help='Artifact repo api key file', metavar='FILE')
     parser.add_argument('--uploader', action='store', help='Uploader')
     args = parser.parse_args(args)
 
@@ -11821,8 +11816,7 @@ def deploy_artifacts(args):
                 abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
         log('Deploying {} distributions for version {}'.format(s.name, versionGetter(s)))
-        _deploy_dists(dists=dists, version_getter=versionGetter, uploader=args.uploader, skip_existing=args.skip_existing,
-                      artifact_repo_key=args.artifact_repo_key, dry_run=args.dry_run)
+        _deploy_dists(dists=dists, version_getter=versionGetter, uploader=args.uploader, skip_existing=args.skip_existing, dry_run=args.dry_run)
         has_deployed_dist = True
     if not has_deployed_dist:
         abort("No distribution was deployed!")
