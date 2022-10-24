@@ -589,7 +589,6 @@ class DefaultNativeProject(NinjaProject):
     """
     include = 'include'
     src = 'src'
-    _isObjcSelectorWorkaroundNeeded = None
 
     _kinds = dict(
         static_lib=dict(
@@ -636,7 +635,6 @@ class DefaultNativeProject(NinjaProject):
 
     @property
     def cflags(self):
-        super_cflags = super(DefaultNativeProject, self).cflags
         default_cflags = []
         if self._kind == self._kinds['shared_lib']:
             default_cflags += dict(
@@ -655,22 +653,7 @@ class DefaultNativeProject(NinjaProject):
             default_cflags += [add_debug_prefix(_get_target_jdk().home)]
             default_cflags += ['-gno-record-gcc-switches']
 
-            if mx.get_os() == 'darwin':
-                # Workaround for GR-41115
-                #
-                # > ld: Assertion failed: (dylib != NULL), function classicOrdinalForProxy, file LinkEditClassic.hpp
-                #
-                # Apple introduced an optimization for msgSend in ObjC in Xcode14. Alas this seems to trigger
-                # a linker assert (see above) under certain conditions, that happens in SubstrateVM. Thus disable
-                # it for now if we build with a Xcode version that knows this flag.
-                if self._isObjcSelectorWorkaroundNeeded is None:
-                    rc = mx.run('clang -E -fno-objc-msgsend-selector-stubs /dev/null'.split(' '), out=mx.OutputCapture(), err=mx.OutputCapture(), nonZeroIsFatal=False)
-                    self._isObjcSelectorWorkaroundNeeded = rc == 0
-
-                if self._isObjcSelectorWorkaroundNeeded and '-ObjC' in super_cflags:
-                    default_cflags += ['-fno-objc-msgsend-selector-stubs']
-
-        return default_cflags + super_cflags
+        return default_cflags + super(DefaultNativeProject, self).cflags
 
     @property
     def ldflags(self):

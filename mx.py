@@ -18097,7 +18097,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.9") # [GR-39028] Collect docs accross repo
+version = VersionSpec("6.9.10") # [GR-41115] Revert "[darwin] Add workaround for building ObjC with Xcode14"
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
