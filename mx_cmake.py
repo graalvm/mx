@@ -64,6 +64,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
         self.silent = not cmake_show_warnings
         self._cmake_config_raw = args.pop('cmakeConfig', {})
+        self._toolchain = args.pop('toolchain', None)
 
     @staticmethod
     def config_entry(key, value):
@@ -95,8 +96,11 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
                         mx.log_error(err.data)
                     raise
 
+    def _toolchain_config(self):
+        return {"CMAKE_TOOLCHAIN_FILE": tc for tc in [self._toolchain] if tc}
+
     def cmake_config(self):
-        return [CMakeNinjaProject.config_entry(k, v) for k, v in sorted(self._cmake_config_raw.items())]
+        return [CMakeNinjaProject.config_entry(k, v) for k, v in sorted({**self._cmake_config_raw, **self._toolchain_config()}.items())]
 
     def generate_manifest(self, output_dir, filename, extra_cmake_config=None):
         source_dir = self.source_dirs()[0]
