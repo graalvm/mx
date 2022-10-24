@@ -48,6 +48,7 @@ import socket
 import tarfile, gzip
 import hashlib
 import itertools
+import functools
 from functools import cmp_to_key
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
@@ -2421,30 +2422,6 @@ class Suite(object):
         return v
 
     @staticmethod
-    def _pop_os_arch(attrs, context):
-        os_arch = attrs.pop('os_arch', None)
-        if os_arch:
-            os_key = None
-            if get_os_variant():
-                os_key = get_os() + '-' + get_os_variant()
-            if os_key is None or os_key not in os_arch:
-                os_key = get_os()
-            if os_key not in os_arch:
-                os_key = '<others>'
-            os_attrs = os_arch.pop(os_key, None)
-            if os_attrs:
-                arch_attrs = os_attrs.pop(get_arch(), None)
-                if not arch_attrs:
-                    arch_attrs = os_attrs.pop('<others>', None)
-                if arch_attrs:
-                    return arch_attrs
-                else:
-                    warn(f"No platform-specific definition is available for {context} for your architecture ({get_arch()})")
-            else:
-                warn(f"No platform-specific definition is available for {context} for your OS ({get_os()})")
-        return None
-
-    @staticmethod
     def _merge_os_arch_attrs(attrs, os_arch_attrs, context, path=''):
         if os_arch_attrs:
             for k, v in os_arch_attrs.items():
@@ -2456,9 +2433,53 @@ class Suite(object):
                     elif isinstance(v, list) and isinstance(other, list):
                         attrs[k] = v + other
                     else:
-                        abort(f"OS/Arch attribute must not override non-OS/Arch attribute '{key_path}' in {context}")
+                        abort(f"OS/Arch attribute must not override other attribute '{key_path}' in {context}")
                 else:
                     attrs[k] = v
+        return attrs
+
+    # expand { "os" : value } into { "os" : { "<others>" : value } }
+    @staticmethod
+    def _process_os(os):
+        return { k : {"<others>" : v} for (k,v) in os.items() }
+
+    # expand { "arch" : value } into { "<others>" : { "arch" : value } }
+    @staticmethod
+    def _process_arch(arch):
+        return {"<others>" : arch}
+
+    @staticmethod
+    def _pop_any(keys, dictionary):
+        for k in keys:
+            if k in dictionary:
+                return dictionary.pop(k)
+        return None
+
+    # returs [os_variant] if the variant is non null
+    def _get_os_variant_list():
+        return [ get_os() + '-' + v for v in [get_os_variant()] if v]
+
+    @staticmethod
+    def _pop_os_arch(attrs, context):
+        # first process and merge the os_arch and os attributes
+        options = [('os_arch', lambda x: x), ('os', Suite._process_os), ('arch', Suite._process_arch)]
+        options = [(k, fn(attrs.pop(k))) for (k,fn) in options if k in attrs]
+        if len(options) > 1:
+            abort(f'Specifying both {options[0][0]} and {options[1][0]} is not supported in {context}')
+        os_arch = options[0][1] if len(options) > 0 else {}
+
+        if os_arch:
+            os_variant_list = [get_os() + '-' + v for v in [get_os_variant()] if v]
+            os_attrs = Suite._pop_any([get_os()] + os_variant_list + ['<others>'], os_arch)
+            if os_attrs:
+                arch_attrs = Suite._pop_any([get_arch(), '<others>'], os_attrs)
+                if arch_attrs:
+                    return arch_attrs
+                else:
+                    warn(f"No platform-specific definition is available for {context} for your architecture ({get_arch()})")
+            else:
+                warn(f"No platform-specific definition is available for {context} for your OS ({get_os()})")
+        return None
 
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.items()):
