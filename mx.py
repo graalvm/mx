@@ -18091,7 +18091,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.10") # [GR-41115] Revert "[darwin] Add workaround for building ObjC with Xcode14"
+version = VersionSpec("6.9.11") # [GR-42129] Minimal interface between mx and uploader scrip in 'deploy-artifacts'
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
