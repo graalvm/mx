@@ -36,12 +36,12 @@ import glob
 from os.path import join, exists, basename, abspath, dirname, isabs
 from argparse import ArgumentParser
 from datetime import datetime, timezone, timedelta
-from html.parser import HTMLParser
 
 import mx
 import mx_javacompliance
 import sys
 from mx_urlrewrites import rewriteurl
+from collections import OrderedDict
 
 """
 Predefined Task tags.
@@ -843,20 +843,70 @@ def jacocoreport(args, exec_files=None):
 
     :param list args: a list of arguments to parse.
     :param list exec_files: a list of jacoco.exec files to use instead of the one returned by :get_jacoco_dest_file:.
-    :return: the included projects and excludes used for this report"""
-
+    """
     _jacocoreport(args, exec_files)
 
-
 def _jacocoreport(args, exec_files=None):
+    """
+    :return: the included projects and excludes used for this report
+    """
+
     parser = ArgumentParser(prog='mx jacocoreport')
     parser.add_argument('--format', help='Export format', default='html', choices=['html', 'xml', 'lcov', 'lcov+html'])
     parser.add_argument('--omit-excluded', action='store_true', help='Omit excluded files from report')
     parser.add_argument('--exclude-src-gen', action='store_true', help='Omit generated source files from report')
-    parser.add_argument('--relativize-paths', '--generic-paths', action='store_true', help='Make source file paths in LCOV repo based (i.e. <repo name>/<repo path>)')
+    parser.add_argument('--relativize-paths', '--generic-paths', action='store_true', help='Convert LCOV source file paths to <repo name>/<repo root relative path>. '
+                        'For example, convert /tmp/workspace/mx/java/ClasspathDump.java to mx/java/ClasspathDump.java')
     parser.add_argument('--extra-lcov', help='Comma separated urls, files or globs with existing LCOV output that should also be processed when --format=lcov+html')
     parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
     args = parser.parse_args(args)
+
+    return _make_coverage_report(args.output_directory,
+                                 fmt=args.format,
+                                 exec_files=exec_files,
+                                 omit_excluded=args.omit_excluded,
+                                 exclude_generated_sources=args.exclude_src_gen,
+                                 relativize_lcov_paths=args.relativize_paths,
+                                 extra_lcov=args.extra_lcov)
+
+def lcov_report(args):
+    """Create an html coverage report using genhtml
+
+    Creates a coverage report by first converting a Jacoco exec output to LCOV and then
+    feeding the LCOV to genhtml (https://ltp.sourceforge.net/coverage/lcov/genhtml.1.php).
+
+    :param list args: a list of arguments to parse.
+    """
+
+    parser = ArgumentParser(prog='mx lcov-report')
+    parser.add_argument('--extra-lcov', help='Comma separated urls, files or globs with existing LCOV output that should '
+                        'also be processed')
+    parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
+    args = parser.parse_args(args)
+
+    _make_coverage_report(args.output_directory,
+                                 fmt='lcov+html',
+                                 omit_excluded=True,
+                                 exclude_generated_sources=True,
+                                 relativize_lcov_paths=True,
+                                 extra_lcov=args.extra_lcov)
+
+def _make_coverage_report(output_directory,
+                          exec_files=None,
+                          fmt='lcov+html',
+                          omit_excluded=True,
+                          exclude_generated_sources=True,
+                          relativize_lcov_paths=True,
+                          extra_lcov=None):
+    """
+    :return: the included projects and excludes used for this report
+    """
+    if fmt == 'lcov+html':
+        import subprocess
+        try:
+            subprocess.run('genhtml --version'.split(), check=True)
+        except OSError as e:
+            mx.abort(f'The genhtml utility appears to be missing (error: {e}) and needs to be installed (e.g., `brew install lcov` or `dnf install lcov`)')
 
     dist_name = "MX_JACOCO_REPORT"
     mx.command_function("build")(['--dependencies', dist_name])
@@ -870,28 +920,30 @@ def _jacocoreport(args, exec_files=None):
         projsetting = getattr(p, 'jacoco', '')
         if projsetting in ('include', '') and _jacoco_is_package_whitelisted(p.name):
             if isinstance(p, mx.ClasspathDependency):
-                if args.omit_excluded and p.is_test_project():  # skip test projects when omit-excluded
+                if omit_excluded and p.is_test_project():  # skip test projects when omit-excluded
                     continue
                 source_dirs = []
                 if p.isJavaProject():
-                    if args.exclude_src_gen:
+                    if exclude_generated_sources:
                         source_dirs += p.source_dirs()
                     else:
                         source_dirs += p.source_dirs() + [p.source_gen_dir()]
                 includedirs.append(os.pathsep.join([p.dir, p.classpath_repr(jdk)] + source_dirs))
                 includedprojects.append(p.name)
 
-    def _run_reporter(extra_args=None):
+    def _run_reporter(exec_files, output_directory, extra_args=None):
+        sink = lambda line: line
+        out = None if mx.get_opts().verbose else sink
+
         files_arg = []
         if exec_files is None:
-            files_arg = ['--in', get_jacoco_dest_file()]
-        else:
-            for exec_file in exec_files:
-                files_arg += ['--in', exec_file]
+            exec_files = [get_jacoco_dest_file()]
+        for exec_file in exec_files:
+            files_arg += ['--in', exec_file]
 
         # Generate report
         jacaco_java_args = ['-jar', dist.path, '--out',
-                 args.output_directory, '--format', args.format] + files_arg + (extra_args or []) + sorted(includedirs)
+                 output_directory, '--format', fmt] + files_arg + (extra_args or []) + sorted(includedirs)
         jacaco_java_args_file = join(os.getcwd(), 'jacoco_command_args.txt')
         if jdk.javaCompliance > '8':
             # Pass jacaco args in an args file to avoid command line length issues on Windows
@@ -899,50 +951,50 @@ def _jacocoreport(args, exec_files=None):
                 fp.writelines((a + os.linesep for a in jacaco_java_args))
                 fp.flush()
             jacaco_java_args = ['@' + jacaco_java_args_file]
-        mx.run_java(jacaco_java_args, jdk=jdk, addDefaultArgs=False)
+
+        mx.log(f'Analyzing coverage data in {", ".join(exec_files)}')
+        mx.run_java(jacaco_java_args, jdk=jdk, addDefaultArgs=False, out=out)
         if jdk.javaCompliance > '8':
             os.unlink(jacaco_java_args_file)
 
-        lcov_info = abspath(join(args.output_directory, 'lcov.info'))
+        lcov_info = abspath(join(output_directory, 'lcov.info'))
 
         # Current working directory to be used when running genhtml
         genhtml_cwd = None
 
         # Transform file paths in LCOV to repo based paths
-        if args.format.startswith('lcov') and args.relativize_paths:
-            genhtml_cwd_repo = None
-            relativize_map = {}
-            for s in mx.suites():
-                repo_name, _ = os.path.splitext(basename(urllib.parse.urlparse(s.vc.default_pull(s.vc_dir)).path))
-                repo_dir = s.vc_dir
-                relativize_map[repo_dir] = repo_name
+        if fmt.startswith('lcov'):
+            if relativize_lcov_paths:
+                genhtml_cwd_repo = None
+                relativize_map = {}
+                for s in mx.suites():
+                    repo_name, _ = os.path.splitext(basename(urllib.parse.urlparse(s.vc.default_pull(s.vc_dir)).path))
+                    repo_dir = s.vc_dir
+                    relativize_map[repo_dir] = repo_name
 
-                repo_dir_parent = dirname(repo_dir)
-                if genhtml_cwd is None:
-                    genhtml_cwd_repo = repo_dir
-                    genhtml_cwd = repo_dir_parent
-                elif repo_dir_parent != genhtml_cwd and args.format == 'lcov+html':
-                    mx.abort(f'Local repositories {genhtml_cwd_repo} and {repo_dir} do not share a common parent directory as required by --relativize-paths')
+                    repo_dir_parent = dirname(repo_dir)
+                    if genhtml_cwd is None:
+                        genhtml_cwd_repo = repo_dir
+                        genhtml_cwd = repo_dir_parent
+                    elif repo_dir_parent != genhtml_cwd and fmt == 'lcov+html':
+                        mx.abort(f'Local repositories {genhtml_cwd_repo} and {repo_dir} do not share a common parent directory as required by --relativize-paths')
 
-            lcov_info_tmp = lcov_info + '.tmp'
-            with open(lcov_info) as fp_in, open(lcov_info_tmp, 'w') as fp_out:
-                for line in fp_in:
-                    if line.startswith("SF:"):
-                        sf_path = line[3:]
-                        for repo_dir, repo_name in relativize_map.items():
-                            if sf_path.startswith(repo_dir):
-                                line = line.replace(repo_dir, repo_name, 1)
-                                break
-                    fp_out.write(line)
-            shutil.move(lcov_info_tmp, lcov_info)
+                lcov_info_tmp = lcov_info + '.tmp'
+                with open(lcov_info) as fp_in, open(lcov_info_tmp, 'w') as fp_out:
+                    for line in fp_in:
+                        if line.startswith("SF:"):
+                            sf_path = line[3:]
+                            for repo_dir, repo_name in relativize_map.items():
+                                if sf_path.startswith(repo_dir):
+                                    line = line.replace(repo_dir, repo_name, 1)
+                                    break
+                        fp_out.write(line)
+                shutil.move(lcov_info_tmp, lcov_info)
+                mx.log(f'Generated LCOV coverage report with relativized paths in {lcov_info}')
+            else:
+                mx.log(f'Generated LCOV coverage report in {lcov_info}')
 
-        if args.format == 'lcov+html':
-            import subprocess
-            try:
-                subprocess.run('genhtml --version'.split(), check=True)
-            except OSError as e:
-                mx.abort(f'The genhtml utility appears to be missing (error: {e}) and needs to be installed (e.g., `brew install lcov` or `dnf install lcov`)')
-
+        if fmt == 'lcov+html':
             if genhtml_cwd is None:
                 # If no CWD has been determined yet, use the parent directory
                 # of the primary suite's repo root.
@@ -980,69 +1032,70 @@ def _jacocoreport(args, exec_files=None):
                         fp_out.write(line)
                     line_no += 1
 
-            genhtml_lcov_info = abspath(join(args.output_directory, 'genhtml_lcov.info'))
+            genhtml_lcov_info = abspath(join(output_directory, 'genhtml_lcov.info'))
             if exists(genhtml_lcov_info):
                 os.remove(genhtml_lcov_info)
             shutil.copy(lcov_info, genhtml_lcov_info)
 
-            if args.extra_lcov:
+            if extra_lcov:
+                def has_gzip_magic_number(path):
+                    """Determines if the content of `path` is gzipped"""
+                    with open(path, 'rb') as cache_fp:
+                        gzip_header = cache_fp.read(2)
+                        return len(gzip_header) == 2 and gzip_header == b'\x1f\x8b'
+
                 with open(genhtml_lcov_info, 'a') as fp:
-                    for e in args.extra_lcov.split(','):
+                    lcovs = OrderedDict()
+                    for e in extra_lcov.split(','):
                         if e.startswith('https://') or e.startswith('http://'):
+
                             def download_and_cache(url):
-                                tmpdir = tempfile.gettempdir()
                                 d = hashlib.sha1()
                                 d.update(url.encode())
                                 url_hash = d.hexdigest()
-                                cache = join(mx.ensure_dir_exists(join(tmpdir, 'mx_jacocoreport_cache')), url_hash)
+                                cache = abspath(url_hash)
                                 if not exists(cache):
                                     with open(cache, 'wb') as cache_fp:
+                                        mx.log(f'Downloading {url} to {cache}')
                                         cache_fp.write(urllib.request.urlopen(url).read())
-                                        mx.log(f'cached {url} in {cache}')
-                                    with open(cache + '.url', 'w') as cache_fp:
-                                        print(url, file=cache_fp)
+                                else:
+                                    mx.log(f'Reading cached {url} from {cache}. Delete {cache} to force re-downloading')
                                 return cache
 
-                            urls = []
-                            if e.endswith('/'):
-                                class AnchorParser(HTMLParser):
-                                    def handle_starttag(self, tag, attrs):
-                                        if tag == 'a':
-                                            urls.extend((e + value for key, value in attrs if key == 'href' and value != '../'))
-                                parser = AnchorParser()
-                                data = urllib.request.urlopen(e).read().decode()
-                                parser.feed(data)
-                            else:
-                                urls = [e]
-                            for url in urls:
-                                if url.endswith('.lcov'):
-                                    with open(download_and_cache(url)) as lcov_in:
-                                        copy_lcov(url, lcov_in, fp)
-                                elif url.endswith('.lcov.gz'):
-                                    import gzip
-                                    with gzip.open(download_and_cache(url), 'rt') as lcov_in:
-                                        copy_lcov(url, lcov_in, fp)
-                                else:
-                                    mx.log(f'unsupported URL {url} - skipping')
+                            lcovs[e] = download_and_cache(e)
                         else:
-                            for lcov in (abspath(p) for p in glob.glob(e)):
-                                with open(lcov) as fp_in:
-                                    copy_lcov(lcov, fp_in, fp)
+                            for p in glob.glob(e):
+                                lcovs[abspath(p)] = abspath(p)
+                        for source, lcov in lcovs.items():
+                            if has_gzip_magic_number(lcov):
+                                import gzip
+                                with gzip.open(lcov, 'rt') as lcov_in:
+                                    copy_lcov(source, lcov_in, fp)
+                            else:
+                                with open(lcov) as lcov_in:
+                                    copy_lcov(source, lcov_in, fp)
 
-            genhtml_args = ['--legend', '--prefix', genhtml_cwd, '-o', abspath(args.output_directory), genhtml_lcov_info]
-            mx.run(['genhtml'] + genhtml_args, cwd=genhtml_cwd)
+            genhtml_args = ['--legend', '--prefix', genhtml_cwd, '-o', abspath(output_directory), genhtml_lcov_info]
 
-    if not args.omit_excluded:
-        _run_reporter()
+            mx.log(f'Generating HTML from LCOV with genhtml')
+            mx.run(['genhtml'] + genhtml_args, cwd=genhtml_cwd, out=out)
+            mx.log(f'Generated LCOV+HTML report in {join(output_directory, "index.html")}')
+        elif fmt == 'html':
+            mx.log(f'Generated HTML coverage report in {join(output_directory, "index.html")}')
+        elif fmt == 'xml':
+            mx.log(f'Generated XML coverage report in {join(output_directory, "jacoco.xml")}')
+
+    output_directory = mx.ensure_dir_exists(abspath(output_directory))
+    if not omit_excluded:
+        _run_reporter(exec_files, output_directory)
         excludes = []
     else:
         with tempfile.NamedTemporaryFile(suffix="jacoco-report-exclude", mode="w") as fp:
             excludes, _ = _jacoco_excludes_includes()
             fp.writelines((e + "\n" for e in excludes))
             fp.flush()
-            _run_reporter(['--exclude-file', fp.name])
+            _run_reporter(exec_files, output_directory, ['--exclude-file', fp.name])
     return includedprojects, excludes
-
 
 def _parse_java_properties(args):
     prop_re = re.compile('-D(?P<key>[^=]+)=(?P<value>.*)')

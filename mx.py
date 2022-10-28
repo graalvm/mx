@@ -17773,6 +17773,7 @@ update_commands("mx", {
     'java': [java_command, '[-options] class [args...]'],
     'javadoc': [javadoc, '[options]'],
     'javap': [javap, '[options] <class name patterns>'],
+    'lcov-report' : [mx_gate.lcov_report, '[options]'],
     'maven-deploy' : [maven_deploy, ''],
     'maven-install' : [maven_install, ''],
     'maven-url': [maven_url, '<repository id> <distribution name>'],
@@ -18091,7 +18092,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.9.11") # [GR-42129] Minimal interface between mx and uploader scrip in 'deploy-artifacts'
+version = VersionSpec("6.10.0") # [GR-41840] Added lcov-report command
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
