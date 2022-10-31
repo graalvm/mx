@@ -30,6 +30,7 @@ mx is a command line tool for managing the development of Java code organized as
 """
 
 import sys
+import uuid
 from abc import ABCMeta, abstractmethod, abstractproperty
 
 if __name__ == '__main__':
@@ -11296,13 +11297,6 @@ def _deploy_skip_existing(args, dists, version, repo):
 
 
 def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, skip_existing=False, dry_run=False):
-
-    def get_artifact_name(project_prefix, artifact_id, artifact_version, extension, is_release):
-        import uuid
-        if is_release:
-            return "{}/{}-{}.{}".format(project_prefix, artifact_id, artifact_version, extension)
-        return "{}/{}-{}-{}.{}".format(project_prefix, artifact_id, artifact_version, uuid.uuid4(), extension)
-
     assert exists(path), "{} does not exist".format(path)
     maven_artifact_id = dist.maven_artifact_id(platform)
     dist_metadata = dist.get_artifact_metadata()
@@ -11338,7 +11332,7 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
            "--extra-metadata", extra_metadata_file,
            "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
            path,
-           get_artifact_name(project, maven_artifact_id, version, dist.remoteExtension(), dist.suite.is_release()),
+           "{}/{}-{}.{}".format(project, maven_artifact_id, version, dist.remoteExtension()),
            project]
     if edition:
         cmd.extend(["--edition", edition])
@@ -11793,10 +11787,12 @@ def deploy_artifacts(args):
     parser.add_argument('--uploader', action='store', help='Uploader')
     args = parser.parse_args(args)
 
+    snapshot_id = uuid.uuid4()
+
     def versionGetter(suite):
         if args.version_string:
             return args.version_string
-        return suite.release_version(snapshotSuffix='SNAPSHOT')
+        return suite.release_version(snapshotSuffix='SNAPSHOT-' + str(snapshot_id))
 
     if args.all_suites:
         _suites = suites()
