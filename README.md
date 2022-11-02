@@ -525,13 +525,13 @@ Further details are [here](README-proftool.md).
 ### URL rewriting
 
 Mx includes support for the primary suite to be able to override the source URLs of imported suites.
-The suite level `urlrewrites` attribute allows regular expression URL rewriting, and, optionally, SHA1 rewriting. For example:
+The suite level `urlrewrites` attribute allows regular expression URL rewriting, and, optionally, digest rewriting. For example:
 ```
   "urlrewrites" : [
     {
       "https://git.acme.com/(.*).git" : {
         "replacement" : r”https://my.company.com/foo-git-cache/\1.git",
-        "sha1" : "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "digest" : "sha1:da39a3ee5e6b4b0d3255bfef95601890afd80709",
       }
     },
     {

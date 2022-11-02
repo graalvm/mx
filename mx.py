@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2021, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2022, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -99,14 +99,90 @@ multiprocessing.Process = _DummyProcess
 
 ### ~~~~~~~~~~~~~ _private
 
+class Digest(object):
+    """
+    An object representing a cryptographic hash value.
+
+    :param str name: the name of the hash algorithm
+    :param str value: the value of the hash
+    """
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+    def __str__(self)->str:
+        return f'{self.name}:{self.value}'
+
+    def __eq__(self, other):
+        return isinstance(other, Digest) and self.name == other.name and self.value == other.value
+
+    def __hash__(self):
+        return hash((self.name, self.value))
+
+    def __lt__(self, other):
+        if not isinstance(other, Digest):
+            return NotImplemented
+        return (self.name, self.value) < (other.name, other.value)
+
+    def __gt__(self, other):
+        if not isinstance(other, Digest):
+            return NotImplemented
+        return (self.name, self.value) > (other.name, other.value)
+
+    @staticmethod
+    def from_attributes(attrs, remove, is_source, context=None):
+        """
+        Parses `attrs` (e.g., attributes of a suite.py library) and returns the digest
+        specifying entry if it exists, otherwise None.
+
+        :param dict attrs: dictionary of attributes
+        :param bool remove: should the entries read from `attrs` be removed
+        :param bool is_source: if true, the "sourceSha1" or "sourceDigest" entry is processed otherwise the
+                           "sha1" or "digest" entry is processed
+        :param context: context for `abort`
+        :return Digest: a Digest object if the relevant entries are present in `attrs` else None
+        """
+        if is_source:
+            sha1_key = 'sourceSha1'
+            digest_key = 'sourceDigest'
+        else:
+            sha1_key = 'sha1'
+            digest_key = 'digest'
+
+        get = attrs.pop if remove else attrs.get
+        sha1 = get(sha1_key, None)
+        digest = get(digest_key, None)
+        if sha1:
+            if digest:
+                abort(f'Cannot have both {sha1_key} and {digest_key} attributes', context=context)
+            return Digest('sha1', sha1)
+        if digest:
+            parts = digest.split(':', 1)
+            if len(parts) != 2:
+                abort(f'digest does not match pattern "<algorithm>:<hash value>": {digest}', context=context)
+            return Digest(Digest.check_algorithm(parts[0], context), parts[1])
+        return None
+
+    @staticmethod
+    def check_algorithm(name, context=None):
+        """
+        Checks whether `name` denotes a supported hash algorithm and aborts if not.
+
+        :param context: context for `abort`
+        """
+        if name not in hashlib.algorithms_guaranteed:
+            abort(f'Unsupported digest algorithm: {name}', context=context)
+        return name
+
 def _hashFromUrl(url):
-    logvv('Retrieving SHA1 from {}'.format(url))
+    digest_name = Digest.check_algorithm(get_file_extension(url))
+    logvv(f'Retrieving {digest_name} from {url}')
     hashFile = urllib.request.urlopen(url)
     try:
-        return hashFile.read()
+        return Digest(digest_name, hashFile.read().decode('utf-8'))
     except urllib.error.URLError as e:
         _suggest_http_proxy_error(e)
-        abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
+        abort(f'Error while retrieving digest {url}: {e}')
     finally:
         if hashFile:
             hashFile.close()
@@ -130,11 +206,17 @@ def _cache_dir():
 def _global_env_file():
     return _cygpathW2U(get_env('MX_GLOBAL_ENV', join(dot_mx_dir(), 'env')))
 
-def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
+def get_path_in_cache(name, digest, urls, ext=None, sources=False):
     """
     Gets the path an artifact has (or would have) in the download cache.
+
+    :param str name: name of the artifact
+    :param Digest digest: the expected cryptographic hash of the artifact
+    :param list urls: if `ext` is None, then the extension of the first URL in
+                this list whose path component ends with a non-empty extension is used
+    :param str ext: extension to be used for cache path
     """
-    assert sha1 != 'NOCHECK', 'artifact for ' + name + ' cannot be cached since its sha1 is NOCHECK'
+    assert digest.value != 'NOCHECK', f'artifact for {name} cannot be cached since its digest is NOCHECK'
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
@@ -151,10 +233,8 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False)
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    if oldPath:
-        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)  # mx < 5.176.0
     filename = _map_to_maven_dist_name(name) + ('.sources' if sources else '') + ext
-    return join(_cache_dir(), name + '_' + sha1 + ('.dir' if not ext else ''), filename)
+    return join(_cache_dir(), f'{name}_{digest.value}{(".dir" if not ext else "")}', filename)
 
 
 def _urlopen(*args, **kwargs):
@@ -204,43 +284,47 @@ def _urlopen(*args, **kwargs):
         abort("should not reach here")
 
 
-def _check_file_with_sha1(path, urls, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
+def _check_file_with_digest(path, digest, mustExist=True, newFile=False, logErrors=False):
     """
-    Checks if a file exists and is up to date according to the sha1.
-    Returns False if the file is not there or does not have the right checksum.
+    Checks if `path` exists and is up to date with respect to `digest`.
+    Returns False if `path` does not exist or does not have the right checksum.
     """
-    sha1Check = sha1 and sha1 != 'NOCHECK'
+    check_digest = digest and digest.value != 'NOCHECK'
 
-    def _sha1CachedValid():
-        if not exists(sha1path):
+    digest_path = f'{path}.{digest.name}'
+    def _cached_digest_is_valid():
+        if not exists(digest_path):
             return False
-        if TimeStampFile(path, followSymlinks=True).isNewerThan(sha1path):
+        if TimeStampFile(path, followSymlinks=True).isNewerThan(digest_path):
             return False
         return True
 
-    def _sha1Cached():
-        with open(sha1path, 'r') as f:
-            return f.read()[0:40]
+    def _read_digest():
+        with open(digest_path, 'r') as f:
+            content = f.read()
+            # Hash is everything up to first space or end of file,
+            # whichever comes first
+            return content.split()[0]
 
-    def _writeSha1Cached(value=None):
-        with SafeFileCreation(sha1path) as sfc, open(sfc.tmpPath, 'w') as f:
-            f.write(value or sha1OfFile(path))
+    def _write_digest(digest_name, value=None):
+        with SafeFileCreation(digest_path) as sfc, open(sfc.tmpPath, 'w') as f:
+            f.write(value or digest_of_file(path, digest_name))
 
     if exists(path):
-        if sha1Check and sha1:
-            if not _sha1CachedValid() or (newFile and sha1 != _sha1Cached()):
-                logv('Create/update SHA1 cache file ' + sha1path)
-                _writeSha1Cached()
+        if check_digest and digest:
+            if not _cached_digest_is_valid() or (newFile and digest.value != _read_digest()):
+                logv(f'Create/update {digest.name} cache file ' + digest_path)
+                _write_digest(digest.name)
 
-            if sha1 != _sha1Cached():
-                computedSha1 = sha1OfFile(path)
-                if sha1 == computedSha1:
-                    warn('Fixing corrupt SHA1 cache file ' + sha1path)
-                    _writeSha1Cached(computedSha1)
+            if digest.value != _read_digest():
+                computed_digest = digest_of_file(path, digest.name)
+                if digest.value == computed_digest:
+                    warn(f'Fixing corrupt {digest.name} cache file ' + digest_path)
+                    _write_digest(digest.name, computed_digest)
                     return True
                 if logErrors:
                     size = os.path.getsize(path)
-                    log_error('SHA1 of {} [size: {}] ({}) does not match expected value ({})'.format(TimeStampFile(path), size, computedSha1, sha1))
+                    log_error(f'{digest.name} of {TimeStampFile(path)} [size: {size}] ({computed_digest}) does not match expected value ({digest.value})')
                 return False
     elif mustExist:
         if logErrors:
@@ -2365,12 +2449,12 @@ class Suite(object):
             ext = attrs.pop('ext', None)
             path = attrs.pop('path', None)
             urls = Suite._pop_list(attrs, 'urls', context)
-            sha1 = attrs.pop('sha1', None)
+            digest = Digest.from_attributes(attrs, remove=True, is_source=False, context=context)
 
             sourceExt = attrs.pop('sourceExt', None)
             sourcePath = attrs.pop('sourcePath', None)
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
-            sourceSha1 = attrs.pop('sourceSha1', None)
+            sourceDigest = Digest.from_attributes(attrs, remove=True, is_source=True, context=context)
 
             maven = attrs.get('maven', None)
             optional = attrs.pop('optional', False)
@@ -2380,8 +2464,8 @@ class Suite(object):
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
 
             # Resources with the "maven" attribute can get their "urls" and "sourceUrls" from the Maven repository definition.
-            need_maven_urls = not urls and sha1
-            need_maven_sourceUrls = not sourceUrls and sourceSha1
+            need_maven_urls = not urls and digest
+            need_maven_sourceUrls = not sourceUrls and sourceDigest
             if maven and (need_maven_urls or need_maven_sourceUrls):
 
                 # Make sure we have complete "maven" metadata.
@@ -2406,11 +2490,11 @@ class Suite(object):
 
             # Construct the required resource type.
             if packedResource:
-                l = PackedResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
+                l = PackedResourceLibrary(self, name, path, optional, urls, digest, **attrs)
             elif resource:
-                l = ResourceLibrary(self, name, path, optional, urls, sha1, ext=ext, **attrs)
+                l = ResourceLibrary(self, name, path, optional, urls, digest, ext=ext, **attrs)
             else:
-                l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, ext=ext, sourceExt=sourceExt, **attrs)
+                l = Library(self, name, path, optional, urls, digest, sourcePath, sourceUrls, sourceDigest, deps, theLicense, ext=ext, sourceExt=sourceExt, **attrs)
 
             l._orig_attrs = orig_attrs
             self.libs.append(l)
@@ -3707,31 +3791,34 @@ def download_file_exists(urls):
 
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, ext=None, sources=False, canSymlink=True):
+    return download_file_with_digest(name, path, urls, sha1, resolve, mustExist, ext, sources, canSymlink)
+
+def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=None, sources=False, canSymlink=True):
     """
-    Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
-    checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
-    Manages an internal cache of downloads and will link path to the cache entry unless 'canSymLink=False'
+    Downloads an entity from a URL in the list `urls` (tried in order) to `path`,
+    checking the digest of the result against `digest` (if not "NOCHECK")
+    Manages an internal cache of downloads and will link `path` to the cache entry unless `canSymLink=False`
     in which case it copies the cache entry.
     """
-    sha1Check = sha1 and sha1 != 'NOCHECK'
+    check_digest = digest and digest.value != 'NOCHECK'
     canSymlink = canSymlink and can_symlink()
 
-    if len(urls) == 0 and not sha1Check:
+    if len(urls) == 0 and not check_digest:
         return path
 
-    if not _check_file_with_sha1(path, urls, sha1, sha1path, mustExist=resolve and mustExist):
+    if not _check_file_with_digest(path, digest, mustExist=resolve and mustExist):
         if len(urls) == 0:
-            abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
+            abort(f'{digest.name} of {path} ({digest_of_file(path, digest.name)}) does not match expected value ({digest.value})')
 
         if is_cache_path(path):
             cachePath = path
         else:
-            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources, ext=ext)
+            cachePath = get_path_in_cache(name, digest, urls, sources=sources, ext=ext)
 
         def _copy_or_symlink(source, link_name):
             ensure_dirname_exists(link_name)
             if canSymlink:
-                logvv('Symlinking {} to {}'.format(link_name, source))
+                logvv(f'Symlinking {link_name} to {source}')
                 if os.path.lexists(link_name):
                     os.unlink(link_name)
                 try:
@@ -3746,13 +3833,13 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                 # If we can't symlink, then atomically copy. Never move as that
                 # can cause problems in the context of multiple processes/threads.
                 with SafeFileCreation(link_name) as sfc:
-                    logvv('Copying {} to {}'.format(source, link_name))
+                    logvv(f'Copying {source} to {link_name}')
                     shutil.copy(source, sfc.tmpPath)
 
         cache_path_parent = dirname(cachePath)
         if is_cache_path(cache_path_parent):
             if exists(cache_path_parent) and not isdir(cache_path_parent):
-                logv('Wiping bad cache file: {}'.format(cache_path_parent))
+                logv(f'Wiping bad cache file: {cache_path_parent}')
                 # Some old version created bad files at this location, wipe it!
                 try:
                     os.unlink(cache_path_parent)
@@ -3761,25 +3848,18 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                     if exists(cache_path_parent) and not isdir(cache_path_parent):
                         raise e
 
-        if not exists(cachePath):
-            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True, ext=ext)
-            if exists(oldCachePath):
-                logv('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
-                _copy_or_symlink(oldCachePath, cachePath)
-                _copy_or_symlink(oldCachePath + '.sha1', cachePath + '.sha1')
-
-        if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
+        if not exists(cachePath) or (check_digest and digest_of_file(cachePath, digest.name) != digest.value):
             if exists(cachePath):
-                log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
+                log(f'{digest.name} of {cachePath} does not match expected value ({digest.value}) - found {digest_of_file(cachePath, digest.name)} - re-downloading')
 
-            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
+            log(f'Downloading {"sources " if sources else ""}{name} from {urls}')
             download(cachePath, urls)
 
         if path != cachePath:
             _copy_or_symlink(cachePath, path)
 
-        if not _check_file_with_sha1(path, urls, sha1, sha1path, newFile=True, logErrors=True):
-            abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
+        if not _check_file_with_digest(path, digest, newFile=True, logErrors=True):
+            abort(f"No valid file for {path} after download. Broken download? {digest.name} not updated in suite.py file?")
 
     return path
 
@@ -3879,10 +3959,24 @@ def sha1(args):
     else:
         print('sha1 of ' + args.path + ': ' + value)
 
+def _new_digest(digest_name):
+    """
+    Wrapper around ``hashlib.new`` with fast paths for common hash algorithms.
+    """
+    if digest_name == 'sha512':
+        return hashlib.sha512()
+    if digest_name == 'sha256':
+        return hashlib.sha256()
+    if digest_name == 'sha1':
+        return hashlib.sha1()
+    return hashlib.new(digest_name)
 
-def sha1OfFile(path):
+def digest_of_file(path, digest_name):
+    """
+    Creates a cryptographic hash of the contents in `path` using the `digest_name` algorithm.
+    """
     with open(path, 'rb') as f:
-        d = hashlib.sha1()
+        d = _new_digest(digest_name)
         while True:
             buf = f.read(4096)
             if not buf:
@@ -3890,6 +3984,8 @@ def sha1OfFile(path):
             d.update(buf)
         return d.hexdigest()
 
+def sha1OfFile(path):
+    return digest_of_file(path, 'sha1')
 
 def user_home():
     return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
@@ -8503,15 +8599,15 @@ class _RewritableLibraryMixin:
         if self._should_generate_cache_path():
             if not self.urls:
                 self.abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute')
-            if not self.sha1:
-                self.abort('Library without "path" attribute must have a non-empty "sha1" attribute')
-            self.path = _get_path_in_cache(self.name, self.sha1, self.urls, ext, sources=False)
+            if not self.digest:
+                self.abort('Library without "path" attribute must have a non-empty "digest" attribute')
+            self.path = get_path_in_cache(self.name, self.digest, self.urls, ext, sources=False)
 
     def _optionally_generate_cache_sourcePathAttr(self):
         if not self.sourcePath and self.sourceUrls:
-            if not self.sourceSha1:
-                self.abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute')
-            self.sourcePath = _get_path_in_cache(self.name, self.sourceSha1, self.sourceUrls, self.sourceExt, sources=True)
+            if not self.sourceDigest:
+                self.abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceDigest" attribute')
+            self.sourcePath = get_path_in_cache(self.name, self.sourceDigest, self.sourceUrls, self.sourceExt, sources=True)
 
     def _normalize_path(self, path):
         if path:
@@ -8521,25 +8617,26 @@ class _RewritableLibraryMixin:
             path = _make_absolute(path, self.suite.dir)
         return path
 
-    def _check_hash_specified(self, path, attribute):
-        if not hasattr(self, attribute):
+    def _check_hash_specified(self, path, name):
+        if not hasattr(self, name):
             if exists(path):
-                self.abort('Missing "{0}" property for library {1}, add the following to the definition of {1}:\n{0}={2}'.format(attribute, self.name, sha1OfFile(path)))
+                sha512 = digest_of_file(path, "sha512")
+                self.abort(f'Missing "{name}" property for library {self}, add the following to the definition of {self}:\n{name}=sha512:{sha512}')
             else:
-                self.abort('Missing "{0}" property for library {1}'.format(attribute, self.name))
+                self.abort(f'Missing "{name}" property for library {self}')
 
 
 class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
     """
-    def __init__(self, suite, name, path, optional, urls, sha1, ext=None, **kwArgs):
+    def __init__(self, suite, name, path, optional, urls, digest, ext=None, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
 
-        # Perform URL and SHA1 rewriting before potentially generating cache path.
-        self.urls, self.sha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(urls), sha1)
+        # Perform URL and digest rewriting before potentially generating cache path.
+        self.urls, self.digest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(urls), digest)
 
-        # Path can be generated from URL and SHA1 if needed.
+        # Path can be generated from URL and digest if needed.
         self.ext = ext
         self.path = self._normalize_path(path)
         self._optionally_generate_cache_pathAttr(self.ext)
@@ -8552,8 +8649,7 @@ class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
         return self.urls
 
     def get_path(self, resolve):
-        sha1path = self.path + '.sha1'
-        return download_file_with_sha1(self.name, self.path, self.urls, self.sha1, sha1path, resolve, not self.optional, ext=self.ext, canSymlink=True)
+        return download_file_with_digest(self.name, self.path, self.urls, self.digest, resolve, not self.optional, ext=self.ext, canSymlink=True)
 
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
@@ -8568,11 +8664,10 @@ class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
         return exists(self.get_path(True))
 
     def _check_download_needed(self):
-        sha1path = self.path + '.sha1'
-        return not _check_file_with_sha1(self.path, self.urls, self.sha1, sha1path)
+        return not _check_file_with_digest(self.path, self.digest)
 
     def _comparison_key(self):
-        return (self.sha1, self.name)
+        return (self.digest, self.name)
 
 
 class PackedResourceLibrary(ResourceLibrary):
@@ -8594,16 +8689,16 @@ class PackedResourceLibrary(ResourceLibrary):
 
             # If we do not have attributes to generate cache paths
             # then we have to be optional and use explicit paths.
-            if not self.urls or not self.sha1:
+            if not self.urls or not self.digest:
                 if self.optional:
                     self.extract_path = self.path
                     self.path = None
                 else:
-                    self.abort('Non-optional packed resource must have both "urls" and "sha1" attributes')
+                    self.abort('Non-optional packed resource must have both "urls" and "digest" attributes')
 
             else:
-                candidate_archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, self.ext, sources=False)
-                candidate_extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, '.extracted', sources=False)
+                candidate_archive_path = get_path_in_cache(self.name, self.digest, self.urls, self.ext, sources=False)
+                candidate_extract_path = get_path_in_cache(self.name, self.digest, self.urls, '.extracted', sources=False)
 
                 if self.path == candidate_archive_path:
                     # The path attribute was generated.
@@ -8824,24 +8919,25 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
     A library that is provided (built) by some third-party and made available via a URL.
     A Library may have dependencies on other Libraries as expressed by the "deps" field.
     A Library can only depend on another Library, and not a Project or Distribution
-    Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
+    Additional attributes are a checksum, location of (assumed) matching sources.
     A Library is effectively an "import" into the suite since, unlike a Project or Distribution
     it is not built by the Suite.
     N.B. Not obvious but a Library can be an annotationProcessor
     """
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, ignore=False, **kwArgs):
+    def __init__(self, suite, name, path, optional, urls, digest, sourcePath, sourceUrls, sourceDigest, deps, theLicense, ignore=False, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
 
-        # Perform URL and SHA1 rewriting before potentially generating cache path.
-        self.urls, self.sha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(urls), sha1)
-        self.sourceUrls, self.sourceSha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(sourceUrls), sourceSha1)
+        # Perform URL and digest rewriting before potentially generating cache path.
+        assert digest is None or isinstance(digest, Digest), f'{digest} is of type {type(digest)}'
+        self.urls, self.digest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(urls), digest)
+        self.sourceUrls, self.sourceDigest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(sourceUrls), sourceDigest)
 
-        # Path and sourcePath can be generated from URL and SHA1 if needed.
+        # Path and sourcePath can be generated from URL and digest if needed.
         self.path = self._normalize_path(path)
         self.sourcePath = self._normalize_path(sourcePath)
-        if self.path == self.sourcePath and not self.sourceSha1:
-            self.sourceSha1 = self.sha1
+        if self.path == self.sourcePath and not self.sourceDigest:
+            self.sourceDigest = self.digest
         self._optionally_generate_cache_pathAttr(None)
         self._optionally_generate_cache_sourcePathAttr()
 
@@ -8851,9 +8947,9 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
         if not optional and not ignore:
             if not exists(self.path) and not self.urls:
                 self.abort('Non-optional library {0} must either exist at {1} or specify URL list from which it can be retrieved'.format(self.name, self.path))
-            self._check_hash_specified(self.path, 'sha1')
+            self._check_hash_specified(self.path, 'digest')
             if self.sourcePath:
-                self._check_hash_specified(self.sourcePath, 'sourceSha1')
+                self._check_hash_specified(self.sourcePath, 'sourceDigest')
 
         for url in self.urls:
             if url.endswith('/') != self.path.endswith(os.sep):
@@ -8871,7 +8967,7 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
         self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def _comparison_key(self):
-        return (self.sha1, self.name)
+        return (self.digest, self.name)
 
     def get_urls(self):
         return self.urls
@@ -8882,25 +8978,21 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
         return exists(self.get_path(True))
 
     def get_path(self, resolve):
-        sha1path = self.path + '.sha1'
         bootClassPathAgent = hasattr(self, 'bootClassPathAgent') and getattr(self, 'bootClassPathAgent').lower() == 'true'
-        return download_file_with_sha1(self.name, self.path, self.urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
+        return download_file_with_digest(self.name, self.path, self.urls, self.digest, resolve, not self.optional, canSymlink=not bootClassPathAgent)
 
     def _check_download_needed(self):
-        sha1Path = self.path + '.sha1'
-        if not _check_file_with_sha1(self.path, self.urls, self.sha1, sha1Path):
+        if not _check_file_with_digest(self.path, self.digest):
             return True
         if self.sourcePath:
-            sourceSha1Path = self.sourcePath + '.sha1'
-            if not _check_file_with_sha1(self.sourcePath, self.sourceUrls, self.sourceSha1, sourceSha1Path):
+            if not _check_file_with_digest(self.sourcePath, self.sourceDigest):
                 return True
         return False
 
     def get_source_path(self, resolve):
         if self.sourcePath is None:
             return None
-        sourceSha1Path = self.sourcePath + '.sha1'
-        return download_file_with_sha1(self.name, self.sourcePath, self.sourceUrls, self.sourceSha1, sourceSha1Path, resolve, len(self.sourceUrls) != 0, sources=True)
+        return download_file_with_digest(self.name, self.sourcePath, self.sourceUrls, self.sourceDigest, resolve, len(self.sourceUrls) != 0, sources=True)
 
     def classpath_repr(self, resolve=True):
         path = self.get_path(resolve)
@@ -10649,16 +10741,16 @@ class BinaryVC(VC):
         build = snapshot.getCurrentSnapshotBuild()
         metadata.snapshotTimestamp = snapshot.currentTime
         try:
-            (jar_url, jar_sha_url) = build.getSubArtifact(extension)
+            (jar_url, jar_digest_url) = build.getSubArtifact(extension)
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
             raise abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, name, build.version, repo.repourl))
-        download_file_with_sha1(artifactId, path, [jar_url], _hashFromUrl(jar_sha_url), path + '.sha1', resolve=True, mustExist=True, sources=False)
+        download_file_with_digest(artifactId, path, [jar_url], _hashFromUrl(jar_digest_url), resolve=True, mustExist=True, sources=False)
         if sourcePath:
             try:
-                (source_url, source_sha_url) = build.getSubArtifactByClassifier('sources')
+                (source_url, source_digest_url) = build.getSubArtifactByClassifier('sources')
             except MavenSnapshotArtifact.NonUniqueSubArtifactException:
                 raise abort('Multiple source artifacts found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
-            download_file_with_sha1(artifactId + '_sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
+            download_file_with_digest(artifactId + '_sources', sourcePath, [source_url], _hashFromUrl(source_digest_url), resolve=True, mustExist=True, sources=True)
         return True
 
     class Metadata:
@@ -11832,7 +11924,7 @@ def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
     parser = ArgumentParser(prog=prog)
     parser.add_argument('repository_id', action='store', help='Repository name')
     parser.add_argument('dist_name', action='store', help='Distribution name')
-    parser.add_argument('--no-sha1', action='store_false', dest='sha1', help='Do not display the URL of the .sha1 file')
+    parser.add_argument('--no-digest', '--no-sha1', action='store_false', dest='digest', help='Do not display the URL of the digest file')
     args = parser.parse_args(args)
 
     repo = repository(args.repository_id)
@@ -11851,10 +11943,10 @@ def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
         abort('Version {} not found for {}:{} ({})\nNote that the binary must have been deployed with `{}`'.format(snapshot_version, group_id, artifact_id, url, deploy_prog))
     build = snapshot.getCurrentSnapshotBuild()
     try:
-        url, sha1_url = build.getSubArtifact(extension)
+        url, digest_url = build.getSubArtifact(extension)
         print(url)
-        if args.sha1:
-            print(sha1_url)
+        if args.digest:
+            print(digest_url)
     except MavenSnapshotArtifact.NonUniqueSubArtifactException:
         abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, dist.remoteName(), build.version, maven_repo.repourl))
 
@@ -17058,111 +17150,6 @@ def select_items(items, descriptions=None, allowMultiple=True):
                 return items[indexes[0]]
             return None
 
-def exportlibs(args):
-    """export libraries to an archive file"""
-
-    parser = ArgumentParser(prog='exportlibs')
-    parser.add_argument('-b', '--base', action='store', help='base name of archive (default: libs)', default='libs', metavar='<path>')
-    parser.add_argument('-a', '--include-all', action='store_true', help="include all defined libaries")
-    parser.add_argument('--arc', action='store', choices=['tgz', 'tbz2', 'tar', 'zip'], default='tgz', help='the type of the archive to create')
-    parser.add_argument('--no-sha1', action='store_false', dest='sha1', help='do not create SHA1 signature of archive')
-    parser.add_argument('--no-md5', action='store_false', dest='md5', help='do not create MD5 signature of archive')
-    parser.add_argument('--include-system-libs', action='store_true', help='include system libraries (i.e., those not downloaded from URLs)')
-    parser.add_argument('extras', nargs=REMAINDER, help='extra files and directories to add to archive', metavar='files...')
-    args = parser.parse_args(args)
-
-    def createArchive(addMethod):
-        entries = {}
-        def add(path, arcname):
-            apath = os.path.abspath(path)
-            if arcname not in entries:
-                entries[arcname] = apath
-                logv('[adding ' + path + ']')
-                addMethod(path, arcname=arcname)
-            elif entries[arcname] != apath:
-                logv('[warning: ' + apath + ' collides with ' + entries[arcname] + ' as ' + arcname + ']')
-            else:
-                logv('[already added ' + path + ']')
-
-        libsToExport = set()
-        if args.include_all:
-            for lib in _libs.values():
-                libsToExport.add(lib)
-        else:
-            def isValidLibrary(dep):
-                if dep in _libs.keys():
-                    lib = _libs[dep]
-                    if len(lib.urls) != 0 or args.include_system_libs:
-                        return lib
-                return None
-
-            # iterate over all project dependencies and find used libraries
-            for p in _projects.values():
-                for dep in p.deps:
-                    r = isValidLibrary(dep)
-                    if r:
-                        libsToExport.add(r)
-
-            # a library can have other libraries as dependency
-            size = 0
-            while size != len(libsToExport):
-                size = len(libsToExport)
-                for lib in libsToExport.copy():
-                    for dep in lib.deps:
-                        r = isValidLibrary(dep)
-                        if r:
-                            libsToExport.add(r)
-
-        for lib in libsToExport:
-            add(lib.get_path(resolve=True), lib.path)
-            if lib.sha1:
-                add(lib.get_path(resolve=True) + ".sha1", lib.path + ".sha1")
-            if lib.sourcePath:
-                add(lib.get_source_path(resolve=True), lib.sourcePath)
-                if lib.sourceSha1:
-                    add(lib.get_source_path(resolve=True) + ".sha1", lib.sourcePath + ".sha1")
-
-        if args.extras:
-            for e in args.extras:
-                if os.path.isdir(e):
-                    for root, _, filenames in os.walk(e):
-                        for name in filenames:
-                            f = join(root, name)
-                            add(f, f)
-                else:
-                    add(e, e)
-
-    if args.arc == 'zip':
-        path = args.base + '.zip'
-        with zipfile.ZipFile(path, 'w') as zf:
-            createArchive(zf.write)
-    else:
-        path = args.base + '.tar'
-        mode = 'w'
-        if args.arc != 'tar':
-            sfx = args.arc[1:]
-            mode = mode + ':' + sfx
-            path = path + '.' + sfx
-        with tarfile.open(path, mode) as tar:
-            createArchive(tar.add)
-    log('created ' + path)
-
-    def digest(enabled, path, factory, suffix):
-        if enabled:
-            d = factory()
-            with open(path, 'rb') as f:
-                while True:
-                    buf = f.read(4096)
-                    if not buf:
-                        break
-                    d.update(buf)
-            with open(path + '.' + suffix, 'w') as fp:
-                print(d.hexdigest(), file=fp)
-            log('created ' + path + '.' + suffix)
-
-    digest(args.sha1, path, hashlib.sha1, 'sha1')
-    digest(args.md5, path, hashlib.md5, 'md5')
-
 def javap(args):
     """disassemble classes matching given pattern with javap"""
 
@@ -17755,7 +17742,6 @@ update_commands("mx", {
     'deploy-artifacts': [deploy_artifacts, ''],
     'deploy-binary' : [deploy_binary, ''],
     'envs': [show_envs, '[options]'],
-    'exportlibs': [exportlibs, ''],
     'verifymultireleaseprojects' : [verifyMultiReleaseProjects, ''],
     'flattenmultireleasesources' : [flattenMultiReleaseSources, 'version'],
     'findbugs': [mx_spotbugs.spotbugs, ''],
@@ -18088,7 +18074,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.10.1") # [GR-42223] Use the same snapshot id for all suites
+version = VersionSpec("6.11.0") # [GR-41841] generalize digest algorithms from sha1
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
