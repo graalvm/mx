@@ -18088,7 +18088,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.10.0") # [GR-41840] Added lcov-report command
+version = VersionSpec("6.10.1") # [GR-42223] Use the same snapshot id for all suites
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
