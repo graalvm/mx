@@ -17272,6 +17272,109 @@ def show_jar_distributions(args):
         for e in classpath(all_jars, includeSelf=False, includeBootClasspath=True, unique=True).split(os.pathsep):
             print(e)
 
+def _update_digests(args):
+    """updates library checksums
+
+    Updates the checksum in suite.py for all libraries whose checksum
+    is not computed by a specified cryptographic digest algorithm.
+
+    """
+    parser = ArgumentParser(prog='mx update-digests')
+    parser.add_argument('-f', '--filter', help='only process libraries whose suite qualified name (e.g. "mx:JACKPOT") contains <substring>', metavar='<substring>')
+    parser.add_argument('-r', '--resolve', action='store_true', help='resolve (i.e. download) missing libraries')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='show what changes would be made but do not make them')
+    parser.add_argument('algorithm', help='the algorithm to use when computing the checksum')
+
+    args = parser.parse_args(args)
+    algorithm = Digest.check_algorithm(args.algorithm)
+
+    libs_by_suite_py_path = {}
+    for lib in (l for l in dependencies() if l.isLibrary()):
+        if args.filter and args.filter not in f'{lib.suite}:{lib}':
+            continue
+        origin = lib.origin()
+        if origin:
+            suite_py_path, line = origin
+            libs_by_suite_py_path.setdefault(suite_py_path, set()).add((line, lib))
+        else:
+            warn(f'could not find suite.py with the definition of {lib}\'s digest')
+
+    digest_re = re.compile(r'"(digest|sha1)"\s*:\s*"(?:([^:]+):)?([0-9a-fA-F]+)"', re.MULTILINE)
+    source_digest_re = re.compile(r'"(sourceDigest|sourceSha1)"\s*:\s*"(?:([^:]+):)?([0-9a-fA-F]+)"', re.MULTILINE)
+
+    unmodified = 0
+    updated = 0
+    unresolved = 0
+
+    for suite_py_path, libs in libs_by_suite_py_path.items():
+        with open(suite_py_path) as fp:
+            suite_py = fp.read()
+        logv(f'{suite_py_path}:')
+
+        line_offsets = [0]
+        offset = 0
+        for ch in suite_py:
+            offset += 1
+            if ch == '\n':
+                line_offsets.append(offset)
+        previous_line_offset = len(suite_py)
+
+        # Process suite.py in reverse declaration order of libs so that
+        # the line number for each lib is valid when it is processed
+        for line, lib in sorted(libs, reverse=True):
+            line_offset = line_offsets[line - 1]
+            
+            for artifact in ((digest_re, False), (source_digest_re, True)):
+                search_re, is_sources = artifact
+                path = lib.get_path(resolve=False) if not is_sources else lib.get_source_path(resolve=False)
+                digest_key = 'digest' if not is_sources else 'sourceDigest'
+
+                m = search_re.search(suite_py, line_offset, previous_line_offset)
+                if m:
+                    key, name, _ = m.groups()
+                    if (name or key) == algorithm:
+                        logvv(f'skipping {lib} - digest is already {algorithm}')
+                        unmodified += 1
+                    else:
+                        if not exists(path):
+                            if not args.resolve:
+                                logvv(f'skipping {lib} - {path} is missing and --resolve not specified')
+                                unresolved += 1
+                                continue
+                            path = lib.get_path(resolve=True) if not is_sources else lib.get_source_path(resolve=True)
+                        old_digest = lib.digest if not is_sources else lib.sourceDigest
+                        new_digest = Digest(algorithm, digest_of_file(path, algorithm))
+                        logv(f'{suite_py_path}: {lib} {old_digest} {new_digest}')
+                        prefix = suite_py[0:m.start(1)]
+                        infix = suite_py[m.end(1):m.start(2)] if m.group(2) else suite_py[m.end(1):m.start(3)]
+                        suffix = suite_py[m.end(3):]
+                        suite_py = f'{prefix}{digest_key}{infix}{new_digest}{suffix}'
+                        if not args.dry_run:
+                            urls = lib.urls if not is_sources else lib.sourceUrls
+                            new_path = get_path_in_cache(lib.name, new_digest, urls, sources=is_sources)
+                            ensure_dir_exists(dirname(new_path))
+                            os.rename(path, new_path)
+                            logv(f'{path} -> {new_path}')
+
+                            # Clean up cache files associated with old digest
+                            digest_path = f'{path}.{old_digest.name}'
+                            if exists(digest_path):
+                                os.remove(digest_path)
+                            old_dir = dirname(path)
+                            if not os.listdir(old_dir):
+                                os.rmdir(old_dir)
+
+                            # Generate the new digest file in the cache
+                            _check_file_with_digest(new_path, new_digest)
+                        updated += 1
+                elif not is_sources:
+                    warn(f'could not find the definition of {lib}\'s {digest_key} in {suite_py_path}')
+            previous_line_offset = line_offset
+
+        if not args.dry_run:
+            with open(suite_py_path, "w") as fp:
+                fp.write(suite_py)
+    log(f'{updated} libraries had their digests updated to {algorithm}, {unmodified} already used {algorithm} and {unresolved} non-downloaded were skipped')
 
 def show_suites(args):
     """show all suites
@@ -17784,6 +17887,7 @@ update_commands("mx", {
     'sversions': [sversions, '[options]'],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
     'update': [update, ''],
+    'update-digests': [_update_digests, ''],
     'unstrip': [_unstrip, '[options]'],
     'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'verifylibraryurls': [verify_library_urls, ''],
