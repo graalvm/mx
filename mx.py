@@ -2318,13 +2318,13 @@ class Suite(object):
         """:rtype : Distribution"""
         assert not '>' in name
         context = 'distribution ' + name
-        resourcesFileList = attrs.pop('resourcesFileList', None)
-        if resourcesFileList:
-            if isinstance(resourcesFileList, str):
-                if not re.match("^([a-zA-Z0-9\\-\\._])+$", resourcesFileList):
-                    raise abort('The value \"{}\" of attribute \"resourcesFileList\" of distribution {} does not match the pattern [a-zA-Z0-9\\-\\._]+'.format(resourcesFileList, name))
+        fileListPurpose = attrs.pop('fileListPurpose', None)
+        if fileListPurpose:
+            if isinstance(fileListPurpose, str):
+                if not re.match("^([a-zA-Z0-9\\-\\._])+$", fileListPurpose):
+                    raise abort('The value \"{}\" of attribute \"fileListPurpose\" of distribution {} does not match the pattern [a-zA-Z0-9\\-\\._]+'.format(fileListPurpose, name))
             else:
-                raise abort('The value of attribute \"resourcesFileList\" of distribution {} is not a string.'.format(name))
+                raise abort('The value of attribute \"fileListPurpose\" of distribution {} is not a string.'.format(name))
 
         className = attrs.pop('class', None)
         native = attrs.pop('native', False)
@@ -2349,13 +2349,19 @@ class Suite(object):
                 layout_class = LayoutZIPDistribution
             else:
                 raise abort("Unknown layout distribution type: {}".format(layout_type), context=context)
-            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, resourcesFileList=resourcesFileList, **attrs)
-        if resourcesFileList:
-            if className:
-                raise abort('A custom class {} is not allowed for distribution {} because it defines resourcesFileList'.format(className, name))
+            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, fileListPurpose=fileListPurpose, **attrs)
+        if fileListPurpose:
             if layout is None:
-                raise abort('Distribution {} that defines resourcesFileList must have a layout'.format(name))
-            d = create_layout('tar')
+                raise abort('Distribution {} that defines fileListPurpose must have a layout'.format(name))
+            if className:
+                if not self.extensions or not hasattr(self.extensions, className):
+                    raise abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
+                layout_class = getattr(self.extensions, className)
+                if not issubclass(layout_class, LayoutDistribution):
+                    raise abort('The distribution {} defines fileListPurpose, but it also requires a custom class {} which is not a subclass of LayoutDistribution'.format(name, className))
+                d = layout_class(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, layout=layout, path=path, fileListPurpose=fileListPurpose, **attrs)
+            else:
+                d = create_layout('tar')
         elif className:
             if not self.extensions or not hasattr(self.extensions, className):
                 raise abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
@@ -5944,14 +5950,14 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, resourcesFileList=None, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
         :type path_substitutions: mx_subst.SubstitutionEngine
         :type string_substitutions: mx_subst.SubstitutionEngine
-        :type resourcesFileList: str
-        :param resourcesFileList: if specified, a file '<path>.filelist' will be created next to this distribution's archive. The file will contain a list of all the files from this distribution
+        :type fileListPurpose: str
+        :param fileListPurpose: if specified, a file '<path>.filelist' will be created next to this distribution's archive. The file will contain a list of all the files from this distribution
         """
         super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
         self.buildDependencies += LayoutDistribution._extract_deps(layout, suite, name)
@@ -5963,7 +5969,7 @@ class LayoutDistribution(AbstractDistribution):
         self.archive_factory = archive_factory or Archiver
         self.compress = compress
         self._removed_deps = set()
-        self.resourcesFileList = resourcesFileList
+        self.fileListPurpose = fileListPurpose
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
@@ -6422,8 +6428,8 @@ Common causes:
                           "Do you want an empty directory: '{dest}/'? (note the trailing slash)".format(dest=destination), context=self)
 
     def _check_resources_file_list(self):
-        resourcesFileListPath = self.path + ".filelist"
-        return (not self.resourcesFileList and not exists(resourcesFileListPath)) or (self.resourcesFileList and exists(resourcesFileListPath))
+        fileListPath = self.path + ".filelist"
+        return (not self.fileListPurpose and not exists(fileListPath)) or (self.fileListPurpose and exists(fileListPath))
 
     def make_archive(self):
         self._verify_layout()
@@ -6436,7 +6442,7 @@ Common causes:
                                         context=self,
                                         reset_user_group=getattr(self, 'reset_user_group', False),
                                         compress=self.compress)
-        with ResourcesFileListArchiver(self.path, archiver) if self.resourcesFileList else archiver as arc:
+        with FileListArchiver(self.path, archiver) if self.fileListPurpose else archiver as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
@@ -6445,7 +6451,7 @@ Common causes:
     def getArchivableResults(self, use_relpath=True, single=False):
         for (p, n) in super(LayoutDistribution, self).getArchivableResults(use_relpath, single):
             yield p, n
-        if not single and self.resourcesFileList:
+        if not single and self.fileListPurpose:
             yield self.path + ".filelist", self.default_filename() + ".filelist"
 
 
@@ -6487,7 +6493,7 @@ Common causes:
         if not self._check_linky_state():
             return "LINKY_LAYOUT has changed"
         if not self._check_resources_file_list():
-            return "resourcesFileList has changed"
+            return "fileListPurpose has changed"
         return None
 
     def _persist_layout(self):
@@ -15499,7 +15505,7 @@ class NullArchiver(Archiver):
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
-class ResourcesFileListArchiver:
+class FileListArchiver:
     def __init__(self, path, delegate):
         self.path = path
         self.filelist = []
