@@ -12,8 +12,8 @@ suite = {
     },
 
     "JACOCOCORE_0.8.8": {
-      "digest": "sha1:fb1257ce77ec2fe326aad639b2253e76f481ea2e",
-      "sourceDigest": "sha1:7b92d3427263db8b991a5203b4b57488750c0505",
+      "digest": "sha512:305cb927e15cb709c61378d8b878daba5c9118190ddcca4283005e8228394e58434dfd49e13378b589ac690c2302203220eb14a82098f815d6d9e4a1fe519415",
+      "sourceDigest": "sha512:5fc1841122dcdfb207a4984627672ffc2f7355c79c9cfd1f3e63601192f34facc60d2901864a2b09f99a0ea5ee193a8ac1f9d1b008264b74d6d4430ebaeeb70a",
       "maven": {
         "groupId": "org.jacoco",
         "artifactId": "org.jacoco.core",
@@ -35,8 +35,8 @@ suite = {
     },
 
     "JACOCOREPORT_0.8.8": {
-      "digest": "sha1:366581c3bc90e2900320c528c294949bad7232c8",
-      "sourceDigest": "sha1:2a140b5324d6d4fa6ad8d1da43a06d57a458c073",
+      "digest": "sha512:857619474934be2a3c02e852d8edb308494d72afa4c3a72d973a7c635f5845a4499b7309bbac1b16ffcdde3882e9e3f831cf5190e8880fd49b79d6fcaf82f7bb",
+      "sourceDigest": "sha512:80ff964df42835f752fe52b25e9840fe394400076b033d1d3ca80e2850b9b5549c6c618b4b1bcd86ee422628e4b5623118a2b860b24d3fbd439547422b1523ba",
       "maven": {
         "groupId": "org.jacoco",
         "artifactId": "org.jacoco.report",
@@ -58,8 +58,8 @@ suite = {
     },
 
     "ASM_ANALYSIS_9.3": {
-      "digest": "sha1:4b071f211b37c38e0e9f5998550197c8593f6ad8",
-      "sourceDigest": "sha1:fbcbbfcd8c350fea66dd36e63b1e118d4ab3370c",
+      "digest": "sha512:0bb033b176c8893bfceba098381f5fef429096d5fe9c6b3eb6fdaac63d88dd059d44f3f296851573fe461888288ca2fa61dadae30530fa08fb3d6214c27915fe",
+      "sourceDigest": "sha512:6f903251a03d1da10272693d86ecb5ba3ef3b388b38236788ef6bb3cf44a3bf37062feba1bcd176bace4fdde01d5c9e496633d670c53f45c01983bea3083b82c",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-analysis",
@@ -70,8 +70,8 @@ suite = {
     },
 
     "ASM_COMMONS_9.3": {
-      "digest": "sha1:1f2a432d1212f5c352ae607d7b61dcae20c20af5",
-      "sourceDigest": "sha1:1692e21847cf3db0b24e1938553cab84f50bf03d",
+      "digest": "sha512:0bd9c61553808b8a12822f009ea5622918033a9fa8cb6e3ef319bbff08dda00cf439b5653f25d8f3362f02166530a0eabe2664f1169bcd63e2ed93a603c13874",
+      "sourceDigest": "sha512:0bcf0465187935f48e45a1ba9dec7f5b60408cc9087547c79ea83748bdcddf7653d7941fc2f442065c7b415172868d6a117215bc2b9f3fbfcafd527818e1b86c",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-commons",
@@ -82,8 +82,8 @@ suite = {
     },
 
     "ASM_TREE_9.3": {
-      "digest": "sha1:78d2ecd61318b5a58cd04fb237636c0e86b77d97",
-      "sourceDigest": "sha1:0cc1987e5e291659c366c4b9be35d105d40a518a",
+      "digest": "sha512:666318e09f4ae02652a64ce2ddd4dd51275a1917108061155aa8d1d9956e9d54bc259d0586ed7cd745c6ac00ab54fbfdd577f6ce915a158fc2eef373d65d445c",
+      "sourceDigest": "sha512:80a2828c214e1dd78accbeaefe70f8810756f3fecd8928f48dafe074c7d677ad0ffb8d695fa447e704cbda8fc622586e23dacf1479eca219e7300b7a8c9e77a6",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-tree",
@@ -143,8 +143,8 @@ suite = {
     },
 
     "JUNIT" : {
-      "digest": "sha1:2973d150c0dc1fefe998f834810d68f278ea58ec",
-      "sourceDigest": "sha1:a6c32b40bf3d76eca54e3c601e5d1470c86fcdfa",
+      "digest": "sha512:5974670c3d178a12da5929ba5dd9b4f5ff461bdc1b92618c2c36d53e88650df7adbf3c1684017bb082b477cb8f40f15dcf7526f06f06183f93118ba9ebeaccce",
+      "sourceDigest": "sha512:5c36f1671b1567919baa633e01765cf8e67c75f37f52876e11f764e3fccfa7b3c2b4cf2214b8956fd58a06f502694c80a208e8b88bcaca3893fc9c62820322a2",
       "dependencies" : ["HAMCREST"],
       "licence" : "CPL",
       "maven" : {
@@ -156,7 +156,7 @@ suite = {
 
     "JUNIT-JUPITER": {
       "digest": "sha1:b5c481685b6a8ca91c0d46f28f886a444354daa5",
-      "sourceDigest": "sha1:ae586ef6525ed85ec75557768ff63a5a68755102",
+      "sourceDigest": "sha512:ff962502df582bdd191a6ddc72662203e0eadac2d848c255ca8aabb60e84756223c9eecd1c73a75a192f1692e92bdfbe2daf735002e32c2b22000747ff793df9",
       "license": "EPL-2.0",
       "dependencies": ["JUNIT-JUPITER-API", "JUNIT-JUPITER-PARAMS"],
       "maven": {
@@ -168,7 +168,7 @@ suite = {
 
     "JUNIT-JUPITER-API": {
         "digest": "sha1:c9ba885abfe975cda123bf6f8f0a69a1b46956d0",
-        "sourceDigest": "sha1:ce1129e07053701f7458120b12229aedb05bcd4a",
+        "sourceDigest": "sha512:cfa10341a1be531ecc1cf064a179fe70b56e05812e3f5547e376ae8f8d53bdbab21ce3089e99c184421cbf817573935e36efeaeea6a4daa129583db20f7fe583",
         "license": "EPL-2.0",
         "dependencies": ["APIGUARDIAN-API", "OPENTEST4J"],
         "maven": {
@@ -180,7 +180,7 @@ suite = {
 
     "APIGUARDIAN-API": {
         "digest": "sha1:fc9dff4bb36d627bdc553de77e1f17efd790876c",
-        "sourceDigest": "sha1:f3c15fe970af864390c8d0634c9f16aca1b064a8",
+        "sourceDigest": "sha512:e8d3b49129ade2f7a27461f702e9f8ec6421b27e666055ca13e914b1bfe3b8c067ee17094477752fdebdded109718f581a1ae42579e5cef990f531eb61bfe921",
         "license": "EPL-2.0",
         "maven": {
             "groupId": "org.apiguardian",
@@ -191,7 +191,7 @@ suite = {
 
     "OPENTEST4J": {
         "digest": "sha1:28c11eb91f9b6d8e200631d46e20a7f407f2a046",
-        "sourceDigest": "sha1:41d55b3c2254de9837b4ec8923cbd371b8a7eab5",
+        "sourceDigest": "sha512:273324c995654f0c7edc5dbf7cd9233f7f3fe400c45e042669f3c25d6476485a738e6baf8f61d08e8a5559dd0b07deae77849059d910d53deabd36424d0fa4ab",
         "license": "EPL-2.0",
         "dependencies": ["JUNIT-PLATFORM-COMMONS"],
         "maven": {
@@ -203,7 +203,7 @@ suite = {
 
     "JUNIT-PLATFORM-COMMONS": {
         "digest": "sha1:7644a14b329e76b5fe487628b50fb5eab6ba7d26",
-        "sourceDigest": "sha1:bada08402ff53506b1446bc8b3caf5a2aec6c7d1",
+        "sourceDigest": "sha512:be62915e41df44f2cfd38e3584019000ad91eb29fae771244a57338d9d968fe283a1252806742996bbc29f8aad4ccd0b9c0120d3409d7b526e9131c626b51a91",
         "license": "EPL-2.0",
         "dependencies": ["APIGUARDIAN-API"],
         "maven": {
@@ -215,7 +215,7 @@ suite = {
 
     "JUNIT-JUPITER-PARAMS": {
       "digest": "sha1:f2a64a42cf73077062c2386db0598062b7480d91",
-      "sourceDigest": "sha1:f09c69685e20753eaf05577f5da1f9a220783def",
+      "sourceDigest": "sha512:f68f5daa7c992dfbdf9d6374cea4401f4e4a1a83c9bafec76a349ac8a75b1bf776772c77245bcd181fbfa6214418edde3490822e92c0f1314a0a7ebe105b1a15",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API"],
       "maven": {
@@ -227,7 +227,7 @@ suite = {
 
     "JUNIT-PLATFORM-ENGINE": {
       "digest": "sha1:1752cad2579e20c2b224602fe846fc660fb35805",
-      "sourceDigest": "sha1:9240cb4f3ee7693f8f18f4140acc7f8c83336e30",
+      "sourceDigest": "sha512:c98e5fd839feb486325867b5a740c11842856f20b97259b9635c4359f3b86299cb7b73926443b06d6eeee9b69f4fc0c63e9231f546a822db2a60f0bc1b30ec38",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "OPENTEST4J"],
       "maven": {
@@ -239,7 +239,7 @@ suite = {
 
     "JUNIT-JUPITER-ENGINE": {
       "digest": "sha1:c0833bd6de29dd77f8d071025b97b8b434308cd3",
-      "sourceDigest": "sha1:2116c399709549a3094a8f2bd96bb3f94b98a341",
+      "sourceDigest": "sha512:279e993d9a81797609e43f6888b6cc63dccbd5308d4d6f0f096dc4e5cbf5bba3482480e7e66cc6c196bf2617ad5249069d7aa18fc71c91cee5797bd2cd711c3e",
       "license": "EPL-2.0",
       "dependencies": ["JUNIT-JUPITER-API", "APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
       "maven": {
@@ -251,7 +251,7 @@ suite = {
 
     "JUNIT-PLATFORM-LAUNCHER": {
       "digest": "sha1:d866de2950859ca1c7996351d7b3d97428083cd0",
-      "sourceDigest": "sha1:d9efa09350f724e7e7defa0e74c4f4573e276fe1",
+      "sourceDigest": "sha512:1edaac661f73d3aaf70241a3f251cbb94d4a52997c73c858fed5bc1323ce952d5cc7d73e252ab89770b0ac401a0807a915520efe27174a2c5ce925ffb7d29ccb",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
       "maven": {
@@ -263,7 +263,7 @@ suite = {
 
     "JUNIT-PLATFORM-REPORTING": {
       "digest": "sha1:517d3b96b4ed89700a5086ec504fc02d8b526e79",
-      "sourceDigest": "sha1:e0c1e87c6a973aef33f9c8eb73b47f369a6d2b3f",
+      "sourceDigest": "sha512:58b0c139fff6886ac7e15bd74d99a6d3987e787c67b72b7b944a75418557ac653d70dcff9b9783be62d41905dd46d5e04b18045a8b6868d8788e66f53ed1d4ed",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-LAUNCHER"],
       "maven": {
@@ -275,7 +275,7 @@ suite = {
 
     "JUNIT-PLATFORM-CONSOLE": {
       "digest": "sha1:dfdeb2688341f7566c5943be7607a413d753ab70",
-      "sourceDigest": "sha1:10efd3f7acdc66e185d9fd60e7c5a475c2ee9474",
+      "sourceDigest": "sha512:39f5fa057621f84b418b5d58972c242fbbf262af80e6d33e6db2f7601da39bc9c492be9a8f1789497b68f0b0b3c2a5006f60e82e40f6ce2e757f7a62990caa06",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-REPORTING"],
       "maven": {
@@ -341,8 +341,8 @@ suite = {
     },
 
     "HAMCREST" : {
-      "digest": "sha1:42a25dc3219429f0e5d060061f71acb49bf010a0",
-      "sourceDigest": "sha1:1dc37250fbc78e23a65a67fbbaf71d2e9cbc3c0b",
+      "digest": "sha512:e237ae735aac4fa5a7253ec693191f42ef7ddce384c11d29fbf605981c0be077d086757409acad53cb5b9e53d86a07cc428d459ff0f5b00d32a8cbbca390be49",
+      "sourceDigest": "sha512:38553c75f18f7b39ec86b6c0ce468c775c858f3b7fe234e6bdba1f36a089953a69ea9b645afa34eedb67e0f27e016cde084c2f194d466bc930445de6f7e3fef4",
       "licence" : "BSD-new",
       "maven" : {
         "groupId" : "org.hamcrest",
@@ -352,8 +352,8 @@ suite = {
     },
 
     "COMMONS_MATH3_3_2" : {
-      "digest": "sha1:ec2544ab27e110d2d431bdad7d538ed509b21e62",
-      "sourceDigest": "sha1:cd098e055bf192a60c81d81893893e6e31a6482f",
+      "digest": "sha512:80fb66a51688c4247b957f9787921e5acb9144d71a4ab0b03b2c30f46427e50c53e6e31ca5ddb04dab2cf5e7c0eedae168103c719f8074be464918ab2e4d6e6d",
+      "sourceDigest": "sha512:bbb9223025a399ea4dd030da20484030c5ac564ff15b463f67165d2aa17aecdb15fb52fe09ce6aa1f896e749730ebe44cb794c2618200fdc8b5bc7dda6837483",
       "licence" : "Apache-2.0",
       "maven" : {
         "groupId" : "org.apache.commons",
@@ -363,8 +363,8 @@ suite = {
     },
 
     "JOPTSIMPLE_4_6" : {
-      "digest": "sha1:306816fb57cf94f108a43c95731b08934dcae15c",
-      "sourceDigest": "sha1:9cd14a61d7aa7d554f251ef285a6f2c65caf7b65",
+      "digest": "sha512:18bf59191d7a456e7675c841df8411ebe425da40532e103db95483be5d2a75510d8a38ad9755cdd4e0be27afe7cfd0b358599388a84fcec1ee27e89caa37f5af",
+      "sourceDigest": "sha512:bd10f5ba984b2d75334353f2dd093c28455d49ea05a2c6776fa3834adc386545393f016f13b6608e096b4f8546f4b9d1c3c3948d249a4dbb9b89347b144eea7f",
       "licence": "MIT",
       "maven" : {
         "groupId" : "net.sf.jopt-simple",
@@ -375,7 +375,7 @@ suite = {
 
     "JMH_GENERATOR_ANNPROCESS_1_18" : {
       "digest": "sha1:b852fb028de645ad2852bbe998e084d253f450a5",
-      "sourceDigest": "sha1:d455b0dc6108b5e6f1fb4f6cf1c7b4cbedbecc97",
+      "sourceDigest": "sha512:d45f26e49a7d0cb97c38362ee07bd98d542abacccb0d4721da6515a810fe4c01bea62cc900d324ac42162076926b24f56f8247133c402956a7522b2e957c9ff1",
       "licence": "GPLv2-CPE",
       "maven" : {
         "groupId" : "org.openjdk.jmh",
@@ -385,8 +385,8 @@ suite = {
     },
 
     "JMH_GENERATOR_ANNPROCESS_1_21" : {
-      "digest": "sha1:7aac374614a8a76cad16b91f1a4419d31a7dcda3",
-      "sourceDigest": "sha1:fb48e2a97df95f8b9dced54a1a37749d2a64d2ae",
+      "digest": "sha512:352deb5304ad54d8089485ce066e409c689012a0dee5af4fd8511402cd35624dd4cabd507b876115304c0c9824b837e96028500e279ba164480e1195a757b45c",
+      "sourceDigest": "sha512:0c4b7187fd7f524ffe3b63708776136bdd4cddafa172e1f571488c5d0fe4a5526e1edf1e74ef7619950620df8b65003577f1ea97b1c10a935e39361e4e4822f0",
       "licence": "GPLv2-CPE",
       "maven" : {
         "groupId" : "org.openjdk.jmh",
@@ -397,7 +397,7 @@ suite = {
 
     "JMH_1_18" : {
       "digest": "sha1:0174aa0077e9db596e53d7f9ec37556d9392d5a6",
-      "sourceDigest": "sha1:7ff1e1aafea436b6aa8b29a8b8f1c2d66be26f5b",
+      "sourceDigest": "sha512:e64394608aa51408d02bce6f4c85ef152aae53046b2301eeadbbf398fb76042db169905046b79ada652f54f5188490d7a898bb4fbc5a73fd18be0cc34b644b21",
       "licence": "GPLv2-CPE",
       "dependencies" : ["JOPTSIMPLE_4_6", "JMH_GENERATOR_ANNPROCESS_1_18", "COMMONS_MATH3_3_2"],
       "maven" : {
@@ -408,8 +408,8 @@ suite = {
     },
 
     "JMH_1_21" : {
-      "digest": "sha1:442447101f63074c61063858033fbfde8a076873",
-      "sourceDigest": "sha1:a6fe84788bf8cf762b0e561bf48774c2ea74e370",
+      "digest": "sha512:81bca9388bdd0612fa65ca85ccaec5ba01738d7e45e76ea90f64dfb89539ad4dbfca064189dcc05a43f0f3f1bd0b6124676968a953ff7989b06232ff8d00574b",
+      "sourceDigest": "sha512:899cedb156944cc1da1b291ca4a592ad57f9069e1c27c23db934eb8c0e9495c4616f51a7ca7d718cecb7edc0e60c07e2740163893e1c942bd5b026c8e5f14798",
       "licence": "GPLv2-CPE",
       "dependencies" : ["JOPTSIMPLE_4_6", "JMH_GENERATOR_ANNPROCESS_1_21", "COMMONS_MATH3_3_2"],
       "maven" : {
@@ -421,7 +421,7 @@ suite = {
 
     "JACKPOT" : {
       "digest": "sha1:c90da86c534257d09defae5eead0b94d3086e749",
-      "sourceDigest": "sha1:7e844d6306e2d154b39ffbacbecc44cb335c68f9",
+      "sourceDigest": "sha512:75fc4e3846a51ca5cfa344518a6b369e0830f1a451b320a82d0466a4f341297503fdd758fa4873fa758b06741d87dd60dd616cd66a04a35d70971622da819e67",
       "licence": "Apache-2.0",
       "maven" : {
         "groupId" : "org.apache.netbeans.modules.jackpot30",

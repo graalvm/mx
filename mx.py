@@ -17323,7 +17323,7 @@ def _update_digests(args):
         # the line number for each lib is valid when it is processed
         for line, lib in sorted(libs, reverse=True):
             line_offset = line_offsets[line - 1]
-            
+
             for artifact in ((digest_re, False), (source_digest_re, True)):
                 search_re, is_sources = artifact
                 path = lib.get_path(resolve=False) if not is_sources else lib.get_source_path(resolve=False)
