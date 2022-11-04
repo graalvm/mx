@@ -62,7 +62,7 @@ from collections import OrderedDict, namedtuple, deque
 from datetime import datetime, timedelta
 from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
-from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, relpath, splitext
+from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
 import fnmatch
@@ -1912,9 +1912,7 @@ class Suite(object):
                 for i in range(len(value)):
                     value[i] = expand(value[i], context + [str(i)])
             elif isinstance(value, str):
-                value = expandvars(value)
-                if '$' in value or '%' in value:
-                    abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
+                value = expandvars(value, context=context)
             elif isinstance(value, bool):
                 pass
             else:
@@ -14471,11 +14469,28 @@ def gmake_cmd(context=None):
     return _gmake_cmd
 
 
+def expandvars(value, context=None):
+    """
+    Wrapper around os.path.expandvars the supports escaping. "\\$" escapes a
+    Unix-style environment variable, "^%" escapes a Windows CMD environment
+    variable.
+    """
+    graal_marker = "🏆"
+    assert graal_marker not in value, f"we assume {graal_marker} does not occur in properties"
+    escaped_dollars = value.count("\\$")
+    escaped_pcts = value.count("^%")
+    value = value.replace("\\$", f"\\{graal_marker}").replace("^%", f"^{graal_marker}")
+    value = os_expandvars(value)
+    if '$' in value or '%' in value:
+        if context:
+            abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
+        else:
+            abort('Property contains an undefined environment variable: ' + value)
+    return value.replace(f"\\{graal_marker}", "\\$", escaped_dollars).replace(f"^{graal_marker}", "^%", escaped_pcts)
+
+
 def expandvars_in_property(value):
-    result = expandvars(value)
-    if '$' in result:
-        abort('Property contains an undefined environment variable: ' + value)
-    return result
+    return expandvars(value)
 
 
 ### ~~~~~~~~~~~~~ commands
@@ -18178,7 +18193,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.11.0") # [GR-41841] generalize digest algorithms from sha1
+version = VersionSpec("6.11.1") # [GR-41905] Allow escaping environment variables in properties
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
