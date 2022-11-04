@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -79,11 +79,11 @@ def fetch_jdk(args):
             archive_location = join(temp_dir, archive_name)
             mx._opts.no_download_progress = is_quiet()
             try:
-                sha1_hash = mx._hashFromUrl(sha_url).decode('utf-8')
+                digest = mx._hashFromUrl(sha_url)
             except Exception as e: #pylint: disable=broad-except
                 mx.abort('Error retrieving {}: {}'.format(sha_url, e))
 
-            mx.download_file_with_sha1(artifact, archive_location, [url], sha1_hash, archive_location + '.sha1', resolve=True, mustExist=True, sources=False)
+            mx.download_file_with_digest(artifact, archive_location, [url], digest, resolve=True, mustExist=True, sources=False)
             untar = mx.TarExtractor(archive_location)
 
             mx.log("Installing {} to {}...".format(artifact, final_path))

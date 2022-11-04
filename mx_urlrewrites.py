@@ -51,7 +51,7 @@ def register_urlrewrite(urlrewrite, onError=None):
 
     if onError is None:
         def _error(msg):
-            raise Exception(msg)
+            mx.abort(msg)
         onError = _error
 
     if isinstance(urlrewrite, URLRewrite):
@@ -61,16 +61,16 @@ def register_urlrewrite(urlrewrite, onError=None):
         onError('A URL rewrite rule must be a dict with a single entry')
     for pattern, attrs in urlrewrite.items():
         replacement = attrs.pop('replacement', None)
-        sha1 = attrs.pop('sha1', None)
+        digest = mx.Digest.from_attributes(attrs, remove=True, is_source=False, context=None)
         if replacement is None:
-            raise Exception('URL rewrite for pattern "' + pattern + '" is missing "replacement" entry')
+            onError(f'URL rewrite for pattern "{pattern}" is missing "replacement" entry')
         if len(attrs) != 0:
-            raise Exception('Unsupported attributes found for URL rewrite "' + pattern + '": ' + str(attrs))
+            onError(f'Unsupported attributes found for URL rewrite "{pattern}": {attrs}')
         try:
             pattern = re.compile(pattern)
         except Exception as e: # pylint: disable=broad-except
             onError('Error parsing URL rewrite pattern "' + pattern + '": ' + str(e))
-        urlrewrite = URLRewrite(pattern, replacement, sha1)
+        urlrewrite = URLRewrite(pattern, replacement, digest)
         mx.logvv("Registering url rewrite: " + str(urlrewrite))
         _urlrewrites.append(urlrewrite)
 
@@ -157,21 +157,21 @@ def rewriteurl(url):
     urlrewrite = _geturlrewrite(url)
     return _applyurlrewrite(urlrewrite, url)
 
-def _rewrite_urls_and_sha1(urls, sha1):
+def _rewrite_urls_and_digest(urls, digest):
     """
-    Rewrites URL list and SHA1 as defined by rewriting rules.
+    Rewrites URL list and digest as defined by rewriting rules.
 
     :param urls: an URL list to rewrite
-    :param sha1: an SHA1 to rewrite
-    :return: a tuple of rewritten URL list and rewritten SHA1
+    :param digest: a digest to rewrite
+    :return: a tuple of rewritten URL list and rewritten digest
     """
     result = []
     for url in urls:
         urlrewrite = _geturlrewrite(url)
         result.append(_applyurlrewrite(urlrewrite, url))
-        if urlrewrite and urlrewrite.sha1:
-            sha1 = urlrewrite.sha1
-    return (result, sha1)
+        if urlrewrite and urlrewrite.digest:
+            digest = urlrewrite.digest
+    return (result, digest)
 
 def urlrewrite_cli(args):
     """rewrites the given URL using MX_URLREWRITES"""
@@ -184,15 +184,15 @@ class URLRewrite(object):
 
     :param :class:`re.RegexObject` pattern: a regular expression for matching URLs
     :param replacement: the replacement URL to use for a URL matched by `pattern`
-    :param sha1: the replacement SHA1 to use for a URL matched by `pattern`
+    :param digest: the replacement digest to use for a URL matched by `pattern`
     """
 
-    def __init__(self, pattern, replacement, sha1):
+    def __init__(self, pattern, replacement, digest):
         self.pattern = pattern
         # Make sure to use str rather than unicode.
         # Some code paths elsewhere depend on this.
         self.replacement = str(replacement)
-        self.sha1 = str(sha1) if sha1 else None
+        self.digest = str(digest) if digest else None
 
     def _rewrite(self, url):
         match = self.pattern.match(url)
