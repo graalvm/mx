@@ -611,3 +611,76 @@ The following table of examples should make this clearer:
 | 21  | 19                | 20                | No               |
 | 22  | 20                | 21                | No               |
 | 22  | 19..20            | 21                | No               |
+
+### System dependent configuration
+
+A project can specify system dependent configuration options depending on which
+operating system and architecture are in use. The following example shows how
+the `bar` property can be set to `A` on Windows and `B` on all other operating
+systems.
+
+```python
+"project" : {
+  "foo" : "A",
+  "os" : {
+    "windows" : {
+      "bar" : "A"
+    },
+    "<others>" : {
+      "bar" : "B"
+    }
+  }
+}
+```
+
+Commonly supported operating system names are `darwin`, `linux` and `windows`.
+The `<others>` value can be used as a wildcard to match any other operating
+system. A warning is emitted if no operating system is matched.
+
+The `arch` property can be used to alter the configuration depending on which
+system architecture is used. Common examples of examples of system architectures
+are `amd64` and `aarch64`. The following example shows how the `bar` property
+can be set to `A` on amd64 and to `B` on all other platforms.
+
+```python
+"project" : {
+  "foo" : "A",
+  "arch" : {
+    "amd64" : {
+      "bar" : "A"
+    },
+    "<others>" : {
+      "bar" : "B"
+    }
+  }
+}
+```
+
+Configuration options that should depend on both the operating system and the
+architecture value can be specified using the `os_arch` property as follows. The
+following configuration example sets the property `bar` to `A` on amd64 linux
+systems, and to `B` for all other systems.
+
+```python
+"project" : {
+  "foo" : "A",
+  "os_arch" : {
+    "linux" : {
+      "amd64" : {
+        "bar" : "A"
+      },
+      "<others>" : {
+        "bar" : "B"
+      }
+    },
+    "<others>" : {
+      "<others>" : {
+        "bar" : "B"
+      }
+    }
+  }
+}
+```
+
+It is only possible to specify one of either the `os`, `arch` or `os_arch`
+options for any project.
