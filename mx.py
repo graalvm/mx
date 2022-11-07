@@ -8735,6 +8735,11 @@ class PackedResourceLibrary(ResourceLibrary):
             # pre-extracted
             return NoOpTask(self, args)
 
+    def _get_download_path(self, resolve):
+        if self.path:
+            return super(PackedResourceLibrary, self).get_path(resolve)
+        return None
+
     def get_path(self, resolve):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         if self.path:
@@ -17304,7 +17309,7 @@ def _update_digests(args):
     algorithm = Digest.check_algorithm(args.algorithm)
 
     libs_by_suite_py_path = {}
-    for lib in (l for l in dependencies() if l.isLibrary()):
+    for lib in (l for l in dependencies() if l.isLibrary() or l.isResourceLibrary() or l.isPackedResourceLibrary()):
         if args.filter and args.filter not in f'{lib.suite}:{lib}':
             continue
         origin = lib.origin()
@@ -17314,17 +17319,13 @@ def _update_digests(args):
         else:
             warn(f'could not find suite.py with the definition of {lib}\'s digest')
 
-    digest_re = re.compile(r'"(digest|sha1)"\s*:\s*"(?:([^:]+):)?([0-9a-fA-F]+)"', re.MULTILINE)
-    source_digest_re = re.compile(r'"(sourceDigest|sourceSha1)"\s*:\s*"(?:([^:]+):)?([0-9a-fA-F]+)"', re.MULTILINE)
-
-    unmodified = 0
-    updated = 0
-    unresolved = 0
+    unmodified = 0 # digest is already `algorithm`
+    updated = 0    # digest updated to `algorithm`
+    unresolved = 0 # digest non-updated because artifact is not downloaded
 
     for suite_py_path, libs in libs_by_suite_py_path.items():
         with open(suite_py_path) as fp:
             suite_py = fp.read()
-        logv(f'{suite_py_path}:')
 
         line_offsets = [0]
         offset = 0
@@ -17339,57 +17340,89 @@ def _update_digests(args):
         for line, lib in sorted(libs, reverse=True):
             line_offset = line_offsets[line - 1]
 
-            for artifact in ((digest_re, False), (source_digest_re, True)):
-                search_re, is_sources = artifact
-                path = lib.get_path(resolve=False) if not is_sources else lib.get_source_path(resolve=False)
-                digest_key = 'digest' if not is_sources else 'sourceDigest'
+            for is_sources in (False, True):
+                if not lib.isLibrary():
+                    if lib.digest is None:
+                        # A PackedResourceLibrary may not have a digest
+                        continue
+                    if is_sources:
+                        assert not hasattr(lib, 'get_source_path'), lib
+                        continue
 
-                m = search_re.search(suite_py, line_offset, previous_line_offset)
-                if m:
-                    key, name, _ = m.groups()
+                if lib.isPackedResourceLibrary():
+                    path = lib._get_download_path(resolve=False)
+                else:
+                    path = lib.get_path(resolve=False) if not is_sources else lib.get_source_path(resolve=False)
+                digest_key = 'digest' if not is_sources else 'sourceDigest'
+                digest_key_group = 'digest|sha1' if not is_sources else 'sourceDigest|sourceSha1'
+                digest_re = re.compile(fr'"({digest_key_group})("\s*:\s*")(?:([^:]+):)?{lib.digest.value}"', re.MULTILINE)
+                lib_py = suite_py[line_offset:previous_line_offset]
+                matches = 0
+                replacements = 0
+
+                new_digest = None
+                def replace_digest(m):
+                    nonlocal matches, replacements, updated, unmodified, unresolved, path, new_digest
+
+                    matches += 1
+                    key, assign, name = m.groups()
                     if (name or key) == algorithm:
                         logvv(f'skipping {lib} - digest is already {algorithm}')
                         unmodified += 1
                     else:
-                        if not exists(path):
-                            if not args.resolve:
-                                logvv(f'skipping {lib} - {path} is missing and --resolve not specified')
-                                unresolved += 1
-                                continue
-                            path = lib.get_path(resolve=True) if not is_sources else lib.get_source_path(resolve=True)
                         old_digest = lib.digest if not is_sources else lib.sourceDigest
-                        new_digest = Digest(algorithm, digest_of_file(path, algorithm))
+                        if new_digest is None:
+                            if not exists(path):
+                                if not args.resolve:
+                                    logvv(f'skipping {lib} - {path} is missing and --resolve not specified')
+                                    unresolved += 1
+                                    return m.group()
+                                path = lib.get_path(resolve=True) if not is_sources else lib.get_source_path(resolve=True)
+                                if lib.isPackedResourceLibrary():
+                                    path = lib._get_download_path(resolve=True)
+                            new_digest = Digest(algorithm, digest_of_file(path, algorithm))
+
                         logv(f'{suite_py_path}: {lib} {old_digest} {new_digest}')
-                        prefix = suite_py[0:m.start(1)]
-                        infix = suite_py[m.end(1):m.start(2)] if m.group(2) else suite_py[m.end(1):m.start(3)]
-                        suffix = suite_py[m.end(3):]
-                        suite_py = f'{prefix}{digest_key}{infix}{new_digest}{suffix}'
-                        if not args.dry_run:
+
+                        if not args.dry_run and replacements == 0:
                             urls = lib.urls if not is_sources else lib.sourceUrls
                             new_path = get_path_in_cache(lib.name, new_digest, urls, sources=is_sources)
                             ensure_dir_exists(dirname(new_path))
                             os.rename(path, new_path)
                             logv(f'{path} -> {new_path}')
 
-                            # Clean up cache files associated with old digest
+                            # Remove old digest file and move other files associated to new digest dir
                             digest_path = f'{path}.{old_digest.name}'
                             if exists(digest_path):
                                 os.remove(digest_path)
                             old_dir = dirname(path)
-                            if not os.listdir(old_dir):
-                                os.rmdir(old_dir)
+                            new_dir = dirname(new_path)
+                            for e in os.listdir(old_dir):
+                                e_src = join(old_dir, e)
+                                e_dst = join(new_dir, e)
+                                os.rename(e_src, e_dst)
+                            os.rmdir(old_dir)
 
                             # Generate the new digest file in the cache
                             _check_file_with_digest(new_path, new_digest)
                         updated += 1
-                elif not is_sources:
+                        replacements += 1
+                        return f'"{digest_key}{assign}{new_digest}"'
+
+                # A single library can have more than copy of a single digest. E.g. a
+                # PackedResourceLibrary can specify the same URL and digest for different
+                # os_arch combinations.
+                new_lib_py = digest_re.sub(replace_digest, lib_py)
+                if replacements != 0:
+                    suite_py = suite_py[0:line_offset] + new_lib_py + suite_py[previous_line_offset:]
+                elif matches == 0 and not is_sources:
                     warn(f'could not find the definition of {lib}\'s {digest_key} in {suite_py_path}')
             previous_line_offset = line_offset
 
         if not args.dry_run:
             with open(suite_py_path, "w") as fp:
                 fp.write(suite_py)
-    log(f'{updated} libraries had their digests updated to {algorithm}, {unmodified} already used {algorithm} and {unresolved} non-downloaded were skipped')
+    log(f'{updated} library digests were updated to {algorithm}, {unmodified} already used {algorithm} and {unresolved} non-downloaded were skipped')
 
 def show_suites(args):
     """show all suites
@@ -18193,7 +18226,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.11.1") # [GR-41905] Allow escaping environment variables in properties
+version = VersionSpec("6.11.2") # [GR-42278] enhance update-digests to support ResourceLibrary and PackedResourceLibrary
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
