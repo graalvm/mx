@@ -6,7 +6,7 @@ suite = {
 
     "APACHE_JMETER_5.3": {
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/apache-jmeter-5.3.zip"],
-      "digest": "sha1:17480a0905d9d485bc8ce8e7be9daec2de98c251",
+      "digest": "sha512:e84dfe57397ca5bd9ed5d38c85a1081373b047ff9d41658a64a09dcf8329c25aaa7c23b5bba1b492c3d12edce7f141504baba8071b05df760303c1873ee46ddb",
       "packedResource": True,
       "license": "Apache-2.0",
     },
@@ -579,7 +579,7 @@ suite = {
             # Built from the same source as https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip,
             # but on a system with older glibc for maximum compatibility with older Linux distributions.
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-amd64.zip"],
-            "digest": "sha1:47213091e83ddf41f3e859af0b280fa7c8159854"
+            "digest": "sha512:203be0ba85c899530cbf8d27f9f2a2e8247ae3cea66ea3f9f2e2f159cc4583bf424c130791f9ac6d70a4abf53e48291a696704b0670272ceb5ab63d00003acaf"
           },
           "aarch64" : {
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-aarch64.zip"],
@@ -649,7 +649,7 @@ suite = {
       "os_arch": {
         "linux": {
           "amd64": {
-            "digest": "sha1:66f3b460b264f50a11533e317737fe606299efd8",
+            "digest": "sha512:dd991d57234c55c2b8d6c7cb91a001287a5ea15d76ccafc08c7004fc50ea1231c26a9bcfcb41e4d9a9b18b6b041f57c1ae15c0e1e1a7daab1fff7cb18b504725",
             "urls": ["{urlbase}/async-profiler-1.8.3-linux-x64.tar.gz"],
           },
           "aarch64": {
