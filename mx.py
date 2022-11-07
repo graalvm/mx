@@ -6278,10 +6278,7 @@ class LayoutDistribution(AbstractDistribution):
                                 zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
                                 if not zipinfo.filename:
                                     continue
-                                extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
-                                unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
-                                if unix_attributes != 0:
-                                    os.chmod(extracted_file, unix_attributes)
+                                extracted_file = ZipExtractor.extract_and_preserve_permissions(zf, zipinfo, unarchiver_dest_directory)
                                 archiver.add(extracted_file, dest_arcname(zipinfo.filename), provenance)
                 elif 'tar' in ext or ext.endswith('tgz'):
                     with tarfile.TarFile.open(source_archive_file) as tf:
@@ -8505,7 +8502,18 @@ class ZipExtractor(Extractor):
         return ar.namelist()
 
     def _extractall(self, ar, dst):
-        return ar.extractall(dst)
+        # Cannot use `ar.extractall(dst)` because that loses permissions:
+        # https://stackoverflow.com/q/39296101/388803
+        for zipinfo in ar.infolist():
+            ZipExtractor.extract_and_preserve_permissions(ar, zipinfo, dst)
+
+    @staticmethod
+    def extract_and_preserve_permissions(zf, zipinfo, destination):
+        extracted_file = zf.extract(zipinfo, destination)
+        unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
+        if unix_attributes != 0:
+            os.chmod(extracted_file, unix_attributes)
+        return extracted_file
 
 
 class FileInfo:
@@ -18226,7 +18234,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.11.2") # [GR-42278] enhance update-digests to support ResourceLibrary and PackedResourceLibrary
+version = VersionSpec("6.11.3") # [GR-42275] Preserve executable permissions with ZipExtractor
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -144,16 +144,9 @@ class Ninja(object):
             if callable(err):
                 err = mx.TeeOutputCapture(err)
 
-        try:
-            rc = mx.run(cmd, nonZeroIsFatal=False, out=out, err=err, cwd=self.build_dir)
-        except OSError as e:
-            if e.errno != errno.EACCES:
-                mx.abort('Error executing \'{}\': {}'.format(' '.join(cmd), str(e)))
-            mx.logv('{} is not executable. Trying to change permissions...'.format(self.binary))
-            os.chmod(self.binary, 0o755)
-            self._run(*args, **kwargs)  # retry
-        else:
-            not rc or mx.abort(rc if verbose else (out, err))  # pylint: disable=expression-not-assigned
+        rc = mx.run(cmd, nonZeroIsFatal=False, out=out, err=err, cwd=self.build_dir)
+        if rc:
+            mx.abort(rc if verbose else (out, err))
 
 
 class NativeDependency(mx.Dependency):
