@@ -192,7 +192,7 @@ class URLRewrite(object):
         # Make sure to use str rather than unicode.
         # Some code paths elsewhere depend on this.
         self.replacement = str(replacement)
-        self.digest = str(digest) if digest else None
+        self.digest = digest
 
     def _rewrite(self, url):
         match = self.pattern.match(url)
