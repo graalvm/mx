@@ -18303,7 +18303,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.10.4") # [GR-40090] Support bundling of language home resources when creating polyglot native images.
+version = VersionSpec("6.11.4") # [GR-40090] Support bundling of language home resources when creating polyglot native images.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
