@@ -64,7 +64,13 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
         self.silent = not cmake_show_warnings
         self._cmake_config_raw = args.pop('cmakeConfig', {})
-        self._toolchain = args.pop('toolchain', None)
+        self._cmake_toolchain = args.pop('toolchain', None)
+
+    def resolveDeps(self):
+        super(CMakeNinjaProject, self).resolveDeps()
+        self._cmake_toolchain = mx.distribution(self._cmake_toolchain, context=self) if self._cmake_toolchain else None
+        if self._cmake_toolchain and (not isinstance(self._cmake_toolchain, mx.AbstractDistribution) or not self._cmake_toolchain.get_output()):
+            mx.abort(f"Cannot generate manifest: the specified toolchain ({self._cmake_toolchain}) must be an AbstractDistribution that returns a value for get_output", context=self)
 
     @staticmethod
     def config_entry(key, value):
@@ -97,7 +103,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
                     raise
 
     def _toolchain_config(self):
-        return {"CMAKE_TOOLCHAIN_FILE": tc for tc in [self._toolchain] if tc}
+        return {"CMAKE_TOOLCHAIN_FILE": mx.join(tc.get_output(), 'cmake', 'toolchain.cmake') for tc in [self._cmake_toolchain] if tc}
 
     def cmake_config(self):
         return [CMakeNinjaProject.config_entry(k, v) for k, v in sorted({**self._cmake_config_raw, **self._toolchain_config()}.items())]

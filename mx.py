@@ -48,7 +48,6 @@ import socket
 import tarfile, gzip
 import hashlib
 import itertools
-import functools
 from functools import cmp_to_key
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
@@ -2441,7 +2440,7 @@ class Suite(object):
     # expand { "os" : value } into { "os" : { "<others>" : value } }
     @staticmethod
     def _process_os(os):
-        return { k : {"<others>" : v} for (k,v) in os.items() }
+        return {k : {"<others>" : v} for (k, v) in os.items()}
 
     # expand { "arch" : value } into { "<others>" : { "arch" : value } }
     @staticmethod
@@ -2455,15 +2454,11 @@ class Suite(object):
                 return dictionary.pop(k)
         return None
 
-    # returs [os_variant] if the variant is non null
-    def _get_os_variant_list():
-        return [ get_os() + '-' + v for v in [get_os_variant()] if v]
-
     @staticmethod
     def _pop_os_arch(attrs, context):
-        # first process and merge the os_arch and os attributes
+        # try and find values for the os, os_arch and arch attributes and preprocess them into the os_arch format
         options = [('os_arch', lambda x: x), ('os', Suite._process_os), ('arch', Suite._process_arch)]
-        options = [(k, fn(attrs.pop(k))) for (k,fn) in options if k in attrs]
+        options = [(k, fn(attrs.pop(k))) for (k, fn) in options if k in attrs]
         if len(options) > 1:
             abort(f'Specifying both {options[0][0]} and {options[1][0]} is not supported in {context}')
         os_arch = options[0][1] if len(options) > 0 else {}
@@ -18312,7 +18307,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.7") # [GR-42564] Fix mx-benchmark's log formatting
+version = VersionSpec("6.13.0") # GR-42035 - Add cmake toolchain file support as well as os and arch attributes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
