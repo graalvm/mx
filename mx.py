@@ -64,7 +64,7 @@ from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
-from io import BytesIO
+from io import BytesIO, open as io_open
 import fnmatch
 import operator
 import calendar
@@ -2318,6 +2318,14 @@ class Suite(object):
         """:rtype : Distribution"""
         assert not '>' in name
         context = 'distribution ' + name
+        fileListPurpose = attrs.pop('fileListPurpose', None)
+        if fileListPurpose:
+            if isinstance(fileListPurpose, str):
+                if not re.match("^([a-zA-Z0-9\\-\\._])+$", fileListPurpose):
+                    raise abort('The value \"{}\" of attribute \"fileListPurpose\" of distribution {} does not match the pattern [a-zA-Z0-9\\-\\._]+'.format(fileListPurpose, name))
+            else:
+                raise abort('The value of attribute \"fileListPurpose\" of distribution {} is not a string.'.format(name))
+
         className = attrs.pop('class', None)
         native = attrs.pop('native', False)
         theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
@@ -2341,8 +2349,20 @@ class Suite(object):
                 layout_class = LayoutZIPDistribution
             else:
                 raise abort("Unknown layout distribution type: {}".format(layout_type), context=context)
-            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
-        if className:
+            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, fileListPurpose=fileListPurpose, **attrs)
+        if fileListPurpose:
+            if layout is None:
+                raise abort('Distribution {} that defines fileListPurpose must have a layout'.format(name))
+            if className:
+                if not self.extensions or not hasattr(self.extensions, className):
+                    raise abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
+                layout_class = getattr(self.extensions, className)
+                if not issubclass(layout_class, LayoutDistribution):
+                    raise abort('The distribution {} defines fileListPurpose, but it also requires a custom class {} which is not a subclass of LayoutDistribution'.format(name, className))
+                d = layout_class(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, layout=layout, path=path, fileListPurpose=fileListPurpose, **attrs)
+            else:
+                d = create_layout('tar')
+        elif className:
             if not self.extensions or not hasattr(self.extensions, className):
                 raise abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
             d = getattr(self.extensions, className)(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, layout=layout, path=path, **attrs)
@@ -5930,12 +5950,14 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
         :type path_substitutions: mx_subst.SubstitutionEngine
         :type string_substitutions: mx_subst.SubstitutionEngine
+        :type fileListPurpose: str
+        :param fileListPurpose: if specified, a file '<path>.filelist' will be created next to this distribution's archive. The file will contain a list of all the files from this distribution
         """
         super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
         self.buildDependencies += LayoutDistribution._extract_deps(layout, suite, name)
@@ -5947,6 +5969,7 @@ class LayoutDistribution(AbstractDistribution):
         self.archive_factory = archive_factory or Archiver
         self.compress = compress
         self._removed_deps = set()
+        self.fileListPurpose = fileListPurpose
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
@@ -6404,19 +6427,33 @@ Common causes:
                     abort("Invalid layout: no file to copy to '{dest}'\n"
                           "Do you want an empty directory: '{dest}/'? (note the trailing slash)".format(dest=destination), context=self)
 
+    def _check_resources_file_list(self):
+        fileListPath = self.path + ".filelist"
+        return (not self.fileListPurpose and not exists(fileListPath)) or (self.fileListPurpose and exists(fileListPath))
+
     def make_archive(self):
         self._verify_layout()
         output = realpath(self.get_output())
-        with self.archive_factory(self.path,
-                                  kind=self.localExtension(),
-                                  duplicates_action='warn',
-                                  context=self,
-                                  reset_user_group=getattr(self, 'reset_user_group', False),
-                                  compress=self.compress) as arc:
+        if exists(self.path + ".filelist"):
+            os.unlink(self.path + ".filelist")
+        archiver = self.archive_factory(self.path,
+                                        kind=self.localExtension(),
+                                        duplicates_action='warn',
+                                        context=self,
+                                        reset_user_group=getattr(self, 'reset_user_group', False),
+                                        compress=self.compress)
+        with FileListArchiver(self.path, archiver) if self.fileListPurpose else archiver as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
         self._persist_linky_state()
+
+    def getArchivableResults(self, use_relpath=True, single=False):
+        for (p, n) in super(LayoutDistribution, self).getArchivableResults(use_relpath, single):
+            yield p, n
+        if not single and self.fileListPurpose:
+            yield self.path + ".filelist", self.default_filename() + ".filelist"
+
 
     def needsUpdate(self, newestInput):
         sup = super(LayoutDistribution, self).needsUpdate(newestInput)
@@ -6455,6 +6492,8 @@ Common causes:
             return "layout definition has changed"
         if not self._check_linky_state():
             return "LINKY_LAYOUT has changed"
+        if not self._check_resources_file_list():
+            return "fileListPurpose has changed"
         return None
 
     def _persist_layout(self):
@@ -15466,6 +15505,36 @@ class NullArchiver(Archiver):
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
+class FileListArchiver:
+    def __init__(self, path, delegate):
+        self.path = path
+        self.filelist = []
+        self.delegate = delegate
+
+    def __enter__(self):
+        self.delegate = self.delegate.__enter__()
+        return self
+
+    def add(self, filename, archive_name, provenance):
+        self.filelist.append(archive_name)
+        self.delegate.add(filename, archive_name, provenance)
+
+    def add_str(self, data, archive_name, provenance):
+        self.filelist.append(archive_name)
+        self.delegate.add_str(data, archive_name, provenance)
+
+    def add_link(self, target, archive_name, provenance):
+        self.filelist.append(archive_name)
+        self.delegate.add_link(target, archive_name, provenance)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        _filelist_str = os.linesep.join(self.filelist)
+
+        with SafeFileCreation(self.path + ".filelist") as sfc, io_open(sfc.tmpFd, mode='w', closefd=False, encoding='utf-8') as f:
+            f.write(_filelist_str)
+
+        self.delegate.__exit__(exc_type, exc_value, traceback)
+
 def make_unstrip_map(dists):
     """
     Gets the contents of a map file that can be used with the `unstrip` command to deobfuscate stack
@@ -18234,7 +18303,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.11.3") # [GR-42275] Preserve executable permissions with ZipExtractor
+version = VersionSpec("6.11.4") # [GR-40090] Support bundling of language home resources when creating polyglot native images.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
