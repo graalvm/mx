@@ -18303,7 +18303,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.0") # GR-42363 - update to spotbugs 4.7.3
+version = VersionSpec("6.12.1") # [GR-41841] Update all digests to sha-512.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
