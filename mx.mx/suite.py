@@ -581,7 +581,7 @@ suite = {
           },
           "aarch64" : {
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-aarch64.zip"],
-            "digest": "sha1:ffaa7656e18b7c9cc3f1fa447902cf5e324bd35b"
+            "digest": "sha512:6592d1c6397a3968df5d473c11c29de040df938a06ac5351f09bdea10fe78a4d171e9dd8be68e62cba30d01b72d575f55b29376b46812e7c4c168df34dbbf76f"
           },
           "<others>" : {
             "optional" : True
@@ -597,7 +597,7 @@ suite = {
           # ./configure.py --bootstrap
           "amd64" : {
             "urls" : ["https://lafo.ssw.jku.at/pub/graal-external-deps/ninja-{version}-linux-amd64-musl.zip"],
-            "digest": "sha1:0cc6d5cff72e63444b7abb3fc0562f6e70089147"
+            "digest": "sha512:5f23099cac6d9e852c2368930ecf0eb859afc17aeba48cbcba844ecb7a020e30aae2f637186544d780a1319162a4b4dc8b230996f19ce0b4f1aeb61be6a56653"
           }
         },
         "darwin" : {
@@ -613,7 +613,7 @@ suite = {
         "windows" : {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip"],
-            "digest": "sha1:ccacdf88912e061e0b527f2e3c69ee10544d6f8a"
+            "digest": "sha512:6004140d92e86afbb17b49c49037ccd0786ce238f340f7d0e62b4b0c29ed0d6ad0bab11feda2094ae849c387d70d63504393714ed0a1f4d3a1f155af7a4f1ba3"
           }
         },
         "solaris" : {
@@ -651,7 +651,7 @@ suite = {
             "urls": ["{urlbase}/async-profiler-1.8.3-linux-x64.tar.gz"],
           },
           "aarch64": {
-            "digest": "sha1:cc9dc177d8ab9368af332eb4d39ee3be434683c3",
+            "digest": "sha512:7445c9d2ecb0fc568ae490976bf58eebbccec04b5466cc80fc52323bcf2513847e9aef1dc89de95a32896f9953a2007493555123c4dfdfcf85cf112810f70ea5",
             "urls": ["{urlbase}/async-profiler-1.8.3-linux-aarch64.tar.gz"],
           },
           "<others>": {
@@ -660,7 +660,7 @@ suite = {
         },
         "darwin": {
           "amd64": {
-            "digest": "sha1:81017bf1232e143c60f5f93212f617617e678cfe",
+            "digest": "sha512:3e49b1dd6b3240b6f3653914a2288bedbb5ad88e6476b704c3d055bafa4cbe7ec6f556a7dbc086f18b07ef29d89949bc4d9b8485aa62106c92475c62df2e9395",
             "urls": ["{urlbase}/async-profiler-1.8.3-macos-x64.tar.gz"],
           },
           "aarch64": {
