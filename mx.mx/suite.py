@@ -108,6 +108,11 @@ suite = {
       "digest": "sha512:2b19837ed5ef55654139a86579ea3ab8edeaf716245eb61503c0c861038bc32d84d50d7316442f32338aef3688119b9137df28d8d3cea1fb8d0653710d96259d",
     },
 
+    "SPOTBUGS_4.7.3" : {
+      "urls" : ["https://github.com/spotbugs/spotbugs/releases/download/4.7.3/spotbugs-4.7.3.zip"],
+      "digest": "sha512:fcece0ecbc5301b5d101668b997beda59f4590f01010a6d195e4212ba989150a85760c25bd252966cde82844a43f4992d32bf6fc175ad01d0a578ca573e22c2e",
+    },
+
     "SIGTEST_1_2" : {
       "maven": {
         "groupId": "org.netbeans.tools",

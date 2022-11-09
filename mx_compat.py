@@ -659,6 +659,13 @@ class MxCompatibility691(MxCompatibility680):
             'RETRACE': '7_3_0_beta1',
         }
 
+class MxCompatibility6120(MxCompatibility691):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.12.0")
+
+    def spotbugs_version(self):
+        return "4.7.3"
 
 def minVersion():
     _ensureCompatLoaded()
