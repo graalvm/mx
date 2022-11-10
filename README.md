@@ -595,3 +595,19 @@ In other words, there should be no back-and-forth to the same repo.
 Java projects may use language or runtime features which are considered _preview features_ in certain Java versions, in which case preview features must be enabled for compilation (`--enable-preview`).
 This is specified using the `javaPreviewNeeded` attribute, which is a version specification in the same format as `javaCompliance`, for example: `"javaPreviewNeeded": "19..20"`
 If the compiling JDK matches that version or version range, preview features are enabled for compilation.
+Given that javac and the JVM must be on the same JDK version for preview features (see [here](https://nipafx.dev/enable-preview-language-features/#same-version-for-feature-compiler-and-jvm) for details),
+compiling a project with preview features will force the javac `-source` and `-target` options to `N` where `N` is
+the minimum of:
+* the version of the JDK being used for compilation (i.e. `JAVA_HOME`) and
+* the lowest version where `--enable-preview` is not needed.
+
+The following table of examples should make this clearer:
+
+| JDK | javaPreviewNeeded | -target / -source | --enable-preview |
+| ----|-------------------|-------------------|------------------|
+| 19  | 19+               | 19                | Yes              |
+| 20  | 19+               | 20                | Yes              |
+| 20  | 19                | 20                | No               |
+| 21  | 19                | 20                | No               |
+| 22  | 20                | 21                | No               |
+| 22  | 19..20            | 21                | No               |

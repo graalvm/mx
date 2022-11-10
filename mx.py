@@ -6920,10 +6920,15 @@ class JavaProject(Project, ClasspathDependency):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=testProject, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         if javaCompliance is None:
-            abort('javaCompliance property required for Java project ' + name)
+            self.abort('javaCompliance property required for Java project')
         self.javaCompliance = JavaCompliance(javaCompliance, context=self)
         javaPreviewNeeded = kwArgs.get('javaPreviewNeeded')
-        self.javaPreviewNeeded = JavaCompliance(javaPreviewNeeded, context=self) if javaPreviewNeeded else None
+        if javaPreviewNeeded:
+            self.javaPreviewNeeded = JavaCompliance(javaPreviewNeeded, context=self)
+            if self.javaPreviewNeeded.value > self.javaCompliance.value:
+                self.abort(f'javaCompliance ({self.javaCompliance}) cannot be lower than javaPreviewNeeded ({self.javaPreviewNeeded})')
+        else:
+            self.javaPreviewNeeded = None
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
@@ -7786,6 +7791,28 @@ class JavacLikeCompiler(JavaCompiler):
         self.jdk = jdk
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
+    @staticmethod
+    def get_release_args(jdk_compliance, compliance, javaPreviewNeeded):
+        """
+        Gets ``-target``, ``-source`` and ``--enable-preview`` javac arguments based on
+        `jdk_compliance`, `compliance` and `javaPreviewNeeded`.
+        """
+        enable_preview = []
+        if javaPreviewNeeded:
+            if javaPreviewNeeded._high_bound():
+                out_of_preview = javaPreviewNeeded.highest_specified_value() + 1
+                if jdk_compliance.value >= out_of_preview:
+                    c = str(out_of_preview)
+                else:
+                    c = str(jdk_compliance.value)
+                    enable_preview = ['--enable-preview']
+            else:
+                c = str(jdk_compliance)
+                enable_preview = ['--enable-preview']
+        else:
+            c = str(compliance)
+        return ['-target', c, '-source', c] + enable_preview
+
     def prepare(self, sourceFiles, project, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-d', outputDir]
@@ -7803,10 +7830,8 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
         else:
             javacArgs += ['-proc:none']
-        c = str(compliance)
-        javacArgs += ['-target', c, '-source', c]
-        if project.javaPreviewNeeded and self.jdk.javaCompliance in project.javaPreviewNeeded:
-            javacArgs.append('--enable-preview')
+
+        javacArgs += JavacLikeCompiler.get_release_args(self.jdk.javaCompliance, compliance, project.javaPreviewNeeded)
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
@@ -18303,7 +18328,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.1") # [GR-41841] Update all digests to sha-512.
+version = VersionSpec("6.12.2") # GR-42402 - Refine support for javaPreviewNeeded.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

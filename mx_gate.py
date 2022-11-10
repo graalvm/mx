@@ -41,6 +41,7 @@ import mx
 import mx_javacompliance
 import sys
 from mx_urlrewrites import rewriteurl
+from mx_javacompliance import JavaCompliance
 from collections import OrderedDict
 
 """
@@ -513,6 +514,24 @@ def _run_mx_suite_tests():
     Mx suite specific tests.
     """
     mx_javacompliance._test()
+
+    # (JDK, project_compliance, javaPreviewNeeded) -> expected javac args
+    get_release_args_data = {
+        (19, '19+', None):     ['-target', '19', '-source', '19'],
+        (20, '19+', None):     ['-target', '19', '-source', '19'],
+        (19, '19+', '19+'):    ['-target', '19', '-source', '19', '--enable-preview'],
+        (20, '19+', '19+'):    ['-target', '20', '-source', '20', '--enable-preview'],
+        (20, '19+', '19'):     ['-target', '20', '-source', '20'],
+        (21, '19+', '19'):     ['-target', '20', '-source', '20'],
+        (22, '19+', '20'):     ['-target', '21', '-source', '21'],
+        (22, '19+', '19..20'): ['-target', '21', '-source', '21'],
+    }
+    for k, expect in get_release_args_data.items():
+        jdk_compliance = JavaCompliance(k[0])
+        project_compliance = JavaCompliance(k[1])
+        javaPreviewNeeded = JavaCompliance(k[2]) if k[2] else None
+        actual = mx.JavacLikeCompiler.get_release_args(jdk_compliance, project_compliance, javaPreviewNeeded)
+        assert actual == expect, f'{k}: {actual} != {expect}'
 
     if mx.is_windows():
         def win(s, min_length=0):
@@ -1548,7 +1567,7 @@ def sonarqube_upload(args):
         exclude_dirs.extend(p.source_dirs())
         exclude_dirs.append(p.source_gen_dir())
 
-    javaCompliance = max([p.javaCompliance for p in includes]) if includes else mx.JavaCompliance('1.7')
+    javaCompliance = max([p.javaCompliance for p in includes]) if includes else JavaCompliance('1.7')
 
     jacoco_exec = get_jacoco_dest_file()
     if not os.path.exists(jacoco_exec) and not args.skip_coverage:
