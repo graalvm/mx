@@ -72,6 +72,7 @@ from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
 import posixpath
+import re
 
 _mx_commands = MxCommands("mx")
 
@@ -17810,6 +17811,41 @@ def _add_command_primary_option(parser):
 
 ### ~~~~~~~~~~~~~ commands
 
+def checklinks(args):
+    '''
+    Checks for broken links in given markdown files. Uses simple regular expression
+    to find the links and "HEAD" http request to check them. Reports all broken links.
+
+    The arguments are files to be checked. One can use shell expansion, but this
+    command also internally treats the arguments as Python glob expressions.
+    The default patten used, if no arguments are given, is './**/*.md'
+    '''
+    pattern = re.compile(r"\[[^\]]*]\(([^)]*)\)")
+    result = True
+    indent = "    "
+    file_patterns = args if args else ['./**/*.md']
+    logv('Checking dead links in: ' + str(file_patterns))
+    for file_pattern in file_patterns:
+        for filename in glob.glob(file_pattern, recursive=True):
+            logv("Checking dead links in " + filename)
+            with open(filename, 'r') as file:
+                for link in pattern.findall(file.read()):
+                    if not (link.strip().startswith('http://') or link.strip().startswith('https://')):
+                        logv(indent + "Skipping: " + link)
+                        continue
+                    logv(indent + "Checking link: " + link)
+                    try:
+                        with _urllib_request.urlopen(_urllib_request.Request(link, method="HEAD", headers={'User-Agent': 'Dillo/3.0.5'})):
+                            pass
+                    except urllib.error.HTTPError as e:
+                        log_error(indent + "Dead link in {}: {}".format(filename, link))
+                        logvv(indent + "Error:\n" + str(e))
+                        result = False
+    if not result:
+        abort("Found dead links")
+
+
+
 def checkcopyrights(args):
     """run copyright check on the sources"""
     class CP(ArgumentParser):
@@ -17967,6 +18003,7 @@ update_commands("mx", {
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
+    'checklinks': [checklinks, '[paths]'],
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
