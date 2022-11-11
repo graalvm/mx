@@ -909,7 +909,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 artifactXML.open('root', attributes={'id': 'root'})
                 for javaProject in [dep for dep in dist.archived_deps() if dep.isJavaProject()]:
                     artifactXML.element('element', attributes={'id': 'module-output', 'name': javaProject.name})
-                for javaProject in [dep for dep in dist.deps if dep.isLibrary() or dep.isDistribution()]:
+                for javaProject in [dep for dep in dist.deps if dep.isLibrary() or (dep.isDistribution() and dep in validDistributions)]:
                     artifactXML.element('element', attributes={'id': 'artifact', 'artifact-name': javaProject.name})
                 artifactXML.close('root')
                 artifactXML.close('artifact')
