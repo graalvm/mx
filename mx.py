@@ -7511,7 +7511,7 @@ class JavaBuildTask(ProjectBuildTask):
         ProjectBuildTask.initSharedMemoryState(self)
         try:
             self._newestBox = multiprocessing.Array('c', 2048)
-        except TypeError:
+        except (TypeError, ValueError):
             self._newestBox = multiprocessing.Value('c', '')
 
     def pushSharedMemoryState(self):
@@ -18328,7 +18328,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.2") # GR-42402 - Refine support for javaPreviewNeeded.
+version = VersionSpec("6.12.3") # GR-41905 - fix building with pypy
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
