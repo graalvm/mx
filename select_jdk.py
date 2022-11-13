@@ -56,13 +56,16 @@ def find_system_jdks():
     """
     Returns a set of valid JDK directories by searching standard locations.
     """
+    user_home_cache = join(expanduser('~'), '.mx', 'jdks') # default --to value for `mx fetch-jdk` command
+
     bases = [
         '/Library/Java/JavaVirtualMachines',
         '/usr/lib/jvm',
         '/usr/java',
         '/usr/jdk/instances',
         r'C:\Program Files\Java',
-        join(expanduser('~'), '.mx', 'jdks') # default --to value for `mx fetch-jdk` command
+        user_home_cache,
+        join(user_home_cache, 'amd64') # M1 Rosetta support
     ]
     jdks = set()
     for base in bases:

@@ -281,6 +281,7 @@ def _parse_args(args):
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='{} separated JSON files specifying location of JDK binaries (default: {})'.format(os.pathsep, default_jdk_binaries_location))
     parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed. Specify <system> to use the system default location. (default: {})'.format(settings["jdks-dir"]))
     parser.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
+    parser.add_argument('--arch', action='store', metavar='<name>', help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     args = parser.parse_args(args)
@@ -289,6 +290,8 @@ def _parse_args(args):
         if args.to == '<system>':
             args.to = _default_system_jdks_dir()
         settings["jdks-dir"] = args.to
+    elif args.arch != mx.get_arch():
+        settings["jdks-dir"] = join(settings["jdks-dir"], args.arch)
 
     if not _check_write_access(settings["jdks-dir"]):
         mx.abort("JDK installation directory {} is not writeable.".format(settings["jdks-dir"]) + os.linesep +
@@ -298,7 +301,7 @@ def _parse_args(args):
     jdk_binaries_locations = (args.jdk_binaries or default_jdk_binaries_location).split(os.pathsep)
 
     jdk_versions = _parse_jdk_versions(jdk_versions_location)
-    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_versions)
+    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_versions, args.arch)
 
     if args.jdk_id is not None:
         settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, args.jdk_id)
@@ -338,7 +341,7 @@ def _parse_jdk_versions(path):
     obj = _parse_json(path)
     return {jdk_id: _get_json_attr(jdk_obj, 'version', str, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
 
-def _parse_jdk_binaries(paths, jdk_versions):
+def _parse_jdk_binaries(paths, jdk_versions, arch):
     jdk_binaries = {}
     for path in paths:
         if not exists(path):
@@ -359,7 +362,7 @@ def _parse_jdk_binaries(paths, jdk_versions):
             version = jdk_versions.get(jdk_id)
             jdk_binary_id = jdk_id + qualifier
             if version and not jdk_binary_id in jdk_binaries:
-                jdk_binary = _JdkBinary(jdk_binary_id, version, get_entry('filename'), get_entry('url'), source)
+                jdk_binary = _JdkBinary(jdk_binary_id, version, get_entry('filename'), get_entry('url'), source, arch)
                 jdk_binaries[jdk_binary_id] = jdk_binary
     return jdk_binaries
 
@@ -439,13 +442,14 @@ _DEFAULT_JDK_ID = "labsjdk-ce-11"
 
 class _JdkBinary(object):
 
-    def __init__(self, jdk_id, version, filename, url, source):
+    def __init__(self, jdk_id, version, filename, url, source, arch):
         self._jdk_id = jdk_id
         self._version = version
         self._filename_template = filename
         self._url_template = url
         self._source = source
-        platform = mx.get_os() + '-' + mx.get_arch()
+        self._arch = arch
+        platform = mx.get_os() + '-' + arch
         keywords = {'version': version, 'platform': platform}
         self._filename = _instantiate(filename, keywords, source)
         keywords['filename'] = self._filename
@@ -457,7 +461,7 @@ class _JdkBinary(object):
         return '{}: file={}, url={}'.format(self._jdk_id, self._filename, self._url)
 
     def with_version(self, version):
-        return _JdkBinary(self._jdk_id, version, self._filename_template, self._url_template, self._source)
+        return _JdkBinary(self._jdk_id, version, self._filename_template, self._url_template, self._source, self._arch)
 
     def get_final_path(self, jdk_path):
         return join(jdk_path, self._folder_name)
