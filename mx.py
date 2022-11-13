@@ -2076,9 +2076,13 @@ class Suite(object):
         """
         for l in self.libs:
             existing = _libs.get(l.name)
-            # Check that suites that define same library are consistent
-            if existing is not None and existing != l and _check_global_structures:
-                abort('inconsistent library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir, context=l)
+            # Check that suites that define the same library are consistent wrt digests
+            if existing is not None and _check_global_structures:
+                digest1 = existing.digest
+                digest2 = l.digest
+                # Can only compare digests with the same name
+                if digest1.name == digest2.name and digest1.value != digest2.value:
+                    abort(f'definition of {l} in {existing.suite.dir} and {l.suite.dir} have conflicting {digest1.name} values: {digest1} != {digest2}', context=l)
             _libs[l.name] = l
         for l in self.jreLibs:
             existing = _jreLibs.get(l.name)
@@ -8737,7 +8741,7 @@ class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
         return not _check_file_with_digest(self.path, self.digest)
 
     def _comparison_key(self):
-        return (self.digest, self.name)
+        return self.name
 
 
 class PackedResourceLibrary(ResourceLibrary):
@@ -9042,7 +9046,7 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
         self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def _comparison_key(self):
-        return (self.digest, self.name)
+        return self.name
 
     def get_urls(self):
         return self.urls
@@ -18328,7 +18332,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.3") # GR-41905 - fix building with pypy
+version = VersionSpec("6.12.4") # GR-42429 comparing Libraries should only consider name
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
