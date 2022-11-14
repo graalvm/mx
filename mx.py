@@ -17634,14 +17634,17 @@ def verify_library_urls(args):
     _suites = suites(True)
     if args.include_mx:
         _suites.append(_mx_suite)
+    tested = set()
     for s in _suites:
         for lib in s.libs:
-            log('Verifying connection to URLs for ' + lib.name)
-            # Due to URL rewriting, URL list may have duplicates so perform deduping now
-            urls = list(set(lib.get_urls()))
-            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, urls, verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
-                ok = False
-                log_error(f'Library {lib.qualifiedName()} not available from {lib.get_urls()}')
+            if lib not in tested:
+                log(f'Verifying connection to URLs for {lib}')
+                # Due to URL rewriting, URL list may have duplicates so perform deduping now
+                urls = list(set(lib.get_urls()))
+                if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, urls, verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+                    ok = False
+                    log_error(f'Library {lib.qualifiedName()} not available from {lib.get_urls()}')
+                tested.add(lib)
     if not ok:
         abort('Some libraries are not reachable')
 
