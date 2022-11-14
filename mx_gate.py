@@ -1068,16 +1068,28 @@ def _make_coverage_report(output_directory,
                                 d = hashlib.sha1()
                                 d.update(url.encode())
                                 url_hash = d.hexdigest()
-                                cache = abspath(url_hash)
+                                cache_dir = mx.ensure_dir_exists(abspath(join(output_directory, '.cache', url_hash)))
+                                cache = join(cache_dir, 'lcov.info')
+                                cache_url = join(cache_dir, 'url')
                                 if not exists(cache):
-                                    with open(cache, 'wb') as cache_fp:
+                                    data = join(cache_dir, 'data')
+                                    with open(data, 'wb') as cache_fp:
                                         mx.log(f'Downloading {url} to {cache}')
                                         cache_fp.write(urllib.request.urlopen(url).read())
+                                    if has_gzip_magic_number(data):
+                                        import gzip
+                                        with gzip.open(data, 'rt') as data_in, open(cache, 'w') as cache_out:
+                                            cache_out.write(data_in.read())
+                                    else:
+                                        shutil.move(data, cache)
+                                    with open(cache_url, 'w') as cache_url_fp:
+                                        print(url, file=cache_url_fp)
                                 else:
                                     mx.log(f'Reading cached {url} from {cache}. Delete {cache} to force re-downloading')
                                 return cache
 
-                            lcovs[e] = download_and_cache(e)
+                            cache = download_and_cache(e)
+                            lcovs[cache] = cache
                         else:
                             for p in glob.glob(e):
                                 lcovs[abspath(p)] = abspath(p)
