@@ -198,7 +198,8 @@ def checkout_downstream(args):
     if len(downstream_suite.suite_imports) == 0:
         mx.abort(f"Downstream suite '{downstream_suite.name}' does not have dependencies")
     if upstream_suite.name not in (suite_import.name for suite_import in downstream_suite.suite_imports):
-        mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
+        valid_deps = '\n - '.join([s.name for s in downstream_suite.suite_imports])
+        mx.abort(f"'{upstream_suite.name}' is not a dependency of '{downstream_suite.name}'. Valid dependencies are:\n - {valid_deps}")
 
     git = mx.GitConfig()
     for suite in upstream_suite, downstream_suite:
@@ -239,7 +240,8 @@ def checkout_downstream(args):
             if not re.match(r'\(HEAD detached at [a-z0-9]+\)$', ub):
                 upstream_branch_candidates.append(ub)
 
-        mx.log("The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branch_candidates)))
+        candidates = '\n- '.join(upstream_branch_candidates)
+        mx.log(f"The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{upstream_commit}', which is part of the following branches:\n- {candidates}")
         if not _checkout_upstream_revision(upstream_commit, upstream_branch_candidates, upstream_suite, downstream_suite):
             mx.abort(f"Cannot find a revision of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}")
 

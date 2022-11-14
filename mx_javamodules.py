@@ -427,7 +427,9 @@ def get_library_as_module(dep, jdk):
         rc = mx.run([jdk.java, '--module-path', fullpath, '--describe-module', moduleName], out=out, err=err, nonZeroIsFatal=False)
         lines = out.lines
         if rc != 0:
-            mx.abort("java --describe-module {} failed. Please verify the moduleName attribute of {}.\nstdout:\n{}\nstderr:\n{}".format(moduleName, dep.name, "\n".join(lines), "\n".join(err.lines)))
+            out_lines = "\n".join(out.lines)
+            err_lines = "\n".join(err.lines)
+            mx.abort(f"java --describe-module {moduleName} failed. Please verify the moduleName attribute of {dep.name}.\nstdout:\n{out_lines}\nstderr:\n{err_lines}")
         save = True
     else:
         with open(cache) as fp:
@@ -609,7 +611,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     res.update(mx._find_packages(project_scope, onlyPublic=True))
                 else:
                     if spec not in module_packages:
-                        mx.abort('Cannot export package {0} from {1} as it is not defined by any project in the module {1}'.format(spec, moduleName), context=dist)
+                        mx.abort(f'Cannot export package {spec} from {moduleName} as it is not defined by any project in the module {moduleName}', context=dist)
                     if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
                         mx.abort(f'Package {spec} in "exports" attribute not defined by project {project_scope}', context=project_scope)
                     res.add(spec)
@@ -647,7 +649,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 mx.abort(f'"{alt_module_info_attr_name}" attribute found but required "moduleInfo" attribute is missing', context=dist)
             invalid = [k for k in alt_module_info.keys() if k != 'exports']
             if invalid:
-                mx.abort('Sub-attribute(s) "{}" of "{}" attribute not supported. Only "exports" is currently supported.'.format('", "'.join(invalid), alt_module_info_attr_name), context=dist)
+                invalid = '", "'.join(invalid)
+                mx.abort(f'Sub-attribute(s) "{invalid}" of "{alt_module_info_attr_name}" attribute not supported. Only "exports" is currently supported.', context=dist)
             alt_module_jar = join(dirname(module_jar), basename(module_jar)[:-len('.jar')] + '-' + alt_module_info_name + '.jar')
             alt_module_src_zip = alt_module_jar[:-len('.jar')] + '.src.zip'
             module_src_zip = module_jar[:-len('.jar')] + '.src.zip'
@@ -946,7 +949,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         Return `p` with all `\` characters replaced with `\\`, all spaces replaced
                         with `\ ` and the result enclosed in double quotes.
                         """
-                        return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
+                        return '"' + p.replace('\\', '\\\\').replace(' ', '\\ ')  + '"'
 
                     javac_args = ['-d', safe_path_arg(dest_dir)]
                     modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]

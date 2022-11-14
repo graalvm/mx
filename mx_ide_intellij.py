@@ -175,7 +175,7 @@ def intellij_get_python_sdk_name(sdks):
         sdk = sdks[exe]
         if sdk['type'] == intellij_python_sdk_type:
             return sdk['name']
-    return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
+    return f"Python {sys.version_info[0]}.{sys.version_info[1]} ({exe})"
 
 def intellij_get_ruby_sdk_name(sdks):
     for sdk in sdks.values():

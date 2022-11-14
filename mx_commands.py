@@ -65,7 +65,8 @@ class MxCommands(object):
             doc = self._commands[cmd].command_function.__doc__
             if doc is None:
                 doc = ''
-            msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
+            doc_lines = doc.split('\n', 1)[0]
+            msg += f' {cmd:<20} {doc_lines}\n'
         return msg
 
     def get_command_property(self, command, property_name):

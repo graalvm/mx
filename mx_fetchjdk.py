@@ -476,13 +476,15 @@ def _instantiate(template, keywords, source):
         keyword = parts[0]
         filters = parts[1:]
         if keyword not in keywords:
-            mx.abort('{}: Error instantiating "{}": "{}" is an unrecognized keyword.\nSupported keywords: "{}"'.format(source, template, keyword, '", "'.join(sorted(keywords.keys()))))
+            supported_keywords = '", "'.join(sorted(keywords.keys()))
+            mx.abort(f'{source}: Error instantiating "{template}": "{keyword}" is an unrecognized keyword.\nSupported keywords: "{supported_keywords}"')
         res = keywords[keyword]
 
         for f in filters:
             func = _instantiate_filters.get(f)
             if not func:
-                mx.abort('{}: Error instantiating "{}": "{}" is an unrecognized filter.\nSupported filters: "{}"'.format(source, template, f, '", "'.join(sorted(_instantiate_filters.keys()))))
+                supported_filters = '", "'.join(sorted(_instantiate_filters.keys()))
+                mx.abort(f'{source}: Error instantiating "{template}": "{f}" is an unrecognized filter.\nSupported filters: "{supported_filters}"')
             res = func(res)
         return res
     return re.sub(r'{([^}]+)}', repl, template)

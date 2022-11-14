@@ -1015,7 +1015,8 @@ class SuiteModel:
         elif len(found) == 1:
             return found[0]
         else:
-            abort("Multiple suites match the import {}:\n{}".format(suite_import.name, "\n".join(found)))
+            found = '\n'.join(found)
+            abort(f"Multiple suites match the import {suite_import.name}:\n{found}")
 
     def verify_imports(self, suites, args):
         """Ensure that the imports are consistent."""
@@ -2493,7 +2494,8 @@ class Suite(object):
                 # Make sure we have complete "maven" metadata.
                 maven_attrs = ['groupId', 'artifactId', 'version']
                 if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
-                    abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
+                    maven_attrs = '", "'.join(maven_attrs)
+                    abort(f'The "maven" attribute must be a dictionary containing "{maven_attrs}"', context)
                 if 'suffix' in maven:
                     if self.getMxCompatibility().mavenSupportsClassifier():
                         abort('The use of "suffix" as maven metadata is not supported in this version of mx, use "classifier" instead', context)
@@ -3389,13 +3391,14 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
                 if urlinfo.abs_kind() != clone_mode or not urlinfo.vc.check(abortOnError=False):
                     continue
                 import_dir = _get_import_dir(urlinfo.url, clone_mode)
+                suite_name = suite_import.name
                 if exists(import_dir):
-                    warn("Trying to clone suite '{suite_name}' but directory {import_dir} already exists and does not seem to contain suite {suite_name}".format(suite_name=suite_import.name, import_dir=import_dir))
+                    warn(f"Trying to clone suite '{suite_name}' but directory {import_dir} already exists and does not seem to contain suite {suite_name}")
                     continue
                 if urlinfo.vc.clone(urlinfo.url, import_dir, suite_import.version, abortOnError=False, **clone_kwargs):
                     _import_mx_dir = _find_suite_dir(clone_mode)
                     if _import_mx_dir is None:
-                        warn("Cloned suite '{suite_name}' but the result ({import_dir}) does not seem to contain suite {suite_name}".format(suite_name=suite_import.name, import_dir=import_dir))
+                        warn(f"Cloned suite '{suite_name}' but the result ({import_dir}) does not seem to contain suite {suite_name}")
                     else:
                         _clone_status[0] = True
                         break
@@ -3475,7 +3478,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         for _suite_import in _discovered_suite.suite_imports:
             if _discovered_suite.name == _suite_import.name:
                 abort(f"Error: suite '{_discovered_suite.name}' imports itself")
-            _log_discovery("Adding {discovered} -> {imported} in worklist after discovering {discovered}".format(discovered=_discovered_suite.name, imported=_suite_import.name))
+            _log_discovery(f"Adding {_discovered_suite.name} -> {_suite_import.name} in worklist after discovering {_discovered_suite.name}")
             if dynamic_imports_added[0] and (_suite_import.urlinfos or _suite_import.version):
                 # check if this provides coordinates for a dynamic import that is in the queue
                 def _is_weak_import(importing_suite_name, imported_suite_name):
@@ -3606,7 +3609,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery(f"Ignoring {_importer_name} -> {_imported_suite.name} because of version_from({suite_with_from}) = {from_suite} (fast-path)")
                         return True
                     if from_suite not in ancestor_names:
-                        _log_discovery("Temporarily ignoring {} -> {} because of version_from({}) = {f_suite} ({f_suite} is not yet discovered)".format(_importer_name, _imported_suite.name, suite_with_from, f_suite=from_suite))
+                        _log_discovery(f"Temporarily ignoring {_importer_name} -> {_imported_suite.name} because of version_from({suite_with_from}) = {from_suite} ({from_suite} is not yet discovered)")
                         return True
                     vc_from_suite_and_ancestors = {from_suite}
                     vc_from_suite_and_ancestors |= vc_suites & ancestor_names[from_suite]
@@ -3680,12 +3683,11 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     versions_from[imported_suite_name] = suite_import.version_from, importing_suite_name
                     _log_discovery(f"Setting 'version_from({imported_suite_name}, {suite_import.version_from})' as requested by {importing_suite_name}")
                 elif suite_import.version_from != versions_from[imported_suite_name][0]:
-                    _log_discovery("Ignoring 'version_from({imported}, {from_suite})' directive from {importing} because we already have 'version_from({imported}, {previous_from_suite})' from {previous_importing}".format(
-                        importing=importing_suite_name, imported=imported_suite_name, from_suite=suite_import.version_from,
-                        previous_importing=versions_from[imported_suite_name][1], previous_from_suite=versions_from[imported_suite_name][0]))
+                    _log_discovery(f"Ignoring 'version_from({imported_suite_name}, {suite_import.version_from})' directive from {importing_suite_name} "
+                                   "because we already have 'version_from({imported_suite_name}, {versions_from[imported_suite_name][0]})' from {versions_from[imported_suite_name][1]}")
             elif suite_import.name in discovered:
                 if suite_import.name in ancestor_names[importing_suite.name]:
-                    abort("Import cycle detected: {importer} imports {importee} but {importee} transitively imports {importer}".format(importer=importing_suite.name, importee=suite_import.name))
+                    abort(f"Import cycle detected: {importing_suite.name} imports {suite_import.name} but {suite_import.name} transitively imports {importing_suite.name}")
                 discovered_suite = discovered[suite_import.name]
                 assert suite_import.name in vc_dir_to_suite_names[discovered_suite.vc_dir]
                 # Update importer data after re-reaching
@@ -4827,7 +4829,7 @@ def _remove_unsatisfied_deps():
             # TODO this lookup should be the same as the one used in build
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
-                note_removal(dep, 'project {0} was removed as JDK {0.javaCompliance} is not available'.format(dep))
+                note_removal(dep, f'project {dep} was removed as JDK {dep.javaCompliance} is not available')
             elif hasattr(dep, "javaVersionExclusion") and getattr(dep, "javaVersionExclusion") == depJdk.javaCompliance:
                 note_removal(dep, f'project {dep} was removed due to its "javaVersionExclusion" attribute')
             else:
@@ -5027,7 +5029,7 @@ class ClasspathDependency(Dependency):
 def _get_jni_gen(pname):
     p = project(pname)
     if p.jni_gen_dir() is None:
-        abort("Project {0} does not produce JNI headers, it can not be used in <jnigen:{0}> substitution.".format(pname))
+        abort(f"Project {pname} does not produce JNI headers, it can not be used in <jnigen:{pname}> substitution.")
     return join(p.suite.dir, p.jni_gen_dir())
 
 mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
@@ -6169,8 +6171,8 @@ class LayoutDistribution(AbstractDistribution):
                 else:
                     _dst = clean_destination
                     if not first_file:
-                        abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
-                              "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
+                        abort(f"Unexpected source for '{destination}' expected one file but got multiple.\n"
+                              "Either use a directory destination ('{destination}/') or change the source", context=self)
                 merge_recursive(_source_file, _dst, _arcname, excludes, archive=archive)
                 first_file = False
             if first_file and not optional:
@@ -6213,13 +6215,10 @@ class LayoutDistribution(AbstractDistribution):
             unarchiver_dest_directory = absolute_destination
             if not destination.endswith('/'):
                 if path is None:
-                    abort("Invalid source '{type}:{dependency}' used in destination '{dest}':\n"
+                    abort(f"Invalid source '{source_type}:{dependency}' used in destination '{destination}':\n"
                           "When using 'extracted-dependency' to extract to a single file, a path must be specified. Did you mean\n"
-                          " - '{dest}/' as a destination (i.e., extracting all files from '{dependency}' into {dest})\n"
-                          " - or '{type}:{dependency}/path/to/file/in/archive' as a source (i.e., extracting /path/to/file/in/archive from '{dependency}' to '{dest}')".format(
-                            dest=destination,
-                            dependency=d.name,
-                            type=source_type),
+                          " - '{destination}/' as a destination (i.e., extracting all files from '{d}' into {destination})\n"
+                          " - or '{source_type}:{d}/path/to/file/in/archive' as a source (i.e., extracting /path/to/file/in/archive from '{d}' to '{destination}')",
                         context=self)
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
             dereference = source.get("dereference", "root")
@@ -6266,8 +6265,8 @@ class LayoutDistribution(AbstractDistribution):
                 if not destination.endswith('/'):
                     name = '/'.join(name.split('/')[:-1] + [basename(destination)])
                     if not first_file_box[0]:
-                        raise abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
-                              "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
+                        raise abort(f"Unexpected source for '{destination}' expected one file but got multiple.\n"
+                              "Either use a directory destination ('{destination}/') or change the source", context=self)
                 first_file_box[0] = False
                 return name, _root_match
 
@@ -6339,17 +6338,12 @@ class LayoutDistribution(AbstractDistribution):
                 else:
                     abort(f"Unsupported file type in 'extracted-dependency' for {destination}: '{source_archive_file}'")
                 if first_file_box[0] and path is not None and not source['optional']:
-                    msg = """\
-Could not find any source file for '{str}'.
+                    msg = f"""\
+Could not find any source file for '{source['_str_']}'.
 Common causes:
 - the inclusion list ('{path}') or the exclusion list ('{exclude}') are too restrictive. Note that file names starting with '.' are not matched by '*' but by '.*'
-- '{name}' is empty
-- the root dir of '{name}' is '.' and the inclusion list does not contain a '.' entry or one that starts with './' or '.*'""".format(
-                        str=source['_str_'],
-                        path=path,
-                        exclude=exclude,
-                        name=d.name,
-                    )
+- '{d.name}' is empty
+- the root dir of '{d.name}' is '.' and the inclusion list does not contain a '.' entry or one that starts with './' or '.*'"""
                     abort(msg, context=self)
         elif source_type == 'file':
             files_root = self.suite.dir
@@ -6408,11 +6402,11 @@ Common causes:
                 abort(f"Invalid destination: '{destination}': destination should not escape the output directory ('{final_destination}' is not in '{output}')", context=self)
             if not destination.endswith('/'):
                 if len(sources) > 1:
-                    abort("Invalid layout: cannot copy multiple files to a single destination: '{dest}'\n"
-                          "Should the destination be a directory: '{dest}/'? (note the trailing slash)".format(dest=destination), context=self)
+                    abort(f"Invalid layout: cannot copy multiple files to a single destination: '{destination}'\n"
+                          "Should the destination be a directory: '{destination}/'? (note the trailing slash)", context=self)
                 if len(sources) < 1:
-                    abort("Invalid layout: no file to copy to '{dest}'\n"
-                          "Do you want an empty directory: '{dest}/'? (note the trailing slash)".format(dest=destination), context=self)
+                    abort(f"Invalid layout: no file to copy to '{destination}'\n"
+                          "Do you want an empty directory: '{destination}/'? (note the trailing slash)", context=self)
 
     def _check_resources_file_list(self):
         fileListPath = self.path + ".filelist"
@@ -7434,7 +7428,8 @@ class JavaProject(Project, ClasspathDependency):
                         msg = f'As of mx {compat.version()}, the "imports" attribute has been replaced by the "requiresConcealed" attribute:{nl}{nl}'
                         msg += '  "requiresConcealed" : {' + nl
                         for module, packages in concealed.items():
-                            msg += '    "{}" : ["{}"],{}'.format(module, '", "'.join(packages), nl)
+                            packages = '", "'.join(packages)
+                            msg += f'    "{module}" : ["{packages}"],{nl}'
                         msg += '  }' + nl + nl +f"See {join(_mx_home, 'README.md')} for more information."
                         self.abort(msg)
 
@@ -8499,8 +8494,7 @@ class Extractor(_with_metaclass(ABCMeta, object)):
             if problematic_files:
                 abort("Refusing to create files outside of the destination folder.\n" +
                       "Reasons might be entries with absolute paths or paths pointing to the parent directory (starting with `..`).\n" +
-                      "Archive: {} \nProblematic files:\n{}".format(self.src, "\n".join(problematic_files)
-                ))
+                      f"Archive: {self.src} \nProblematic files:\n{os.linesep.join(problematic_files)}")
             self._extractall(ar, dst)
         # make sure archives that contain a "." entry don't mess with checks like mx.PackedResourceLibrary._check_extract_needed
         os.utime(dst, None)
@@ -11012,23 +11006,9 @@ class MavenSnapshotArtifact:
         if len(filtered) > 1:
             raise self.NonUniqueSubArtifactException()
         sub = filtered[0]
-        if sub.classifier:
-            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}-{classifier}.{extension}".format(
-                url=self.repo.repourl,
-                group=self.groupId.replace('.', '/'),
-                artifact=self.artifactId,
-                version=self.version,
-                snapshotBuildVersion=self.snapshotBuildVersion,
-                classifier=sub.classifier,
-                extension=sub.extension)
-        else:
-            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}.{extension}".format(
-                url=self.repo.repourl,
-                group=self.groupId.replace('.', '/'),
-                artifact=self.artifactId,
-                version=self.version,
-                snapshotBuildVersion=self.snapshotBuildVersion,
-                extension=sub.extension)
+        group = self.groupId.replace('.', '/')
+        classifier = f'-{sub.classifier}' if sub.classifier else ''
+        url = f"{self.repo.repourl}/{group}/{self.artifactId}/{self.version}/{self.artifactId}-{self.snapshotBuildVersion}{classifier}.{sub.extension}"
         return url, url + '.sha1'
 
     def getSubArtifact(self, extension, classifier=None):
@@ -11189,13 +11169,8 @@ def maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=N
         baseURLs = _mavenRepoBaseURLs
     else:
         baseURLs = [baseURL]
-    args = {
-        'groupId': groupId.replace('.', '/'),
-        'artifactId': artifactId,
-        'version': version,
-        'classifier' : f'-{classifier}' if classifier else ''
-    }
-    return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
+    classifier = f'-{classifier}' if classifier else ''
+    return [f"{base}{groupId.replace('.', '/')}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar" for base in baseURLs]
 
 
 ### ~~~~~~~~~~~~~ Maven, _private
@@ -12354,7 +12329,7 @@ def _get_reasons_dep_was_removed(name, indent):
 def _missing_dep_message(depName, depType):
     reasons = _get_reasons_dep_was_removed(depName, 1)
     if reasons:
-        return '{} named {} was removed:\n{}'.format(depType, depName, '\n'.join(reasons))
+        return f'{depType} named {depName} was removed:\n{os.linesep.join(reasons)}'
     return f'{depType} named {depName} was not found'
 
 
@@ -16726,7 +16701,7 @@ def site(args):
 <tbody>""")
                     color = 'row'
                     for p in projects:
-                        print('<tr class="{1}Color"><td class="colFirst"><a href="../{0}/javadoc/index.html",target = "_top">{0}</a></td><td class="colLast">&nbsp;</td></tr>'.format(p.name, color), file=fp2)
+                        print(f'<tr class="{color}Color"><td class="colFirst"><a href="../{p}/javadoc/index.html",target = "_top">{p}</a></td><td class="colLast">&nbsp;</td></tr>', file=fp2)
                         color = 'row' if color == 'alt' else 'alt'
 
                     print('</tbody></table></div>', file=fp2)

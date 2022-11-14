@@ -231,9 +231,9 @@ class VmRegistry(object):
         ))
         get_parser(self.get_parser_name()).add_argument("--profiler", default=None, help="The profiler to use")
         get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}", default=None, help=f"{self.vm_type_name} to run the benchmark with.")
-        get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}-config", default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
+        get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}-config", default=None, help=f"{self.vm_type_name} configuration for the selected {self.vm_type_name}.")
         # Separator to stack guest and host VM options. Though ignored, must be consumed by the parser.
-        get_parser(self.get_parser_name()).add_argument('--guest', action='store_true', dest=SUPPRESS, default=None, help='Separator for --{vm}=host --guest --{vm}=guest VM configurations.'.format(vm=self.short_vm_type_name))
+        get_parser(self.get_parser_name()).add_argument('--guest', action='store_true', dest=SUPPRESS, default=None, help=f'Separator for --{self.short_vm_type_name}=host --guest --{self.short_vm_type_name}=guest VM configurations.')
 
     def get_parser_name(self):
         return self.vm_type_name + "_parser"
@@ -248,7 +248,7 @@ class VmRegistry(object):
 
     def get_available_vm_configs_help(self):
         avail = [f'--{self.short_vm_type_name}={vm.name()} --{self.short_vm_type_name}-config={vm.config_name()}' for vm in self._vms.values()]
-        return 'The following {} configurations are available:\n  {}'.format(self.vm_type_name, '\n  '.join(avail))
+        return f'The following {self.vm_type_name} configurations are available:\n  {os.linesep.join(avail)}'
 
     def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False, host_vm_only_as_default=False):
         """
@@ -302,7 +302,7 @@ class VmRegistry(object):
                             self._vms_priority[(vm, config)]
                             ) for (j, config) in self._vms if j == vm]
             if not vm_configs:
-                mx.abort("Could not find a {vm_type} config to default to for {vm_type} '{vm}'.\n{avail}".format(vm=vm, vm_type=self.vm_type_name, avail=self.get_available_vm_configs_help()))
+                mx.abort(f"Could not find a {self.vm_type_name} config to default to for {self.vm_type_name} '{vm}'.\n{self.get_available_vm_configs_help()}")
             vm_configs.sort(key=lambda t: t[1:], reverse=True)
             vm_config = vm_configs[0][0]
             if len(vm_configs) == 1:
@@ -638,7 +638,7 @@ def add_bm_suite(suite, mxsuite=None):
     # If possible also register suite with simple_name
     if simple_name in _bm_suites:
         if _bm_suites[simple_name]:
-            mx.log("Warning: Benchmark suite '{0}' name collision. Suites only available as '{0}-<subgroup>'.".format(simple_name))
+            mx.log(f"Warning: Benchmark suite '{simple_name}' name collision. Suites only available as '{simple_name}-<subgroup>'.")
         _bm_suites[simple_name] = None
     else:
         _bm_suites[simple_name] = suite
@@ -1401,7 +1401,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         for key, value in vm_dims.items():
             if key in dims and value != dims[key]:
                 if value == 'none':
-                    mx.warn("VM {}:{} ({}) tried overwriting {}='{original}' with '{}', keeping '{original}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, value, original=dims[key]))
+                    mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) tried overwriting {key}='{dims[key]}' with '{value}', keeping '{dims[key]}'")
                     continue
                 mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) is overwriting {key}='{dims[key]}' with '{value}'")
             dims[key] = value
@@ -3069,9 +3069,10 @@ class BenchmarkExecutor(object):
                             if mxBenchmarkArgs.fail_fast:
                                 mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
             if ignored_benchmarks:
-                mx.log("Benchmarks ignored since they aren't supported on the current platform/configuration:\n\t{}".format('\n\t'.join(ignored_benchmarks)))
+                nl_tab = '\n\t'
+                mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
             if skipped_benchmark_forks:
-                mx.log("[FORKS] Benchmarks skipped since they have no entry in the fork counts file:\n\t{}".format('\n\t'.join(skipped_benchmark_forks)))
+                mx.log(f"[FORKS] Benchmarks skipped since they have no entry in the fork counts file:{nl_tab}{nl_tab.join(skipped_benchmark_forks)}")
         finally:
             try:
                 suite.after(bmSuiteArgs)
@@ -3086,8 +3087,8 @@ class BenchmarkExecutor(object):
 
         exit_code = 0
         if failures_seen:
-            mx.log_error("Failures happened during benchmark(s) execution !"
-                         "The following benchmarks failed:\n\t{}".format('\n\t'.join(failed_benchmarks)))
+            mx.log_error(f"Failures happened during benchmark(s) execution !"
+                         "The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
             exit_code = 1
 
         if returnSuiteAndResults:
