@@ -77,7 +77,7 @@ class _Toolchain(object):
 
     @property
     def target(self):
-        return '{}-{}'.format(mx.get_os(), self.target_arch)
+        return f'{mx.get_os()}-{self.target_arch}'
 
     @property
     def is_native(self):
@@ -181,7 +181,7 @@ class MultiarchProject(mx.AbstractNativeProject, NativeDependency):
             multiarch = mx.Suite._pop_list(kwargs, 'multiarch', context)
             self.multiarch = list(set(mx_subst.results_substitutions.substitute(arch) for arch in multiarch))
             if mx.get_arch() not in self.multiarch:
-                mx.abort('"multiarch" must contain the host architecture "{}"'.format(mx.get_arch()), context)
+                mx.abort(f'"multiarch" must contain the host architecture "{mx.get_arch()}"', context)
         else:
             self.multiarch = []
         super(MultiarchProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
@@ -232,12 +232,12 @@ class TargetArchBuildTask(mx.AbstractNativeBuildTask):
 
     @property
     def name(self):
-        return '{}_{}'.format(super(TargetArchBuildTask, self).name, self.target_arch)
+        return f'{super(TargetArchBuildTask, self).name}_{self.target_arch}'
 
     def buildForbidden(self):
         forbidden = super(TargetArchBuildTask, self).buildForbidden()
         if not forbidden and not _Toolchain.for_(self.target_arch).is_available:
-            self.subject.abort('Missing toolchain for {}.'.format(self.target_arch))
+            self.subject.abort(f'Missing toolchain for {self.target_arch}.')
         return forbidden
 
 
@@ -306,7 +306,7 @@ class NinjaProject(MultiarchProject):
         except ImportError:
             dep = mx.library('NINJA_SYNTAX')
             deps.append(dep)
-            module_path = mx.join(dep.get_path(False), 'ninja_syntax-{}'.format(dep.version))
+            module_path = mx.join(dep.get_path(False), f'ninja_syntax-{dep.version}')
             mx.ensure_dir_exists(module_path)  # otherwise, import machinery will ignore it
             sys.path.append(module_path)
 
@@ -394,7 +394,7 @@ class NinjaBuildTask(TargetArchBuildTask):
         self.ninja = Ninja(self.out_dir, self.parallelism, targets=ninja_targets)
 
     def __str__(self):
-        return 'Building {} with Ninja'.format(self.name)
+        return f'Building {self.name} with Ninja'
 
     def needsBuild(self, newestInput):
         is_needed, self._reason = super(NinjaBuildTask, self).needsBuild(newestInput)
@@ -405,7 +405,7 @@ class NinjaBuildTask(TargetArchBuildTask):
             self._reason = 'no build manifest'
             return True, self._reason
 
-        mx.logv('Checking whether to build {} with Ninja...'.format(self.name))
+        mx.logv(f'Checking whether to build {self.name} with Ninja...')
         is_needed, self._reason = self.ninja.needs_build()
         return is_needed, self._reason
 
@@ -476,7 +476,7 @@ class NinjaManifestGenerator(object):
     def include_dirs(self, dirs):
         def quote(path):
             has_spaces = ' ' in path or ('$project' in path and ' ' in self.project.dir)
-            return '"{}"'.format(path) if has_spaces else path
+            return f'"{path}"' if has_spaces else path
 
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
@@ -605,7 +605,7 @@ class DefaultNativeProject(NinjaProject):
         try:
             self._kind = self._kinds[kind]
         except KeyError:
-            mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
+            mx.abort(f'"native" should be one of {list(self._kinds.keys())}, but "{kind}" is given')
 
         include_dir = mx.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
@@ -620,7 +620,7 @@ class DefaultNativeProject(NinjaProject):
         super(DefaultNativeProject, self).resolveDeps()
         self.toolchain = mx.distribution(self.toolchain, context=self)
         if not isinstance(self.toolchain, mx.AbstractDistribution) or not self.toolchain.get_output():
-            mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
+            mx.abort(f"Cannot generate manifest: the specified toolchain ({self.toolchain}) must be an AbstractDistribution that returns a value for get_output", context=self)
 
     @property
     def _target(self):
@@ -638,9 +638,9 @@ class DefaultNativeProject(NinjaProject):
             # Do not leak host paths via dwarf debuginfo
             def add_debug_prefix(prefix_dir):
                 def quote(path):
-                    return '"{}"'.format(path) if ' ' in path else path
+                    return f'"{path}"' if ' ' in path else path
 
-                return '-fdebug-prefix-map={}={}'.format(quote(prefix_dir), quote(mx.basename(prefix_dir)))
+                return f'-fdebug-prefix-map={quote(prefix_dir)}={quote(mx.basename(prefix_dir))}'
 
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
             default_cflags += [add_debug_prefix(_get_target_jdk().home)]
@@ -678,7 +678,7 @@ class DefaultNativeProject(NinjaProject):
     def generate_manifest(self, output_dir, filename):
         unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S', '.swp'})
         if unsupported_source_files:
-            mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
+            mx.abort(f'{unsupported_source_files} source files are not supported by default native projects')
 
         with NinjaManifestGenerator(self, output_dir, filename) as gen:
             gen.comment("Toolchain configuration")

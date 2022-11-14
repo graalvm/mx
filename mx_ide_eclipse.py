@@ -127,7 +127,7 @@ def eclipseformat(args):
 
         if not exists(batch.path):
             if mx._opts.verbose:
-                mx.log('[no Eclipse Code Formatter preferences at {0} - skipping]'.format(batch.path))
+                mx.log(f'[no Eclipse Code Formatter preferences at {batch.path} - skipping]')
             continue
 
         javafiles = []
@@ -137,7 +137,7 @@ def eclipseformat(args):
                     if filelist is None or f in filelist:
                         javafiles.append(mx.FileInfo(f))
         if len(javafiles) == 0:
-            mx.logv('[no Java sources in {0} - skipping]'.format(p.name))
+            mx.logv(f'[no Java sources in {p.name} - skipping]')
             continue
 
         res = batches.setdefault(batch, javafiles)
@@ -148,7 +148,7 @@ def eclipseformat(args):
     batch_num = 0
     for batch, javafiles in batches.items():
         batch_num += 1
-        mx.log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
+        mx.log(f"Processing batch {batch_num} ({len(javafiles)} files)...")
 
         jdk = mx.get_jdk()
 
@@ -183,7 +183,7 @@ def eclipseformat(args):
                     if fi.update(batch.removeTrailingWhitespace, args.restore):
                         modified.append(fi)
 
-    mx.log('{0} files were modified'.format(len(modified)))
+    mx.log(f'{len(modified)} files were modified')
 
     if len(modified) != 0:
         arcbase = mx.primary_suite().dir
@@ -195,7 +195,7 @@ def eclipseformat(args):
             if args.patchfile:
                 args.patchfile.write(diffs)
             name = os.path.relpath(fi.path, arcbase)
-            mx.log(' - {0}'.format(name))
+            mx.log(f' - {name}')
             mx.log('Changes:')
             mx.log(diffs)
             if args.backup:
@@ -203,9 +203,9 @@ def eclipseformat(args):
                 zf.writestr(arcname, fi.content)
         if args.backup:
             zf.close()
-            mx.log('Wrote backup of {0} modified files to {1}'.format(len(modified), backup))
+            mx.log(f'Wrote backup of {len(modified)} modified files to {backup}')
         if args.patchfile:
-            mx.log('Wrote patches to {0}'.format(args.patchfile.name))
+            mx.log(f'Wrote patches to {args.patchfile.name}')
             args.patchfile.close()
         return 1
     return 0
@@ -395,9 +395,9 @@ def eclipseinit_cli(args):
     mx.log('  ' + (os.linesep + "  ").join(sorted([suite.dir for suite in mx.suites(True)])))
     mx.log('')
     mx.log('The recommended next steps are:')
-    mx.log(' 1) Open Eclipse with workspace path: {0}'.format(workspace_dir))
+    mx.log(f' 1) Open Eclipse with workspace path: {workspace_dir}')
     mx.log(' 2) Open project import wizard using: File -> Import -> Existing Projects into Workspace -> Next.')
-    mx.log(' 3) For "select root directory" enter path {0}'.format(workspace_dir))
+    mx.log(f' 3) For "select root directory" enter path {workspace_dir}')
     mx.log(' 4) Make sure "Search for nested projects" is checked and press "Finish".')
     mx.log('')
     mx.log(' hint) If you select "Close newly imported projects upon completion" then the import is more efficient. ')
@@ -454,7 +454,7 @@ def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
     parents = len([n for n in names if n == '..'])
     sep = '/' # Yes, even on Windows...
     if parents:
-        projectLoc = 'PARENT-{}-PROJECT_LOC'.format(parents)
+        projectLoc = f'PARENT-{parents}-PROJECT_LOC'
     else:
         projectLoc = 'PROJECT_LOC'
     return sep.join([projectLoc] + [n for n in names if n != '..'])
@@ -773,7 +773,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         processorsPath = mx.classpath_entries(names=processors)
         for e in processorsPath:
             if e.isDistribution() and not isinstance(e.suite, mx.BinarySuite):
-                out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
+                out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : f'/{e.name}/{basename(e.path)}', 'enabled' : 'true', 'runInBatchMode' : 'false'})
             elif e.isJdkLibrary() or e.isJreLibrary():
                 path = e.classpath_repr(jdk, resolve=True)
                 if path:
@@ -806,10 +806,10 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
 def _capture_eclipse_settings(logToConsole, absolutePaths):
     # Capture interesting settings which drive the output of the projects.
     # Changes to these values should cause regeneration of the project files.
-    settings = 'logToConsole=%s\n' % logToConsole
-    settings = settings + 'absolutePaths=%s\n' % absolutePaths
+    settings = f'logToConsole={logToConsole}\n'
+    settings = settings + f'absolutePaths={absolutePaths}\n'
     for name, value in mx_ideconfig._get_ide_envvars().items():
-        settings = settings + '%s=%s\n' % (name, value)
+        settings = settings + f'{name}={value}\n'
     return settings
 
 def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False, pythonProjects=False):
@@ -828,7 +828,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
     settingsFile = join(suite_config_dir, 'eclipse-project-settings')
     mx.update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
     if not force and mx_ideconfig._check_ide_timestamp(s, configZip, 'eclipse', settingsFile):
-        mx.logv('[Eclipse configurations for {} are up to date - skipping]'.format(s.name))
+        mx.logv(f'[Eclipse configurations for {s.name} are up to date - skipping]')
         return
 
     files = []
@@ -891,7 +891,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
                                       relevantResources=relevantResources,
                                       logToFile=True, refresh=True, isAsync=use_async_distributions,
                                       logToConsole=logToConsole, appendToLogFile=False,
-                                      refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
+                                      refreshFile=f'/{dist.name}/{basename(dist.path)}')
         files = files + builders
 
         out.close('buildSpec')
@@ -970,16 +970,16 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         mx.update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
         files.append(projectFile)
 
-        pydevProjectXml = """<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+        pydevProjectXml = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?eclipse-pydev version="1.0"?>
 <pydev_project>
 <pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
 <pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 3.7</pydev_property>
 <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
-<path>/{}</path>
+<path>/{source_path}</path>
 </pydev_pathproperty>
 </pydev_project>
-""".format(source_path)
+"""
         pydevProjectFile = join(project_loc, '.pydevproject')
         mx.update_file(pydevProjectFile, pydevProjectXml)
         files.append(pydevProjectFile)

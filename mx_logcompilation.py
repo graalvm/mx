@@ -107,7 +107,7 @@ def open_log_compilation(filename):
     if experiment:
         if experiment.has_log_compilation():
             return experiment.open_log_compilation_file()
-        mx.abort('Experiment {} is missing log compilation output'.format(filename))
+        mx.abort(f'Experiment {filename} is missing log compilation output')
     return open(filename)
 
 
@@ -139,7 +139,7 @@ def logc(args):
             elif args.action == 'traps':
                 print_uncommon_traps(compute_uncommon_traps(tree))
             else:
-                mx.abort('Unknown action: {}'.format(args.action))
+                mx.abort(f'Unknown action: {args.action}')
 
 
 def print_compilation(tree):
@@ -209,7 +209,7 @@ def print_compile_queue_statistics(tree):
         if seconds_per_level[level] > 0:
             rate = int(bytes_per_level[level] / seconds_per_level[level])
         lines.append((level, compiles_per_level[level], bytes_per_level[level],
-                      '{:.3f}'.format(seconds_per_level[level]), rate, queued_max[level], dequeued_total[level]))
+                      f'{seconds_per_level[level]:.3f}', rate, queued_max[level], dequeued_total[level]))
 
     # compute column widths for output
     widths = [len(x) for x in titles]
@@ -222,7 +222,7 @@ def print_compile_queue_statistics(tree):
     print(layout.format(*titles))
     for line in lines:
         print(layout.format(*line))
-    print('{} dequeued {} demoted'.format(dequeued, demotions))
+    print(f'{dequeued} dequeued {demotions} demoted')
 
 
 def print_task(task, reason=None):
@@ -237,8 +237,7 @@ def print_make_not(event, tasks):
     task = tasks[event.get('compile_id')]
     osr_bci = task.get('osr_bci')
     osr_tag = '%' if osr_bci else ''
-    print('{} {}{} {} {}{} {}'.format(event.get('stamp'), task.get('compile_id'), osr_tag, task.get('level'),
-                                      task.get('method'), '' if not osr_bci else ' @' + osr_bci, event.tag))
+    print(f"{event.get('stamp')} {task.get('compile_id')}{osr_tag} {task.get('level')} {task.get('method')}{'' if not osr_bci else ' @' + osr_bci} {event.tag}")
 
 
 def print_event(event, tasks):
@@ -284,10 +283,10 @@ def print_uncommon_traps(traps):
     for trap in traps:
         method, reason, action, jvms = trap[0]
         compiles = [str(r) for r in trap[1:]]
-        print('Method: {}\n  Reason: {} Action: {}'.format(HotSpotNMethod.parse_method(method).format_name(), reason, action))
+        print(f'Method: {HotSpotNMethod.parse_method(method).format_name()}\n  Reason: {reason} Action: {action}')
         print('  Traps   Compilation')
         for o in sorted(collections.Counter(compiles).items(), key=lambda x: x[1], reverse=True):
-            print('    {:3}   {}'.format(o[1], o[0]))
+            print(f'    {o[1]:3}   {o[0]}')
         print('  State at trap:')
         print('    {}'.format('\n    '.join(jvms)))
         print()
@@ -307,9 +306,9 @@ def print_uncommon_trap_statistics(tree):
         total += len(ids)
         unique += len(list(set(ids)))
     print('Uncommon trap statistics:')
-    print('  Total uncommon traps taken: {}'.format(total))
-    print('  Unique traps: {}'.format(unique))
+    print(f'  Total uncommon traps taken: {total}')
+    print(f'  Unique traps: {unique}')
     print('  Counts by trap kind:')
     for key in count_by_reason_action:
         reason, action = key
-        print('    {}/{}: {}'.format(reason, action, count_by_reason_action[key]))
+        print(f'    {reason}/{action}: {count_by_reason_action[key]}')

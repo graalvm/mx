@@ -142,7 +142,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             return ''
         compliance = self._compliance_for_build()
         if compliance:
-            return 'jdk{}'.format(compliance)
+            return f'jdk{compliance}'
         return ''
 
     def _compliance_for_build(self):
@@ -260,7 +260,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             # to have been already added to fastr-release.jar. It is removed
             # in FastR by GR-30568 but this workaround allows mx to keep working
             # with older versions.
-            mx.warn('Ignoring registration of {} object for {}'.format(ap_type, self))
+            mx.warn(f'Ignoring registration of {ap_type} object for {self}')
             return
 
         if archiveparticipant not in self.archiveparticipants:
@@ -278,11 +278,11 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         if resolve and not exists(self.path):
             if exists(self.original_path()):
                 jdk = mx.get_jdk(tag='default')
-                msg = "The Java {} stripped jar for {} does not exist: {}{}".format(jdk.javaCompliance, self, self.path, os.linesep)
-                msg += "This might be solved by running: mx --java-home={} --strip build --dependencies={}".format(jdk.home, self)
+                msg = f"The Java {jdk.javaCompliance} stripped jar for {self} does not exist: {self.path}{os.linesep}"
+                msg += f"This might be solved by running: mx --java-home={jdk.home} --strip build --dependencies={self}"
                 mx.abort(msg)
-            msg = "The jar for {} does not exist: {}{}".format(self, self.path, os.linesep)
-            msg += "This might be solved by running: mx build --dependencies={}".format(self)
+            msg = f"The jar for {self} does not exist: {self.path}{os.linesep}"
+            msg += f"This might be solved by running: mx build --dependencies={self}"
             mx.abort(msg)
         return self.path
 
@@ -366,9 +366,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance.value > self.suite.getMxCompatibility().proguard_supported_jdk_version() and mx.get_opts().proguard_cp is None:
-            mx.abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
+            mx.abort(f'Cannot strip {self} - ProGuard does not yet support JDK {jdk.javaCompliance}')
 
-        mx.logv('Stripping {}...'.format(self.name))
+        mx.logv(f'Stripping {self.name}...')
         jdk9_or_later = jdk.javaCompliance >= '9'
 
         # add config files from projects
@@ -597,12 +597,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                     with mx.open(dependency_file) as fp:
                         last_build_jdk = fp.read()
                     if last_build_jdk != jdk.home:
-                        return 'build JDK changed from {} to {}'.format(last_build_jdk, jdk.home)
+                        return f'build JDK changed from {last_build_jdk} to {jdk.home}'
                 try:
                     with open(pickle_path, 'rb') as fp:
                         pickle.load(fp)
                 except ValueError as e:
-                    return 'Bad or incompatible module pickle: {}'.format(e)
+                    return f'Bad or incompatible module pickle: {e}'
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
@@ -614,7 +614,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             for f in self.stripConfig:
                 ts = mx.TimeStampFile(f)
                 if ts.isNewerThan(self.path):
-                    return '{} is newer than {}'.format(ts, self.path)
+                    return f'{ts} is newer than {self.path}'
         return None
 
     def get_declaring_module_name(self):
@@ -661,10 +661,10 @@ class _StagingGuard:
             if entry is None:
                 return
             if entry is existing_entry:
-                mx.warn('{}: skipping update of {}\n     using: {}\n  ignoring: {}'.format(self.entry.archive.path, arcname, existing_entry.origin, origin))
+                mx.warn(f'{self.entry.archive.path}: skipping update of {arcname}\n     using: {existing_entry.origin}\n  ignoring: {origin}')
                 return None
             else:
-                mx.logv('{}: replacing contents of {}\n  replacing: {}\n       with: {}'.format(self.entry.archive.path, arcname, existing_entry.origin, origin))
+                mx.logv(f'{self.entry.archive.path}: replacing contents of {arcname}\n  replacing: {existing_entry.origin}\n       with: {origin}')
         self._can_write = True
         return self
 
@@ -758,14 +758,14 @@ class _ArchiveStager(object):
                 try:
                     bin_archive_extra, src_archive_extra = extra
                 except (TypeError, ValueError) as e:
-                    mx.abort('Value returned by __closing__ ({}) must be None or a 2-tuple: {}'.format(_source_pos(closing), e))
+                    mx.abort(f'Value returned by __closing__ ({_source_pos(closing)}) must be None or a 2-tuple: {e}')
 
                 def stage_extra(extra, archive):
                     if extra is None:
                         return
                     if not isinstance(extra, dict):
                         index = 0 if extra is bin_archive_extra else 1
-                        mx.abort('Type of value {} in tuple returned by __closing__ ({}) must be None or a dict, not {}'.format(index, _source_pos(closing), extra.__class__.__name__))
+                        mx.abort(f'Type of value {index} in tuple returned by __closing__ ({_source_pos(closing)}) must be None or a dict, not {extra.__class__.__name__}')
                     for arcname, content in extra.items():
                         self.add_contents(archive, arcname, content)
 
@@ -828,7 +828,7 @@ class _ArchiveStager(object):
                             contents = _FileContentsSupplier(staged)
                             if not _process_archiveparticipants(self.dist, entry.archive, arcname, contents.get, staged, is_source=is_sources_jar):
                                 if self.versioned_meta_inf_re.match(arcname):
-                                    mx.warn("META-INF resources can not be versioned ({} from {}). The resulting JAR will be invalid.".format(arcname, jar_path))
+                                    mx.warn(f"META-INF resources can not be versioned ({arcname} from {jar_path}). The resulting JAR will be invalid.")
 
     def add_file(self, dep, base_dir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
         """
@@ -865,7 +865,7 @@ class _ArchiveStager(object):
                     if not _process_archiveparticipants(self.dist, self.bin_archive, arcname, contents.get, staged):
                         self.stage_file(filepath, staged)
                         if self.versioned_meta_inf_re.match(arcname):
-                            mx.warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(filepath))
+                            mx.warn(f"META-INF resources can not be versioned ({filepath}). The resulting JAR will be invalid.")
 
     def add_java_sources(self, dep, srcDir, archivePrefix='', arcnameCheck=None):
         """
@@ -907,7 +907,7 @@ class _ArchiveStager(object):
                 report = mx.warn
             depLicense = [l.name for l in dep.theLicense] if dep.theLicense else ['??']
             selfLicense = [l.name for l in dist.theLicense] if dist.theLicense else ['??']
-            report('Incompatible licenses: distribution {} ({}) can not contain {} ({})'.format(dist, ', '.join(selfLicense), dep, ', '.join(depLicense)))
+            report(f"Incompatible licenses: distribution {dist} ({', '.join(selfLicense)}) can not contain {dep} ({', '.join(depLicense)})")
         if dep.isLibrary() or dep.isJARDistribution():
             if dep.isLibrary():
                 l = dep
@@ -922,7 +922,7 @@ class _ArchiveStager(object):
                 jarPath = dep.path
                 jarSourcePath = dep.sourcesPath
             else:
-                mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+                mx.abort(f'Dependency not supported: {dep.name} ({dep.__class__.__name__})')
             if jarPath:
                 self.add_jar(dep, jarPath)
             if jarSourcePath:
@@ -937,7 +937,7 @@ class _ArchiveStager(object):
             javaCompliance = dist.maxJavaCompliance()
             if javaCompliance:
                 if p.javaCompliance > javaCompliance:
-                    mx.abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(dist, javaCompliance, p, p.javaCompliance), context=dist)
+                    mx.abort(f"Compliance level doesn't match: Distribution {dist} requires {javaCompliance}, but {p} is {p.javaCompliance}.", context=dist)
 
             mx.logv('[' + original_path + ': adding project ' + p.name + ']')
             outputDir = p.output_dir()
@@ -957,7 +957,7 @@ class _ArchiveStager(object):
                         mrjVersion = mx._parse_multireleasejar_version(mrjVersion)
                     except ArgumentTypeError as e:
                         mx.abort(str(e), context=p)
-                    archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
+                    archivePrefix = f'META-INF/versions/{mrjVersion}/'
                     self.manifest['Multi-Release'] = 'true'
             elif hasattr(p, 'overlayTarget'):
                 if p.javaCompliance.value > 8:
@@ -973,7 +973,7 @@ class _ArchiveStager(object):
                     current_overlayer = self.overlays.get(arcname)
                     if current_overlayer:
                         if mrjVersion is None and getattr(p, 'multiReleaseJarVersion', current_overlayer) is None:
-                            mx.abort('Overlay for {} is defined by more than one project: {} and {}'.format(arcname, current_overlayer, p))
+                            mx.abort(f'Overlay for {arcname} is defined by more than one project: {current_overlayer} and {p}')
                         else:
                             if current_overlayer.javaCompliance.highest_specified_value() > p.javaCompliance.highest_specified_value():
                                 # Overlay from project with highest javaCompliance wins
@@ -1011,7 +1011,7 @@ class _ArchiveStager(object):
                         # Anything below that version will pick up the class files in the
                         # root directory of the jar.
                         if mx.get_jdk(str(mx.JavaCompliance(ver)), cancel='probing'):
-                            archivePrefix = 'META-INF/versions/{}/'.format(ver)
+                            archivePrefix = f'META-INF/versions/{ver}/'
                             add_classes(archivePrefix, includeServices=False)
                         break
 
@@ -1027,7 +1027,7 @@ class _ArchiveStager(object):
             jarPath = dep.classpath_repr(resolve=True)
             self.add_jar(dep, jarPath)
         else:
-            mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+            mx.abort(f'Dependency not supported: {dep.name} ({dep.__class__.__name__})')
 
 class _FileContentsSupplier(object):
     def __init__(self, path, eager=False):
@@ -1322,7 +1322,7 @@ class _ArchiveEntry(object):
         return self
 
     def __str__(self):
-        return '{}:{}, origin={}, archive={}'.format(self.dep, self.name, self.origin, self.archive)
+        return f'{self.dep}:{self.name}, origin={self.origin}, archive={self.archive}'
 
 _build_exploded = None
 def _use_exploded_build():
@@ -1390,8 +1390,7 @@ def _patch_archiveparticipant(ap_type):
             if method is not None:
                 code = method.__code__
                 protocol = JARDistribution.set_archiveparticipant.__code__
-                mx.warn('The {} method at {} is deprecated. See set_archiveparticipant at {}.'.
-                        format(name, _source_pos(code), _source_pos(protocol)))
+                mx.warn(f'The {name} method at {_source_pos(code)} is deprecated. See set_archiveparticipant at {_source_pos(protocol)}.')
             return method
 
         add = get_deprecated_method('__add__')
@@ -1413,7 +1412,7 @@ def _source_pos(code):
 
     :param code: an object with ``co_filename`` and ``co_firstlineno`` fields
     """
-    return '{}:{}'.format(code.co_filename, code.co_firstlineno)
+    return f'{code.co_filename}:{code.co_firstlineno}'
 
 def _stage_file_impl(src, dst):
     """

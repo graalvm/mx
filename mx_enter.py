@@ -31,7 +31,7 @@ calling mx.py. The latter assumes a compatible python interpreter is being used.
 import sys, os
 if sys.version_info < (3, 8):
     major, minor, micro, _, _ = sys.version_info
-    msg = 'mx requires python 3.8+, not {}.{}.{} ({})'.format(major, minor, micro, sys.executable)
+    msg = f'mx requires python 3.8+, not {major}.{minor}.{micro} ({sys.executable})'
     env_exe = os.environ.get('MX_PYTHON', None)
     if env_exe != sys.executable:
         msg += os.linesep + 'The path to the Python interpreter can be specified with the MX_PYTHON environment variable.'

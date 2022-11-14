@@ -35,7 +35,7 @@ from datetime import datetime, date, timedelta
 def _format_datetime(dt):
 
     def _fmt(num, unit):
-        return "{:.0f} {}".format(num, unit)
+        return f"{num:.0f} {unit}"
 
     diff = datetime.now() - dt
     num = diff.total_seconds()
@@ -55,7 +55,7 @@ def _format_datetime(dt):
 def _format_bytes(num):
 
     def _fmt(num, unit):
-        return "{:.0f} {}".format(num, unit)
+        return f"{num:.0f} {unit}"
 
     for unit in ['Byte', 'KiB', 'MiB', 'GiB']:
         if num < 1024.0:
@@ -109,7 +109,7 @@ class TimeAction(argparse.Action):
         else:
             m = TimeAction.rel_pattern.match(values)
             if not m:
-                raise ValueError('argument {}: value {} does not match format {}'.format(option_string, values, TimeAction.fmt))
+                raise ValueError(f'argument {option_string}: value {values} does not match format {TimeAction.fmt}')
             minutes_per_day = 24 * 60
             unit = m.group('unit')
             value = int(m.group('value'))
@@ -124,7 +124,7 @@ class TimeAction(argparse.Action):
             elif unit.startswith('mi'):
                 minutes = value
             else:
-                raise ValueError('argument {}: Unexpected unit: {}'.format(option_string, unit))
+                raise ValueError(f'argument {option_string}: Unexpected unit: {unit}')
             td = datetime.today() - timedelta(minutes=minutes)
             setattr(namespace, self.dest, td)
 
@@ -150,7 +150,7 @@ def gc_dists(args):
     keep_current_group.add_argument('--no-keep-current', action='store_false', dest='keep_current', help='remove layout distributions of the current configuration')
     filter_group = parser.add_argument_group('result filters', description='Filter can be combined.')
     filter_group.add_argument('--reverse', action='store_true', help='reverse the result')
-    filter_group.add_argument('--older-than', action=TimeAction, help='only show results older than the specified point in time (format: {})'.format(TimeAction.fmt.replace('%', '%%')))
+    filter_group.add_argument('--older-than', action=TimeAction, help=f"only show results older than the specified point in time (format: {TimeAction.fmt.replace('%', '%%')})")
     try:
         parsed_args = parser.parse_args(args)
     except ValueError as ve:
@@ -187,7 +187,7 @@ def gc_dists(args):
             mx.log(msg_fmt.format(path, _format_datetime(mod_time) + ' ago', _format_bytes(size)))
             size_sum += size
         else:
-            msg = '{0}   (modified {1} ago, size {2})'.format(path, _format_datetime(mod_time), _format_bytes(size))
+            msg = f'{path}   (modified {_format_datetime(mod_time)} ago, size {_format_bytes(size)})'
             if parsed_args.force or parsed_args.interactive and mx.ask_yes_no('Delete ' + msg):
                 mx.log('rm ' + path)
                 mx.rmtree(path)

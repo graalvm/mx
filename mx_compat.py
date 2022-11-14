@@ -153,7 +153,7 @@ class MxCompatibility500(object):
         return False
 
     def __str__(self):
-        return str("MxCompatibility({})".format(self.version()))
+        return str(f"MxCompatibility({self.version()})")
 
     def __repr__(self):
         return str(self)

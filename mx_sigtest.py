@@ -93,7 +93,7 @@ def _sigtest_generate(args, suite=None, projects=None):
             code = mx.run([javapExe, '-private', '-verbose', '-classpath', cp, pkg + '.package-info'], out=oc, err=ignore, nonZeroIsFatal=False)
             if code == 0:
                 if oc.data.find('\nRuntimeVisibleAnnotations:\n') == -1 and oc.data.find('\nRuntimeInvisibleAnnotations:\n') == -1:
-                    mx.abort('GR-22788: ecj generated an empty {}.package-info: rebuild with javac!'.format(pkg))
+                    mx.abort(f'GR-22788: ecj generated an empty {pkg}.package-info: rebuild with javac!')
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
         if exitcode != 95:
             mx.abort('Exit code was ' + str(exitcode) + ' while generating ' + sigtestResults)

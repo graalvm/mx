@@ -66,7 +66,7 @@ def _get_spotbugs_attribute(p, suffix, default=None):
     for spotbugs_attribute_name in attributes:
         if hasattr(p, spotbugs_attribute_name):
             if spotbugs_attribute_value is not None:
-                mx.abort('Spotbugs attribute "{}" is redundant. Please use attribute "{}" instead'.format(spotbugs_attribute_name, attributes[0]), context=p)
+                mx.abort(f'Spotbugs attribute "{spotbugs_attribute_name}" is redundant. Please use attribute "{attributes[0]}" instead', context=p)
             spotbugs_attribute_value = getattr(p, spotbugs_attribute_name)
             found = True
     return spotbugs_attribute_value if found else default
@@ -97,7 +97,7 @@ def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs
         projectsByVersion.setdefault(spotbugsVersion, []).append(p)
     resultcode = 0
     for spotbugsVersion, versionProjects in projectsByVersion.items():
-        mx.logv('Running spotbugs version {} on projects {}'.format(spotbugsVersion, versionProjects))
+        mx.logv(f'Running spotbugs version {spotbugsVersion} on projects {versionProjects}')
         resultcode = max(resultcode, _spotbugs(args, fbArgs, suite, versionProjects, spotbugsVersion))
     return resultcode
 

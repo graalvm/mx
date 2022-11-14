@@ -98,8 +98,8 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
             f.flush()
             ret = mx.run_java(cmd + ['@' + f.name], nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
             if ret != 0:
-                mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
-                mx.warn('To fix the error automatically try `mx -p {0} jackpot --apply`'.format(suite.dir))
+                mx.warn(f'To simulate the failure execute `mx -p {suite.dir} jackpot`.')
+                mx.warn(f'To fix the error automatically try `mx -p {suite.dir} jackpot --apply`')
             return ret
 
 def _escape_string(s):

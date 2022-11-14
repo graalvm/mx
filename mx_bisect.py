@@ -275,7 +275,7 @@ class Commit:
         self.date = date
 
     def __repr__(self):
-        return 'Commit: hash {} date: {} message: {}'.format(self.hash, self.date, self.msg)
+        return f'Commit: hash {self.hash} date: {self.date} message: {self.msg}'
 
 
 class CommitStatus:
@@ -286,7 +286,7 @@ class CommitStatus:
         self.failed = failed
 
     def __repr__(self):
-        return 'CommitStatus[hash: {}, passed: {}, failed: {}]'.format(self.commit.hash, self.passed, self.failed)
+        return f'CommitStatus[hash: {self.commit.hash}, passed: {self.passed}, failed: {self.failed}]'
 
 
 class IssueSearchInfra:
@@ -349,7 +349,7 @@ class IssueSearchInfra:
                 _, stderr = process.communicate(timeout=self.config.timeout)
                 joiners[i].join(10)
                 if process.returncode != 0:
-                    mx.log('Error: {}'.format(stderr))
+                    mx.log(f'Error: {stderr}')
                     self.log_file.write(stderr)
                     if pattern:
                         if pattern in stderr:
@@ -357,8 +357,8 @@ class IssueSearchInfra:
                     else:
                         return False
             except subprocess.TimeoutExpired:
-                mx.log('Time out expired: {}'.format(self.config.timeout))
-                mx.log("Time out expired Kill proc: {}".format(process.pid))
+                mx.log(f'Time out expired: {self.config.timeout}')
+                mx.log(f"Time out expired Kill proc: {process.pid}")
                 os.killpg(os.getpgid(process.pid), signal.SIGTERM)
                 return False
         return True
@@ -415,12 +415,11 @@ class IssueSearchInfra:
 
         mx.logv('---------- Commits in range to analyze')
         commits = list(map(commit_parser, unparsed_commits))
-        mx.log('Commits in range to analyze: {}, hashes [{} - {}]'
-               .format(len(commits), commits[len(commits) - 1].hash, commits[0].hash))
+        mx.log(f'Commits in range to analyze: {len(commits)}, hashes [{commits[len(commits) - 1].hash} - {commits[0].hash}]')
         return commits
 
     def checkout_commit(self, commit_hash):
-        log_msg = '---------- Checkout commit {}'.format(commit_hash)
+        log_msg = f'---------- Checkout commit {commit_hash}'
         mx.log(log_msg)
         self.log_file.write(log_msg + '\n')
         for path in self.paths:
@@ -448,7 +447,7 @@ class IssueSearchInfra:
         start_time = time.time()
         result = self.execute_commands_in_parallel(cmd)
         end_time = time.time()
-        mx.log('---------- Stage: Setup End. Total time: {:.2f} sec'.format(end_time - start_time))
+        mx.log(f'---------- Stage: Setup End. Total time: {end_time - start_time:.2f} sec')
         return result
 
     def run_prepare_cmd(self):
@@ -489,14 +488,9 @@ class BisectStrategy:
     def run_test_multiple_times(self, commit_number, times_to_run=1):
         parallel_level = self.infra.config.parallel
         n = times_to_run
-        mx.log('---------- Stage: Run test {} times'.format(n))
+        mx.log(f'---------- Stage: Run test {n} times')
         while n > 0:
-            log_msg = "Verifying Commit: {}, hash: {}, iteration: {}, date: {}, message: {}".format(
-                commit_number,
-                self.commits_list[commit_number].commit.hash,
-                times_to_run - n,
-                self.commits_list[commit_number].commit.date,
-                self.commits_list[commit_number].commit.msg)
+            log_msg = f"Verifying Commit: {commit_number}, hash: {self.commits_list[commit_number].commit.hash}, iteration: {times_to_run - n}, date: {self.commits_list[commit_number].commit.date}, message: {self.commits_list[commit_number].commit.msg}"
             mx.log(log_msg)
             self.infra.log_file.write('\n---------- Running test(s)\n')
             self.infra.log_file.write(log_msg + '\n')
@@ -510,10 +504,10 @@ class BisectStrategy:
             end_time = time.time()
             if is_passed:
                 self.update_commit_stat(commit_number, p, 0)
-                mx.log('Test Passed. Total time: {:.2f} sec'.format(end_time - start_time))
+                mx.log(f'Test Passed. Total time: {end_time - start_time:.2f} sec')
             else:
                 self.update_commit_stat(commit_number, 0, 1)
-                mx.log('Test Failed. Total time: {:.2f} sec\n'.format(end_time - start_time))
+                mx.log(f'Test Failed. Total time: {end_time - start_time:.2f} sec\n')
                 return False
         return True
 
@@ -556,9 +550,9 @@ class BisectBayesianSearch(BisectStrategy):
 
     def test_next_commit(self):
         median = self._median_position()
-        mx.log("---------- Median to analyze: {}".format(median))
+        mx.log(f"---------- Median to analyze: {median}")
         mx.log(self.commits_list[median].commit)
-        mx.log("Commits in range: {}".format(median - self.last_failed_commit))
+        mx.log(f"Commits in range: {median - self.last_failed_commit}")
         mx.logv("Analyzed commits:")
         self._print_list_with_probabilities(self.last_failed_commit, median, mx.logv)
 
@@ -577,7 +571,7 @@ class BisectBayesianSearch(BisectStrategy):
 
             mx.logv("Final trace:")
             total_steps = self.print_commits_list_and_calc_total_steps(0, median + 1, mx.logv)
-            mx.logv("Total steps in range: {}".format(total_steps))
+            mx.logv(f"Total steps in range: {total_steps}")
 
             mx.log('\n---------- Final range with probabilities:')
             self._print_final_list_with_probabilities(failure_position, median)
@@ -624,10 +618,10 @@ class BisectBayesianSearch(BisectStrategy):
         failed_tests, passed_tests = self._get_failed_passed_total_count()
         mx.log("\nFinal range:")
         self._print_list_with_probabilities(self.last_failed_commit, median, mx.log)
-        mx.log("   Last failed: {}".format(self.last_failed_commit))
-        mx.log("   Last passed: {}".format(median))
-        mx.log("   Total Passed: {}, Failed: {}".format(passed_tests, failed_tests))
-        mx.log("   Confident retries: {}".format(retries))
+        mx.log(f"   Last failed: {self.last_failed_commit}")
+        mx.log(f"   Last passed: {median}")
+        mx.log(f"   Total Passed: {passed_tests}, Failed: {failed_tests}")
+        mx.log(f"   Confident retries: {retries}")
 
         failure_position = self._linear_search_with_retries(self.last_failed_commit, median, retries)
         return failure_position
@@ -670,12 +664,12 @@ class BisectBayesianSearch(BisectStrategy):
     def _print_list_with_probabilities(self, start, end, print_log):
         for i in range(start, end + 1):
             pr = self._probability_of_commit(i)
-            print_log(str(i) + " " + str(self.commits_list[i]) + " probability: {:.4f}".format(pr))
+            print_log(str(i) + " " + str(self.commits_list[i]) + f" probability: {pr:.4f}")
 
     def _print_final_list_with_probabilities(self, failure_position, end):
 
         def print_commit(prob, commit_hash, message):
-            mx.log('  {:.4f}       {}      {}'.format(prob, commit_hash, message))
+            mx.log(f'  {prob:.4f}       {commit_hash}      {message}')
 
         if failure_position != -1:
             position = failure_position
@@ -687,11 +681,10 @@ class BisectBayesianSearch(BisectStrategy):
             total_failed, total_passed = (self.commits_list[position].failed, self.commits_list[position].passed)
             failure_rate = self.lower_failure_rate
             passed = total_passed
-            mx.log('The issue is not reproduced locally after {} retries.\n'
-                   'You can try to increase the "--confidence" level or should re-run test on CI'.format(total_passed))
+            mx.log(f'The issue is not reproduced locally after {total_passed} retries.\nYou can try to increase the "--confidence" level or should re-run test on CI')
 
-        mx.log('Failure rate: {:.2f}'.format(failure_rate))
-        mx.log("Total Passed: {}, Failed: {}".format(total_passed, total_failed))
+        mx.log(f'Failure rate: {failure_rate:.2f}')
+        mx.log(f"Total Passed: {total_passed}, Failed: {total_failed}")
         mx.log("Probability    Hash         Message")
         prob = 1 - math.pow(1 - failure_rate, passed)
 
@@ -725,7 +718,7 @@ class BisectSearch(BisectStrategy):
     def test_next_commit(self):
         if self.end - self.start >= 2:
             median = int(self.start + (self.end - self.start) / 2)
-            mx.log('Median: {}'.format(median))
+            mx.log(f'Median: {median}')
         else:
             mx.log('\nBisect search result:')
             self.print_commits_list_and_calc_total_steps(self.start, self.end + 1, mx.log)
@@ -751,7 +744,7 @@ class Bisect:
     def bisect_search(self):
         self.bisect_infra.run_prepare_cmd()
 
-        mx.log('Issue search strategy:   {}'.format(self.strategy))
+        mx.log(f'Issue search strategy:   {self.strategy}')
         if self.strategy == 'bayesian':
             issue_search = BisectBayesianSearch(self.bisect_infra)
         elif self.strategy == 'bisect':
@@ -765,7 +758,7 @@ class Bisect:
             if should_stop:
                 break
 
-        mx.log("Failure position: ~ {}".format(tested_commit))
+        mx.log(f"Failure position: ~ {tested_commit}")
         if tested_commit != -1:
             mx.log(self.bisect_infra.commit_info(issue_search.commits_list[tested_commit].commit.hash, 'medium'))
         self.build_steps.clean_tmp_files()

@@ -136,7 +136,7 @@ class Compdb:
             try:
                 self.merge(json.load(f))
             except json.JSONDecodeError:
-                mx.warn("Error decoding JSON compilation database from '%s'. Ignoring." % path)
+                mx.warn(f"Error decoding JSON compilation database from '{path}'. Ignoring.")
 
 
 class CompdbCapture:
@@ -164,4 +164,4 @@ def merge_compdb(subject, path):
             if os.path.exists(inFile):
                 db.mergeFile(inFile)
             else:
-                mx.warn("JSON compilation database for %s not found (expected at %s)." % (subject, inFile))
+                mx.warn(f"JSON compilation database for {subject} not found (expected at {inFile}).")

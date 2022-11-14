@@ -54,7 +54,7 @@ def with_hash(commit):
     h = _check_output_str(['git', 'rev-parse', commit]).strip()
     if h == commit:
         return h
-    return '{} ({})'.format(commit, h)
+    return f'{commit} ({h})'
 
 
 parents = get_parents(args.descendant)
@@ -80,13 +80,13 @@ def version_to_ints(spec):
     try:
         return [int(e) for e in spec.split('.')]
     except ValueError as e:
-        raise SystemExit('{} is not a valid mx version string: {}'.format(spec, str(e)))
+        raise SystemExit(f'{spec} is not a valid mx version string: {str(e)}')
 
 
 if new_version and old_version:
     tag = new_version.group(1)
     old_tag = old_version.group(1)
-    print('Found update of mx version from {} to {}'.format(old_tag, tag))
+    print(f'Found update of mx version from {old_tag} to {tag}')
     old = version_to_ints(old_tag)
     new = version_to_ints(tag)
     if old >= new:
@@ -95,4 +95,4 @@ if new_version and old_version:
         subprocess.check_call(['git', 'tag', tag, args.descendant])
         subprocess.check_call(['git', 'push', 'origin', tag])
 else:
-    raise SystemExit('Could not find mx version update in the diff between {} and any of its parents.\n\nPlease bump the value of the `version` field near the bottom of mx.py.'.format(with_hash(args.descendant)))
+    raise SystemExit(f'Could not find mx version update in the diff between {with_hash(args.descendant)} and any of its parents.\n\nPlease bump the value of the `version` field near the bottom of mx.py.')

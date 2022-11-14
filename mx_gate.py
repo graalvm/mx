@@ -81,7 +81,7 @@ class Task:
 
     def tag_matches(self, _tags):
         for t in _tags:
-            assert isinstance(t, str), '{} is not a string and thus not a valid tag'.format(t)
+            assert isinstance(t, str), f'{t} is not a string and thus not a valid tag'
             if Task.tags is not None and t in Task.tags: # pylint: disable=unsupported-membership-test
                 if t not in Task.tags_range:
                     # no range restriction
@@ -104,7 +104,7 @@ class Task:
             # Strip hours if 0
             if duration.startswith('0:'):
                 duration = duration[2:]
-            stamp += '(+{})'.format(duration)
+            stamp += f'(+{duration})'
         return stamp + suffix
 
     def __init__(self, title,
@@ -185,9 +185,9 @@ class Task:
     def _human_fmt(num):
         for unit in ['', 'K', 'M', 'G']:
             if abs(num) < 1024.0:
-                return "%3.1f%sB" % (num, unit)
+                return f"{num:3.1f}{unit}B"
             num /= 1024.0
-        return "%.1fTB" % (num)
+        return f"{num:.1f}TB"
 
     @staticmethod
     def _diskstats():
@@ -195,7 +195,7 @@ class Task:
             _, f_frsize, f_blocks, _, f_bavail, _, _, _, _, _ = os.statvfs(os.getcwd())
             total = f_frsize * f_blocks
             free = f_frsize * f_bavail
-            return ' [disk (free/total): {}/{}]'.format(Task._human_fmt(free), Task._human_fmt(total))
+            return f' [disk (free/total): {Task._human_fmt(free)}/{Task._human_fmt(total)}]'
         return ''
 
     def stop(self):
@@ -292,18 +292,18 @@ def parse_tags_argument(tags_arg, exclude):
     for tag_spec in tags:
         m = pattern.match(tag_spec)
         if not m:
-            mx.abort('--tags option requires the format `name[:from:[to]]`: {0}'.format(tag_spec))
+            mx.abort(f'--tags option requires the format `name[:from:[to]]`: {tag_spec}')
         (tag, t_from, t_to) = m.groups()
         if t_from:
             if exclude:
-                mx.abort('-x option cannot be used tag ranges: {0}'.format(tag_spec))
+                mx.abort(f'-x option cannot be used tag ranges: {tag_spec}')
             frm = int(t_from)
             to = int(t_to) if t_to else sys.maxsize
             # insert range tuple
             Task.tags_range[tag] = (frm, to)
             # sanity check
             if to <= frm:
-                mx.abort('`from` must be less than `to` for tag ranges: {0}'.format(tag_spec))
+                mx.abort(f'`from` must be less than `to` for tag ranges: {tag_spec}')
             # init counter
             Task.tags_count[tag] = 0
         Task.tags.append(tag)
@@ -462,7 +462,7 @@ def gate(args):
 
     if args.summary:
         mx.log('Gate task summary:')
-        res = [{'duration': str(t.duration), 'title': t.title, 'tags': '[{}]'.format(', '.join(t.tags)) if t.tags else '', 'description': t.description or ''} for t in tasks]
+        res = [{'duration': str(t.duration), 'title': t.title, 'tags': f"[{', '.join(t.tags)}]" if t.tags else '', 'description': t.description or ''} for t in tasks]
         # collect lengths
         maxLengths = {}
         for e in res:
@@ -479,8 +479,7 @@ def gate(args):
             if entry + 'Max' in maxLengths:
                 fmt += '  {{{0}:<{{{0}Max}}}}'.format(entry)
             else:
-                mx.abort('Unknown entry supplied to `mx gate --summary-format`: {}\n'
-                         'Known entries are: {}'.format(entry, ', '.join(default_summary)))
+                mx.abort(f"Unknown entry supplied to `mx gate --summary-format`: {entry}\nKnown entries are: {', '.join(default_summary)}")
         for e in res:
             # Python >= 3.5 could use {**e, **maxLengths} directly
             values = e.copy()
@@ -545,10 +544,7 @@ def _run_mx_suite_tests():
             actual = mx._safe_path(value)
             if actual != expect:
                 nl = os.linesep
-                assert False, 'Failed safe_path test{} input: {} (len={}){}expect: {} (len={}){}actual: {} (len={})'.format(nl,
-                    value, len(value), nl,
-                    expect, len(expect), nl,
-                    actual, len(actual))
+                assert False, f'Failed safe_path test{nl} input: {value} (len={len(value)}){nl}expect: {expect} (len={len(expect)}){nl}actual: {actual} (len={len(actual)})'
             if open_fp and value != open_fp.name:
                 try:
                     with mx.open(value, 'w') as fp:
@@ -584,7 +580,7 @@ def _run_gate(cleanArgs, args, tasks):
         if t:
             mx.command_function('version')(['--oneline'])
             mx.command_function('sversions')([])
-            mx.log("Python version: {}".format(sys.version_info))
+            mx.log(f"Python version: {sys.version_info}")
 
     with Task('JDKReleaseInfo', tasks, tags=[Tags.always]) as t:
         if t:
@@ -708,7 +704,7 @@ def _run_gate(cleanArgs, args, tasks):
         mx.command_function('jacocoreport')(jacoco_args)
         _jacoco = 'off'
     if args.jacoco_zip is not None:
-        mx.log('Creating JaCoCo report archive: {}'.format(args.jacoco_zip))
+        mx.log(f'Creating JaCoCo report archive: {args.jacoco_zip}')
         with zipfile.ZipFile(args.jacoco_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             zf.write(jacoco_exec, join(args.jacocout, jacoco_exec))
             for root, _, files in os.walk(args.jacocout):
@@ -1167,7 +1163,7 @@ def coverage_upload(args):
         return
     remote_host, remote_basedir = args.upload_url.split(':')
     if not remote_host:
-        mx.abort('Cannot determine remote host from {}'.format(args.upload_url))
+        mx.abort(f'Cannot determine remote host from {args.upload_url}')
 
     primary = mx.primary_suite()
     if not primary.vc:
@@ -1176,7 +1172,7 @@ def coverage_upload(args):
     rev = primary.vc.parent(primary.dir)
     if len(remote_basedir) > 0 and not remote_basedir.endswith('/'):
         remote_basedir += '/'
-    remote_dir = '{}_{}_{}'.format(primary.name, datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
+    remote_dir = f"{primary.name}_{datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M')}_{rev[:7]}"
     if args.build_name:
         remote_dir += '_' + args.build_name
     if args.build_number:
@@ -1199,7 +1195,7 @@ def coverage_upload(args):
         mx.walk_deps(mx.projects(), visit=_visit_deps)
 
     files = [get_jacoco_dest_file(), 'coverage', coverage_sources, coverage_binaries]
-    print("Syncing {} to {}:{}".format(" ".join(files), remote_host, upload_dir))
+    print(f"Syncing {' '.join(files)} to {remote_host}:{upload_dir}")
     mx.run([
         'bash',
         '-c',
@@ -1595,7 +1591,7 @@ def sonarqube_upload(args):
 
     with tempfile.NamedTemporaryFile(suffix="-sonarqube.properties", mode="w+") as fp:
         # prepare properties file
-        fp.writelines(('{}={}\n'.format(k, v) for k, v in java_props.items()))
+        fp.writelines((f'{k}={v}\n' for k, v in java_props.items()))
         fp.flush()
 
         # Since there's no options to exclude individual classes,
@@ -1615,8 +1611,7 @@ def sonarqube_upload(args):
 
         if exit_code != 0:
             fp.seek(0)
-            mx.abort('SonarQube scanner terminated with non-zero exit code: {}\n  Properties file:\n{}'.format(
-                exit_code, ''.join(('    ' + l for l in fp.readlines()))))
+            mx.abort(f"SonarQube scanner terminated with non-zero exit code: {exit_code}\n  Properties file:\n{''.join('    ' + l for l in fp.readlines())}")
 
 def _get_repo_name(suite):
     vc = suite.vc
@@ -1775,7 +1770,7 @@ def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails
             with open(api_key_path) as key:
                 auth_value = key.read().strip()
         else:
-            mx.warn('{} is not defined, skipping authentication'.format(api_key_path_name))
+            mx.warn(f'{api_key_path_name} is not defined, skipping authentication')
 
         already_uploaded = mx.download(report_file, [upload_url], verbose=False, abortOnError=False, verifyOnly=True)
         if already_uploaded:

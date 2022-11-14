@@ -139,7 +139,7 @@ def _applyurlrewrite(urlrewrite, url):
             res = str(jar_url)
         else:
             res = urlrewrite._rewrite(url)
-        mx.logvv("Rewrote '{}' to '{}'".format(url, res))
+        mx.logvv(f"Rewrote '{url}' to '{res}'")
         return res
     else:
         # Rewrite rule does not exist.

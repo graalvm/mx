@@ -161,7 +161,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                 updated = True
                 break
         if not updated:
-            mx.warn('Could not update {} to any of the following branches: {}'.format(repoWorkDir, ', '.join(branch)))
+            mx.warn(f"Could not update {repoWorkDir} to any of the following branches: {', '.join(branch)}")
         if not targetDir:
             targetDir = repoWorkDir
 
@@ -187,26 +187,26 @@ def checkout_downstream(args):
     def get_suite(name):
         suite = mx.suite(name, fatalIfMissing=False)
         if suite is None:
-            mx.abort("Cannot load the '{}' suite. Did you forget a dynamic import or pass a repository name rather than a suite name (e.g., 'graal' rather than 'compiler')?".format(name))
+            mx.abort(f"Cannot load the '{name}' suite. Did you forget a dynamic import or pass a repository name rather than a suite name (e.g., 'graal' rather than 'compiler')?")
         return suite
 
     upstream_suite = get_suite(args.upstream)
     downstream_suite = get_suite(args.downstream)
 
     if upstream_suite.vc_dir == downstream_suite.vc_dir:
-        mx.abort("Suites '{}' and '{}' are part of the same repository, cloned in '{}'".format(upstream_suite.name, downstream_suite.name, upstream_suite.vc_dir))
+        mx.abort(f"Suites '{upstream_suite.name}' and '{downstream_suite.name}' are part of the same repository, cloned in '{upstream_suite.vc_dir}'")
     if len(downstream_suite.suite_imports) == 0:
-        mx.abort("Downstream suite '{}' does not have dependencies".format(downstream_suite.name))
+        mx.abort(f"Downstream suite '{downstream_suite.name}' does not have dependencies")
     if upstream_suite.name not in (suite_import.name for suite_import in downstream_suite.suite_imports):
         mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
 
     git = mx.GitConfig()
     for suite in upstream_suite, downstream_suite:
         if not git.is_this_vc(suite.vc_dir):
-            mx.abort("Suite '{}' is not part of a Git repo.".format(suite.name))
+            mx.abort(f"Suite '{suite.name}' is not part of a Git repo.")
 
     if not args.no_fetch:
-        mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
+        mx.log(f"Fetching remote content from '{git.default_pull(downstream_suite.vc_dir)}'")
         git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
     # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
@@ -223,11 +223,11 @@ def checkout_downstream(args):
     ci_downstream_branch = mx.get_env('DOWNSTREAM_BRANCH', None)
     if ci_downstream_branch is not None:
         ci_upstream_branch_candidates.extend([ci_downstream_branch, ci_downstream_branch + '_gate'])
-        mx.log("The '$DOWNSTREAM_BRANCH' env var is set. Adding '{}' to the list of upstream branch candidates.".format(ci_upstream_branch_candidates))
+        mx.log(f"The '$DOWNSTREAM_BRANCH' env var is set. Adding '{ci_upstream_branch_candidates}' to the list of upstream branch candidates.")
 
     if not _checkout_upstream_revision(upstream_commit, ci_upstream_branch_candidates, upstream_suite, downstream_suite):
         if not args.no_fetch:
-            mx.log("Fetching remote content from '{}'".format(git.default_pull(upstream_suite.vc_dir)))
+            mx.log(f"Fetching remote content from '{git.default_pull(upstream_suite.vc_dir)}'")
             git.pull(upstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
         # Print the list of branches that contain the upstream commit
@@ -241,7 +241,7 @@ def checkout_downstream(args):
 
         mx.log("The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branch_candidates)))
         if not _checkout_upstream_revision(upstream_commit, upstream_branch_candidates, upstream_suite, downstream_suite):
-            mx.abort("Cannot find a revision of '{}' that imports revision '{}' of '{}".format(downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+            mx.abort(f"Cannot find a revision of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}")
 
 
 def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
@@ -256,7 +256,7 @@ def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
     output = (git.git_command(vc_dir, cmd, abortOnError=abortOnError) or '').strip()
     if regex is not None and re.match(regex, output, re.MULTILINE) is None:
         if abortOnError:
-            mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(shlex.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
+            mx.abort(f"Unexpected output running command '{' '.join(map(shlex.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd))}'. Expected a match for '{regex}', got:\n{output}")
         return None
     return output
 
@@ -270,23 +270,23 @@ def _checkout_upstream_revision(upstream_commit, candidate_upstream_branches, up
     :rtype: bool
     """
     for upstream_branch in candidate_upstream_branches:
-        mx.log("Analyzing branch '{}':".format(upstream_branch))
-        rev_parse_output = _run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', 'origin/{}'.format(upstream_branch)], regex=r'[a-f0-9]{40}$', abortOnError=False)
+        mx.log(f"Analyzing branch '{upstream_branch}':")
+        rev_parse_output = _run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', f'origin/{upstream_branch}'], regex=r'[a-f0-9]{40}$', abortOnError=False)
         if rev_parse_output is None:
-            mx.log(" - the downstream repository does not contain a branch named '{}'".format(upstream_branch))
+            mx.log(f" - the downstream repository does not contain a branch named '{upstream_branch}'")
             continue
-        mx.log(" - the downstream repository contains a branch named '{}'".format(upstream_branch))
+        mx.log(f" - the downstream repository contains a branch named '{upstream_branch}'")
         downstream_branch = upstream_branch
 
-        mx.log(" - searching 'origin/{}' of the downstream repo in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+        mx.log(f" - searching 'origin/{downstream_branch}' of the downstream repo in '{downstream_suite.vc_dir}' for a commit that imports revision '{upstream_commit}' of '{upstream_suite.name}'")
         # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
-        downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+        downstream_commit_cmd = ['log', f'origin/{downstream_branch}', '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
         downstream_commit = _run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
         if downstream_commit is None:
-            mx.log(" - cannot find a revision in branch 'origin/{}' of '{}' that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+            mx.log(f" - cannot find a revision in branch 'origin/{downstream_branch}' of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}'")
             continue
         downstream_commit = downstream_commit.split('\n')[0]
-        mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
+        mx.log(f"Checking out revision '{downstream_commit}' of downstream suite '{downstream_suite.name}', which imports revision '{upstream_commit}' of '{upstream_suite.name}'")
         mx.GitConfig().update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
         return True
     return False
