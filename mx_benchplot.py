@@ -113,7 +113,7 @@ By default only report the last data point""", type=int, default=None)
             if score:
                 if first:
                     first_score = score
-                row.append('%.2f' % score)
+                row.append(f'{score:.2f}')
                 specifiers.append('s')
             else:
                 row.append('N/A')
@@ -121,7 +121,7 @@ By default only report the last data point""", type=int, default=None)
             headers.append(resultname)
             if args.variance:
                 if score:
-                    row.append('%.2f%%' % variance)
+                    row.append(f'{variance:.2f}%')
                 else:
                     row.append('')
                 specifiers.append('s')
@@ -130,9 +130,9 @@ By default only report the last data point""", type=int, default=None)
                 if score and first_score:
                     # if the first score is missing then don't report any change
                     if args.diff == 'percent':
-                        row.append('%.2f%%' % ((score - first_score) * 100.0 * scale / first_score))
+                        row.append(f'{(score - first_score) * 100.0 * scale / first_score:.2f}%')
                     else:
-                        row.append('%.2f' % ((score - first_score) * scale))
+                        row.append(f'{(score - first_score) * scale:.2f}')
                 else:
                     row.append('')
                 specifiers.append('s')
@@ -332,7 +332,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
 def extract_results(files, names, last_n=None, selected_benchmarks=None):
     if names:
         if len(names) != len(files):
-            mx.abort('Wrong number of names specified: {} files but {} names.'.format(len(files), len(names)))
+            mx.abort(f'Wrong number of names specified: {len(files)} files but {len(names)} names.')
     else:
         names = [os.path.splitext(os.path.basename(x))[0] for x in files]
         if len(names) != len(set(names)):
@@ -347,7 +347,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
         with open(filename) as fp:
             data = json.load(fp)
             if not isinstance(data, dict) or not data.get('queries'):
-                mx.abort('{} doesn\'t appear to be a benchmark results file'.format(filename))
+                mx.abort(f'{filename} doesn\'t appear to be a benchmark results file')
             for entry in data['queries']:
                 benchmark = entry['benchmark']
                 if benchmark not in benchmarks:
@@ -356,7 +356,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                     bench_suite = entry['bench-suite']
                 else:
                     if bench_suite != entry['bench-suite']:
-                        mx.abort("File '{}' contains bench-suite '{}' but expected '{}'.".format(filename, entry['bench-suite'], bench_suite))
+                        mx.abort(f"File '{filename}' contains bench-suite '{entry['bench-suite']}' but expected '{bench_suite}'.")
                 score = entry['metric.value']
                 iteration = entry['metric.iteration']
                 scores = result.get(benchmark)
@@ -407,6 +407,6 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
     if selected_benchmarks:
         unknown_benchmarks = set(selected_benchmarks) - set(benchmarks)
         if len(unknown_benchmarks) != 0:
-            mx.abort('Unknown benchmarks selected: {}\nAvailable benchmarks are: {}'.format(','.join(unknown_benchmarks), ','.join(benchmarks)))
+            mx.abort(f"Unknown benchmarks selected: {','.join(unknown_benchmarks)}\nAvailable benchmarks are: {','.join(benchmarks)}")
         benchmarks = selected_benchmarks
     return benchmarks, results, names

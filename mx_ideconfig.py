@@ -138,7 +138,7 @@ def ideclean(args):
         try:
             rm(join(p.dir, p.name + '.jar'))
         except:
-            mx.log_error("Error removing {0}".format(p.name + '.jar'))
+            mx.log_error(f"Error removing {p.name + '.jar'}")
 
     for d in mx._dists.values():
         if not d.isJARDistribution():

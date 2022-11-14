@@ -66,8 +66,7 @@ def check_capstone_import(name):
         import capstone  # pylint: disable=unused-variable, unused-import
     except ImportError as e:
         mx.abort(
-            '{}\nThe capstone module is required to support \'{}\'. Try installing it with `pip install capstone`'.format(
-                e, name))
+            f'{e}\nThe capstone module is required to support \'{name}\'. Try installing it with `pip install capstone`')
 
 
 # File header format
@@ -103,7 +102,7 @@ class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
             mx.abort('Must specify an experiment')
         experiment = ExperimentFiles.open_experiment(options.experiment)
         if experiment is None:
-            mx.abort('Experiment \'{}\' does not exist'.format(options.experiment))
+            mx.abort(f'Experiment \'{options.experiment}\' does not exist')
         if hasattr(options, 'block_info') and options.block_info:
             experiment.force_block_info(options.block_info)
         return experiment
@@ -199,7 +198,7 @@ class FlatExperimentFiles(ExperimentFiles):
         experiment = os.path.abspath(experiment)
         if os.path.exists(experiment):
             if not overwrite:
-                mx.abort('Experiment file already exists: {}'.format(experiment))
+                mx.abort(f'Experiment file already exists: {experiment}')
             shutil.rmtree(experiment)
         os.mkdir(experiment)
         return FlatExperimentFiles(directory=experiment)
@@ -253,12 +252,12 @@ class FlatExperimentFiles(ExperimentFiles):
             if not PerfOutput.is_supported():
                 mx.abort('perf output parsing must be done on a system which supports the perf command')
             if not self.has_perf_binary():
-                mx.abort('perf data file \'{}\' is missing'.format(self.perf_binary_filename))
+                mx.abort(f'perf data file \'{self.perf_binary_filename}\' is missing')
             convert_cmd = PerfOutput.perf_convert_binary_command(self)
             # convert the perf binary data into text format
             with self.open_perf_output_file(mode='w') as fp:
                 mx.run(convert_cmd, out=fp)
-            print('Created perf output file in {}'.format(self.directory))
+            print(f'Created perf output file in {self.directory}')
 
     def package(self, name=None):
         self.ensure_perf_output()
@@ -425,7 +424,7 @@ class DisassemblyDecoder:
                 last = instructions[-1]
                 decoded_bytes = last.address + last.size - code_addr
             else:
-                instructions.append(Instruction(code_addr + decoded_bytes, '.byte', '{:0x}'.format(code[decoded_bytes]),
+                instructions.append(Instruction(code_addr + decoded_bytes, '.byte', f'{code[decoded_bytes]:0x}',
                                                 code[decoded_bytes:decoded_bytes + 1], 1))
                 decoded_bytes += 1
         return instructions
@@ -461,7 +460,7 @@ class DisassemblyDecoder:
             elif isinstance(a, str):
                 postannotations.append(a)
             else:
-                message = 'Unexpected annotation: {}'.format(a)
+                message = f'Unexpected annotation: {a}'
                 mx.abort(message)
         return preannotations[0] if preannotations else None, postannotations
 
@@ -489,7 +488,7 @@ class DisassemblyDecoder:
         if begin:
             regions.append((begin, index))
         if len(hotpc) != 0:
-            print('Unattributed pcs {}'.format(['{:x}'.format(x) for x in list(hotpc)]))
+            print(f"Unattributed pcs {[f'{x:x}' for x in list(hotpc)]}")
         return regions
 
     def disassemble(self, code, hotpc, short_class_names=False, threshold=0.001):
@@ -507,28 +506,28 @@ class DisassemblyDecoder:
             if threshold != 0:
                 if region != 1:
                     self.print(code.format_name(short_class_names=short_class_names))
-                self.print("Hot region {}".format(region))
+                self.print(f"Hot region {region}")
             for i, prefix, annotations in instructions[begin:end]:
                 hex_bytes = ''
                 if self.hex_bytes:
-                    hex_bytes = ' '.join(['{:02x}'.format(b) for b in i.bytes])
+                    hex_bytes = ' '.join([f'{b:02x}' for b in i.bytes])
                 if prefix is None:
                     prefix = ' ' * prefix_width
                 else:
                     prefix = prefix_format.format(prefix)
-                assert len(prefix) == prefix_width, '{} {}'.format(prefix, prefix_width)
-                line = '{}0x{:x}:\t{}\t{}\t{}'.format(prefix, i.address, i.mnemonic, i.operand, hex_bytes)
+                assert len(prefix) == prefix_width, f'{prefix} {prefix_width}'
+                line = f'{prefix}0x{i.address:x}:\t{i.mnemonic}\t{i.operand}\t{hex_bytes}'
                 line = line.expandtabs()
                 if annotations:
                     padding = ' ' * len(line)
                     lines = [padding] * len(annotations)
                     lines[0] = line
                     for a, b in zip(lines, annotations):
-                        self.print('{}; {}'.format(a, b))
+                        self.print(f'{a}; {b}')
                 else:
                     self.print(line)
             if threshold != 0:
-                self.print("End of hot region {}".format(region))
+                self.print(f"End of hot region {region}")
             self.print('')
             region += 1
 
@@ -536,7 +535,7 @@ class DisassemblyDecoder:
         decode_end = last.address + last.size
         buffer_end = code.code_addr + len(code.code)
         if decode_end != buffer_end:
-            self.print('Skipping {} bytes {:x} {:x} '.format(buffer_end - decode_end, buffer_end, decode_end))
+            self.print(f'Skipping {buffer_end - decode_end} bytes {buffer_end:x} {decode_end:x} ')
 
 
 class AMD64DisassemblerDecoder(DisassemblyDecoder):
@@ -654,7 +653,7 @@ class DebugFrame:
         self.bci = bci
 
     def format(self, short_class_names=False):
-        return '{}:{}'.format(self.method.format_name(with_arguments=False, short_class_names=short_class_names), self.bci)
+        return f'{self.method.format_name(with_arguments=False, short_class_names=short_class_names)}:{self.bci}'
 
 
 class DebugInfo:
@@ -686,8 +685,7 @@ class CompiledCodeInfo:
         self.basic_blocks = None
 
     def __str__(self):
-        return '0x{:x}-0x{:x} {} {}-{}'.format(self.code_begin(), self.code_end(), self.name, self.timestamp,
-                                               self.unload_time or '')
+        return f"0x{self.code_begin():x}-0x{self.code_end():x} {self.name} {self.timestamp}-{self.unload_time or ''}"
 
     def format_name(self, short_class_names=False):
         if self.generated or not short_class_names:
@@ -709,8 +707,7 @@ class CompiledCodeInfo:
             # based on what JVMTI recorded.
             assert '$$Lambda$' in self.name or \
                    self.name.startswith('java.lang.invoke.MethodHandle.linkToStatic') or \
-                   self.name.startswith('java.lang.invoke.LambdaForm'), '{} != {}'.format(self.name,
-                                                                                          nmethod_name)
+                   self.name.startswith('java.lang.invoke.LambdaForm'), f'{self.name} != {nmethod_name}'
             # correct the method naming
             nmethod.method = self.methods[0]
         # update the name to include the LogCompilation id and any truffle names
@@ -776,7 +773,7 @@ class CompiledCodeInfo:
         if not hide_perf:
             event = self.get_event_map().get(pc)
             if event:
-                prefix = '{:5.2f}%'.format(100.0 * event.period / float(self.total_period))
+                prefix = f'{100.0 * event.period / float(self.total_period):5.2f}%'
 
         if self.debug_info and show_call_stack_depth != 0:
             debug_info = self.get_debug_info_map().get(pc)
@@ -795,8 +792,7 @@ class CompiledCodeInfo:
         :type decoder: DisassemblyDecoder
         """
         decoder.print(self.format_name(short_class_names=short_class_names))
-        decoder.print('0x{:x}-0x{:x} (samples={}, period={})'.format(self.code_begin(), self.code_end(),
-                                                                     self.total_samples, self.total_period))
+        decoder.print(f'0x{self.code_begin():x}-0x{self.code_end():x} (samples={self.total_samples}, period={self.total_period})')
         hotpc = {}
         for event in self.events:
             event = copy.copy(event)
@@ -811,13 +807,13 @@ class CompiledCodeInfo:
         b0 = self.basic_blocks[0]
         assert b0.id == 0, "The first block must have id 0"
         if b0.samples == 0:
-            print('[WARRNING] In method {}\n\tblock 0 got {} samples'.format(self.format_name(short_class_names=True), b0.samples), file=fp)
+            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tblock 0 got {b0.samples} samples', file=fp)
             return
 
         for b in self.basic_blocks[1:]:
             perf_freq = b.period / b0.period
             if not compare_freq(b.freq, perf_freq):
-                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to first block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, b.freq, perf_freq), file=fp)
+                print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to first block diverge, graal freq {b.freq:.6e}, perf freq {perf_freq:.6e}', file=fp)
 
 
     def check_basic_blocks_rel_freq_most(self, fp=sys.stdout):
@@ -828,8 +824,8 @@ class CompiledCodeInfo:
         bmax_perf = sorted(self.basic_blocks, key=lambda b: b.period, reverse=True)
 
         if bmax_graal[0].id != bmax_perf[0].id:
-            print('[WARRNING] In method {}\n\tmost frequent basic block measured with perf (id={:3}) differs from most frequent basic block from graal (id={:3})'.format(self.format_name(short_class_names=True), bmax_perf[0].id, bmax_graal[0].id), file=fp)
-            print('\tTop 5 basic blocks from graal {}\n\tTop 5 basic blocks from perf {}'.format([(b.id, b.freq) for b in bmax_graal[:5]], [(b.id, b.samples, b.period) for b in bmax_perf[:5]]), file=fp)
+            print(f'[WARRNING] In method {self.format_name(short_class_names=True)}\n\tmost frequent basic block measured with perf (id={bmax_perf[0].id:3}) differs from most frequent basic block from graal (id={bmax_graal[0].id:3})', file=fp)
+            print(f'\tTop 5 basic blocks from graal {[(b.id, b.freq) for b in bmax_graal[:5]]}\n\tTop 5 basic blocks from perf {[(b.id, b.samples, b.period) for b in bmax_perf[:5]]}', file=fp)
 
             graal_most_frequent = {b.id for b in bmax_graal[:5]}
             if all([b.id not in graal_most_frequent for b in bmax_perf[:5]]):
@@ -843,7 +839,7 @@ class CompiledCodeInfo:
             perf_freq = b.period / bmax.period
 
             if not compare_freq(graal_freq, perf_freq):
-                print('[ERROR] In method {}\n\tblock id {:5}, relative frequencies with respect to most frequent basic block diverge, graal freq {:.6e}, perf freq {:.6e}'.format(self.format_name(short_class_names=True), b.id, graal_freq, perf_freq), file=fp)
+                print(f'[ERROR] In method {self.format_name(short_class_names=True)}\n\tblock id {b.id:5}, relative frequencies with respect to most frequent basic block diverge, graal freq {graal_freq:.6e}, perf freq {perf_freq:.6e}', file=fp)
 
 def compare_freq(graal_freq, perf_freq, epsilon=1E-10):
     """
@@ -868,7 +864,7 @@ class PerfEvent:
         self.samples = 1
 
     def __str__(self):
-        return '{} {:x} {} {} {} {}'.format(self.timestamp, self.pc, self.events, self.period, self.symbol, self.dso)
+        return f'{self.timestamp} {self.pc:x} {self.events} {self.period} {self.symbol} {self.dso}'
 
     def symbol_name(self):
         if self.symbol == '[unknown]':
@@ -994,7 +990,7 @@ class GeneratedAssembly:
             self.fp = fp
             tag = self.fp.read(8)
             if tag != filetag:
-                raise AssertionError('Wrong magic number: Found {} but expected {}'.format(tag, filetag))
+                raise AssertionError(f'Wrong magic number: Found {tag} but expected {filetag}')
             self.major_version = self.read_jint()
             self.minor_version = self.read_jint()
             self.arch = self.read_string()
@@ -1032,7 +1028,7 @@ class GeneratedAssembly:
                     code.set_nmethod(found)
                     self.code_by_id[code.get_compile_id()] = code
                     continue
-                mx.abort('Unable to find matching nmethod for code {}'.format(code))
+                mx.abort(f'Unable to find matching nmethod for code {code}')
 
         if files.has_block_info():
             for code in self.code_info:
@@ -1098,17 +1094,17 @@ class GeneratedAssembly:
                 code_info = CompiledCodeInfo(name, timestamp, code_addr, code_size, code, True)
                 self.add(code_info)
                 if verbose:
-                    print('Parsed DynamicCode {}'.format(code_info))
+                    print(f'Parsed DynamicCode {code_info}')
             elif tag == CompiledMethodUnloadTag:
                 timestamp = self.read_timestamp()
                 code_addr = self.read_unsigned_jlong()
                 nmethod = self.code_by_address[code_addr]
                 if not nmethod:
-                    message = "missing code for {}".format(code_addr)
+                    message = f"missing code for {code_addr}"
                     mx.abort(message)
                 nmethod.set_unload_time(timestamp)
                 if verbose:
-                    print('Parsed CompiledMethodUnload {}'.format(code_info))
+                    print(f'Parsed CompiledMethodUnload {code_info}')
             elif tag == CompiledMethodLoadTag:
                 timestamp = self.read_timestamp()
                 code_addr = self.read_unsigned_jlong()
@@ -1149,9 +1145,9 @@ class GeneratedAssembly:
                                            False, debug_infos, methods)
                 self.add(nmethod)
                 if verbose:
-                    print('Parsed CompiledMethod {}'.format(nmethod))
+                    print(f'Parsed CompiledMethod {nmethod}')
             else:
-                raise AssertionError("Unexpected tag {}".format(tag))
+                raise AssertionError(f"Unexpected tag {tag}")
 
     def attribute_events(self, perf_data):
         assert self.low_address is not None and self.high_address is not None
@@ -1169,7 +1165,7 @@ class GeneratedAssembly:
         if missing > 50:
             # some versions of JVMTI leave out the stubs section of nmethod which occassionally gets ticks
             # so a small number of missing ticks should be ignored.
-            mx.warn('{} events of {} could not be mapped to generated code'.format(missing, attributed + missing))
+            mx.warn(f'{missing} events of {attributed + missing} could not be mapped to generated code')
 
     def add_event(self, event):
         code_info = self.find(event.pc, event.timestamp)
@@ -1197,7 +1193,7 @@ class GeneratedAssembly:
             if x.generated:
                 offset = pc - x.code_addr
                 if offset:
-                    return '{}+0x{:x}'.format(x.name, offset)
+                    return f'{x.name}+0x{offset:x}'
                 return x.name
         return None
 
@@ -1212,8 +1208,7 @@ class GeneratedAssembly:
             m = self.search(pc)
             if m:
                 raise AssertionError(
-                    'find has no hits for pc {:x} and timestamp {} but search found: {}'.format(pc, timestamp, str(
-                        [str(x) for x in m])))
+                    f'find has no hits for pc {pc:x} and timestamp {timestamp} but search found: {str([str(x) for x in m])}')
             return None
 
         # only a single PC match so don't bother checking the timestamp
@@ -1301,7 +1296,7 @@ def find_jvmti_asm_agent():
     d = mx.dependency('com.oracle.jvmtiasmagent')
     for source_file, _ in d.getArchivableResults(single=True):
         if not os.path.exists(source_file):
-            mx.abort('{} hasn\'t been built yet'.format(source_file))
+            mx.abort(f'{source_file} hasn\'t been built yet')
         return source_file
     return None
 
@@ -1355,7 +1350,7 @@ def profrecord(args):
     convert_cmd = PerfOutput.perf_convert_binary_command(files)
     if options.script:
         print(mx.list_to_cmd_line(full_cmd))
-        print('{} > {}'.format(mx.list_to_cmd_line(convert_cmd), files.get_perf_output_filename()))
+        print(f'{mx.list_to_cmd_line(convert_cmd)} > {files.get_perf_output_filename()}')
     else:
         mx.run(full_cmd, nonZeroIsFatal=False)
         if not files.has_perf_binary():
@@ -1372,7 +1367,7 @@ def profrecord(args):
             top = assembly.top_methods(include=lambda x: not x.generated and x.total_period > 0)[:options.limit]
             dump_path = files.create_dump_dir()
             method_filter = ','.join([x.methods[0].method_filter_format() for x in top])
-            dump_arguments = ['-Dgraal.Dump=:{}'.format(options.dump_level),
+            dump_arguments = [f'-Dgraal.Dump=:{options.dump_level}',
                               '-Dgraal.MethodFilter=' + method_filter,
                               '-Dgraal.DumpPath=' + dump_path]
             if options.with_bb_info:
@@ -1420,7 +1415,7 @@ def profpackage(args):
         files.ensure_perf_output()
         if not options.no_zip:
             name = files.package()
-            print('Created {}'.format(name))
+            print(f'Created {name}')
         if options.delete:
             shutil.rmtree(experiment)
 
@@ -1439,9 +1434,9 @@ def build_capture_args(files, extra_vm_args=None, options=None):
         event = 'cycles'
 
     perf_cmd += ['--freq', str(frequency), '--event', event, '--output', perf_binary_file]
-    vm_args = ['-agentpath:{}={}'.format(find_jvmti_asm_agent(), jvmti_asm_file), '-XX:+UnlockDiagnosticVMOptions',
+    vm_args = [f'-agentpath:{find_jvmti_asm_agent()}={jvmti_asm_file}', '-XX:+UnlockDiagnosticVMOptions',
                '-XX:+DebugNonSafepoints', '-Dgraal.TrackNodeSourcePosition=true', '-XX:+LogCompilation',
-               '-XX:LogFile={}'.format(files.get_log_compilation_filename())]
+               f'-XX:LogFile={files.get_log_compilation_filename()}']
     if extra_vm_args:
         vm_args += extra_vm_args
     return perf_cmd, vm_args
@@ -1514,7 +1509,7 @@ def profhot(args):
     print('Hot C functions:', file=fp)
     print('  Percent   Name', file=fp)
     for symbol, _, count in non_jit_entries[:options.limit]:
-        print('   {:5.2f}%   {}'.format(100 * (float(count) / perf_data.total_period), symbol), file=fp)
+        print(f'   {100 * (float(count) / perf_data.total_period):5.2f}%   {symbol}', file=fp)
     print('', file=fp)
 
     hot = assembly.top_methods(lambda x: x.total_period > 0)
@@ -1522,8 +1517,7 @@ def profhot(args):
     print('Hot generated code:', file=fp)
     print('  Percent   Name', file=fp)
     for code in hot:
-        print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period),
-                                        code.format_name(options.short_class_names)), file=fp)
+        print(f'   {100 * (float(code.total_period) / perf_data.total_period):5.2f}%   {code.format_name(options.short_class_names)}', file=fp)
     print('', file=fp)
 
     assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
@@ -1689,9 +1683,9 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         if self.nextItemName:
-            self.filename = "proftool_{}_{}".format(self.nextItemName, timestamp)
+            self.filename = f"proftool_{self.nextItemName}_{timestamp}"
         else:
-            self.filename = "proftool_{}".format(timestamp)
+            self.filename = f"proftool_{timestamp}"
 
 
 if PerfOutput.is_supported():

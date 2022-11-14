@@ -56,13 +56,16 @@ def find_system_jdks():
     """
     Returns a set of valid JDK directories by searching standard locations.
     """
+    user_home_cache = join(expanduser('~'), '.mx', 'jdks') # default --to value for `mx fetch-jdk` command
+
     bases = [
         '/Library/Java/JavaVirtualMachines',
         '/usr/lib/jvm',
         '/usr/java',
         '/usr/jdk/instances',
         r'C:\Program Files\Java',
-        join(expanduser('~'), '.mx', 'jdks') # default --to value for `mx fetch-jdk` command
+        user_home_cache,
+        join(user_home_cache, 'amd64') # M1 Rosetta support
     ]
     jdks = set()
     for base in bases:
@@ -236,11 +239,11 @@ fi
             with open(tmp_cache_path, 'w') as fp:
                 for index, jdk in choices:
                     if jdk == java_home:
-                        print(colorize('[{}] {} {{JAVA_HOME}}'.format(index, jdk), 'green'))
+                        print(colorize(f'[{index}] {jdk} {{JAVA_HOME}}', 'green'))
                     elif jdk in extra_java_homes:
-                        print(colorize('[{}] {} {{EXTRA_JAVA_HOMES[{}]}}'.format(index, jdk, extra_java_homes.index(jdk)), 'cyan'))
+                        print(colorize(f'[{index}] {jdk} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk)}]}}', 'cyan'))
                     else:
-                        print('[{}] {}'.format(index, jdk))
+                        print(f'[{index}] {jdk}')
                     print(jdk, file=fp)
 
             os.rename(tmp_cache_path, jdk_cache_path)

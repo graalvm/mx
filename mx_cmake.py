@@ -71,7 +71,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         if mx.is_windows():
             # cmake does not like backslashes
             value_substitute = value_substitute.replace("\\", "/")
-        return '-D{}={}'.format(key, value_substitute)
+        return f'-D{key}={value_substitute}'
 
     @staticmethod
     def check_cmake():
@@ -150,10 +150,10 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
                                                self.name)
 
     def needsBuild(self, newestInput):
-        mx.logv('Checking whether to reconfigure {} with CMake'.format(self.subject.name))
+        mx.logv(f'Checking whether to reconfigure {self.subject.name} with CMake')
         need_configure, reason = self._need_configure()
         if need_configure:
-            return need_configure, "reconfigure needed by CMake ({})".format(reason)
+            return need_configure, f"reconfigure needed by CMake ({reason})"
         return super(CMakeNinjaBuildTask, self).needsBuild(newestInput)
 
     def build(self):

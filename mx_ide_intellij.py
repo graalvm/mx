@@ -79,7 +79,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
                         generate_native_projects=native_projects)
 
     if len(referenced_modules - declared_modules) != 0:
-        mx.abort('Some referenced modules are missing from modules.xml: {}'.format(referenced_modules - declared_modules))
+        mx.abort(f'Some referenced modules are missing from modules.xml: {referenced_modules - declared_modules}')
 
     if mx_python_modules:
         # mx module
@@ -118,7 +118,7 @@ def intellij_read_sdks():
           glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
     else:
-        mx.warn("Location of IntelliJ SDK definitions on {} is unknown".format(mx.get_os()))
+        mx.warn(f"Location of IntelliJ SDK definitions on {mx.get_os()} is unknown")
         return sdks
     if len(xmlSdks) == 0:
         mx.warn("IntelliJ SDK definitions not found")
@@ -131,7 +131,7 @@ def intellij_read_sdks():
 
     xmlSdks.sort(key=verSort)
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
-    mx.log("Using SDK definitions from {}".format(xmlSdk))
+    mx.log(f"Using SDK definitions from {xmlSdk}")
 
     versionRegexes = {}
     versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^(Oracle OpenJDK )?version\s+(.+)$|^([\d._]+)$')
@@ -157,9 +157,9 @@ def intellij_read_sdks():
         if match:
             version = match.group(1)
             sdks[home] = {'name': name, 'type': kind, 'version': version}
-            mx.logv("Found SDK {} with values {}".format(home, sdks[home]))
+            mx.logv(f"Found SDK {home} with values {sdks[home]}")
         else:
-            mx.warn(u"Couldn't understand Java version specification \"{}\" for {} in {}".format(sdk.find("version").get("value"), home, xmlSdk))
+            mx.warn(f"Couldn't understand Java version specification \"{sdk.find('version').get('value')}\" for {home} in {xmlSdk}")
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -175,7 +175,7 @@ def intellij_get_python_sdk_name(sdks):
         sdk = sdks[exe]
         if sdk['type'] == intellij_python_sdk_type:
             return sdk['name']
-    return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
+    return f"Python {sys.version_info[0]}.{sys.version_info[1]} ({exe})"
 
 def intellij_get_ruby_sdk_name(sdks):
     for sdk in sdks.values():
@@ -250,14 +250,14 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         if externalProjects:
             for project_name, project_definition in externalProjects.items():
                 if not project_definition.get('path', None):
-                    mx.abort("external project {} is missing path attribute".format(project_name))
+                    mx.abort(f"external project {project_name} is missing path attribute")
                 if not project_definition.get('type', None):
-                    mx.abort("external project {} is missing type attribute".format(project_name))
+                    mx.abort(f"external project {project_name} is missing type attribute")
 
                 supported = ['path', 'type', 'source', 'test', 'excluded', 'load_path']
                 unknown = set(project_definition.keys()) - frozenset(supported)
                 if unknown:
-                    mx.abort("There are unsupported {} keys in {} external project".format(unknown, project_name))
+                    mx.abort(f"There are unsupported {unknown} keys in {project_name} external project")
 
                 path = os.path.realpath(join(host.dir, project_definition["path"]))
                 module_type = project_definition["type"]
@@ -289,7 +289,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     # nothing to do
                     pass
                 else:
-                    mx.abort("External project type {} not supported".format(module_type))
+                    mx.abort(f"External project type {module_type} not supported")
 
                 moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
                 moduleXml.close('component')
@@ -432,7 +432,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             def should_process_dep(dep, edge):
                 if dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
-                    mx.logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
+                    mx.logv(f"Ignoring dependency from {proj.name} to {dep.name}")
                     return False
                 return True
 
@@ -451,13 +451,13 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     if jdk.javaCompliance < dep.jdkStandardizedSince:
                         moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                     else:
-                        mx.logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
+                        mx.logv(f"{p} skipping {dep} for {jdk}") #pylint: disable=undefined-loop-variable
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isClasspathDependency():
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 else:
-                    mx.abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
+                    mx.abort(f"Dependency not supported: {dep} ({dep.__class__.__name__})")
 
             p.walk_deps(preVisit=should_process_dep, visit=process_dep, ignoredEdges=[mx.DEP_EXCLUDED])
 
@@ -473,7 +473,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         args = []
                         exported_modules = set()
                         for m, pkgs in exports:
-                            args += ['--add-exports={}/{}=ALL-UNNAMED'.format(m, pkg) for pkg in pkgs]
+                            args += [f'--add-exports={m}/{pkg}=ALL-UNNAMED' for pkg in pkgs]
                             exported_modules.add(m)
                         roots = set(jdk.get_root_modules())
                         observable_modules = jdk.get_modules()
@@ -637,7 +637,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             elif library.isClasspathDependency():
                 path = library.classpath_repr()
             else:
-                mx.abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
+                mx.abort(f'Dependency not supported: {library.name} ({library.__class__.__name__})')
             make_library(library.name, path, source_path, s.dir)
 
         jdk = mx.get_jdk()
@@ -647,7 +647,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 if make_library(library.name, library.classpath_repr(jdk), library.get_source_path(jdk), s.dir):
                     updated = True
         if jdk_libraries and updated:
-            mx.log("Setting up JDK libraries using {0}".format(jdk))
+            mx.log(f"Setting up JDK libraries using {jdk}")
 
         # Set annotation processor profiles up, and link them to modules in compiler.xml
 
@@ -770,7 +770,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     if mx.is_darwin():
                         custom_eclipse = join(dirname(custom_eclipse), 'Eclipse')
                     if not exists(custom_eclipse_exe):
-                        mx.abort('Custom eclipse "{}" does not exist'.format(custom_eclipse_exe))
+                        mx.abort(f'Custom eclipse "{custom_eclipse_exe}" does not exist')
                     miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
                     miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})

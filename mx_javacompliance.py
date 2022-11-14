@@ -62,7 +62,7 @@ class JavaCompliance(mx.Comparable):
 
     @staticmethod
     def _error_prefix(spec, part_index, part):
-        return 'JavaCompliance("{}"): Part {} ("{}")'.format(spec, part_index, part)
+        return f'JavaCompliance("{spec}"): Part {part_index} ("{part}")'
 
     class _Range(mx.Comparable):
         """
@@ -77,7 +77,7 @@ class JavaCompliance(mx.Comparable):
                 return str(self._low)
             if self._high is None:
                 return str(self._low) + '+'
-            return '{}..{}'.format(self._low, self._high)
+            return f'{self._low}..{self._high}'
 
         def __cmp__(self, other):
             r = mx.compare(self._low, other._low)
@@ -142,12 +142,12 @@ class JavaCompliance(mx.Comparable):
         self._loom = False
 
         def _error(part, index, msg):
-            parse_error('JavaCompliance("{}"): Part {} ("{}") {}'.format(spec, index, part, msg))
+            parse_error(f'JavaCompliance("{spec}"): Part {index} ("{part}") {msg}')
 
         def _check_value(value, value_desc='value'):
             value = int(value)
             if value < 2:
-                _error(value, 0, 'has unsupported {} since it is less than 2'.format(value_desc))
+                _error(value, 0, f'has unsupported {value_desc} since it is less than 2')
             return value
 
         int_spec = spec if isinstance(spec, int) else int(spec) if isinstance(spec, str) and JavaCompliance._int_re.match(spec) else None
@@ -167,7 +167,7 @@ class JavaCompliance(mx.Comparable):
             def _check_part_value(prefix, value, value_desc):
                 value = _check_value(value, value_desc)
                 if prefix and value > 9:
-                    _part_error('cannot have "1." prefix on {} since {} > 9'.format(value_desc, value_desc))
+                    _part_error(f'cannot have "1." prefix on {value_desc} since {value_desc} > 9')
                 return value
 
             m = JavaCompliance._version_range_re.match(part)
@@ -175,7 +175,7 @@ class JavaCompliance(mx.Comparable):
                 low = _check_part_value(m.group(1), m.group(2), 'low bound')
                 high = _check_part_value(m.group(3), m.group(4), 'high bound')
                 if low >= high:
-                    _part_error('has low bound ({}) greater or equal to high bound ({})'.format(low, high))
+                    _part_error(f'has low bound ({low}) greater or equal to high bound ({high})')
                 return JavaCompliance._Range(low, high)
             m = JavaCompliance._open_range_re.match(part)
             if m:
@@ -199,7 +199,7 @@ class JavaCompliance(mx.Comparable):
                 if first._high is None:
                     _error(first, i - 1, 'must have a high bound')
                 if second._low <= first._high:
-                    _error(first, i - 1, 'must have a high bound ({}) less than the low bound ({}) of part {} ("{}")'.format(first._high, second._low, i, second))
+                    _error(first, i - 1, f'must have a high bound ({first._high}) less than the low bound ({second._low}) of part {i} ("{second}")')
 
     @property
     def value(self):
@@ -351,7 +351,7 @@ def _test():
         if mx.get_opts().verbose:
             if isinstance(spec, str):
                 spec = '"' + spec + '"'
-            mx.log('{}: str="{}", repr="{}", hash={}'.format(spec, str(p), repr(p), hash(p)))
+            mx.log(f'{spec}: str="{str(p)}", repr="{repr(p)}", hash={hash(p)}')
     for spec in bad_specs:
         class SpecError(Exception):
             pass
@@ -361,9 +361,9 @@ def _test():
             raise SpecError(msg)
         try:
             mx.JavaCompliance(spec, parse_error=_parse_error)
-            mx.abort('expected SpecError while parsing "{}"'.format(spec))
+            mx.abort(f'expected SpecError while parsing "{spec}"')
         except SpecError:
             pass
     for spec, range_spec, should_match in range_specs:
         match = spec in mx.JavaCompliance(range_spec)
-        assert match == should_match, '"{}" in "{}" should returns {}'.format(spec, range_spec, should_match)
+        assert match == should_match, f'"{spec}" in "{range_spec}" should returns {should_match}'

@@ -201,7 +201,7 @@ def _filter_test_candidates(candidates, tests):
             if not found:
                 mx.abort('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
             elif len(classes) != 1:
-                mx.abort('More than one test matches substring {0} {1}'.format(t, classes))
+                mx.abort(f'More than one test matches substring {t} {classes}')
 
             classes = [c + "#" + method for c in classes]
         else:
@@ -445,9 +445,9 @@ unittestHelpSuffix = """
 def is_strictly_positive(value):
     try:
         if int(value) <= 0:
-            raise ArgumentTypeError("%s must be greater than 0" % value)
+            raise ArgumentTypeError(f"{value} must be greater than 0")
     except ValueError:
-        raise ArgumentTypeError("%s: integer greater than 0 expected" % value)
+        raise ArgumentTypeError(f"{value}: integer greater than 0 expected")
     return value
 
 

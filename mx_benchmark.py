@@ -87,7 +87,7 @@ class JVMProfiler(object):
 
 def register_profiler(obj):
     if not isinstance(obj, JVMProfiler):
-        raise ValueError("Cannot register profiler. Profilers must be of type {}".format(JVMProfiler.__class__.__name__))
+        raise ValueError(f"Cannot register profiler. Profilers must be of type {JVMProfiler.__class__.__name__}")
     if obj.name() in _profilers:
         raise ValueError("A profiler with name '{}' is already registered!")
     _profilers[obj.name()] = obj
@@ -103,8 +103,7 @@ class SimpleJFRProfiler(JVMProfiler):
     def additional_options(self, dump_path):
         if self.nextItemName:
             import datetime
-            filename = os.path.join(dump_path, "{}_{}.jfr".format(self.nextItemName,
-                                                                  datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")))
+            filename = os.path.join(dump_path, f"{self.nextItemName}_{datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')}.jfr")
         else:
             filename = dump_path
 
@@ -115,7 +114,7 @@ class SimpleJFRProfiler(JVMProfiler):
         ]
         if mx.get_jdk().javaCompliance >= '9':
             opts = common_opts + [
-                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename={}".format(filename),
+                f"-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename={filename}",
                 "-Xlog:jfr=info"
             ]
         elif mx.get_jdk().is_openjdk_based():
@@ -123,11 +122,11 @@ class SimpleJFRProfiler(JVMProfiler):
             # Alternatively, one can use -XX:+LogJFR for 'trace' level
             opts = common_opts + [
                 "-XX:+UnlockCommercialFeatures",
-                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename={}".format(filename)
+                f"-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename={filename}"
             ]
         else:
             opts = ["-XX:+UnlockCommercialFeatures"] + common_opts + [
-                "-XX:StartFlightRecording=defaultrecording=true,settings=profile,filename={}".format(filename),
+                f"-XX:StartFlightRecording=defaultrecording=true,settings=profile,filename={filename}",
                 "-XX:FlightRecorderOptions=loglevel=info,disk=false,maxsize=200M,dumponexit=true"
             ]
 
@@ -147,10 +146,9 @@ class AsyncProfiler(JVMProfiler):
         return "1.8.3"
 
     def libraryPath(self):
-        async_profiler_lib = mx.library("ASYNC_PROFILER_{}".format(self.version()))
+        async_profiler_lib = mx.library(f"ASYNC_PROFILER_{self.version()}")
         if not async_profiler_lib.is_available():
-            mx.abort("'--profiler {}' is not supported on '{}/{}' because the '{}' library is not available."
-                           .format(self.name(), mx.get_os(), mx.get_arch(), async_profiler_lib.name))
+            mx.abort(f"'--profiler {self.name()}' is not supported on '{mx.get_os()}/{mx.get_arch()}' because the '{async_profiler_lib.name}' library is not available.")
 
         libraryDirectory = async_profiler_lib.get_path(True)
         innerDir = [f for f in os.listdir(libraryDirectory) if os.path.isdir(os.path.join(libraryDirectory, f))][0]
@@ -160,11 +158,11 @@ class AsyncProfiler(JVMProfiler):
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         if self.nextItemName:
-            filename = os.path.join(dump_path, "{}_{}.svg".format(self.nextItemName, timestamp))
+            filename = os.path.join(dump_path, f"{self.nextItemName}_{timestamp}.svg")
         else:
-            filename = os.path.join(dump_path, "{}.svg".format(timestamp))
+            filename = os.path.join(dump_path, f"{timestamp}.svg")
 
-        opts = ["-agentpath:{}=start,file={}".format(self.libraryPath(), filename)]
+        opts = [f"-agentpath:{self.libraryPath()}=start,file={filename}"]
 
         # reset the next item name since it has just been consumed
         self.nextItemName = None
@@ -198,7 +196,7 @@ def add_parser(name, parser_entry):
     :return:
     """
     if name in parsers:
-        mx.abort("There is already a parser called '{}'".format(name))
+        mx.abort(f"There is already a parser called '{name}'")
     parsers[name] = parser_entry
 
 
@@ -229,13 +227,13 @@ class VmRegistry(object):
         self._known_host_registries = known_host_registries or []
         add_parser(self.get_parser_name(), ParserEntry(
             ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-            "\n\n{} selection flags, specified in the benchmark suite arguments:\n".format(self.vm_type_name)
+            f"\n\n{self.vm_type_name} selection flags, specified in the benchmark suite arguments:\n"
         ))
         get_parser(self.get_parser_name()).add_argument("--profiler", default=None, help="The profiler to use")
-        get_parser(self.get_parser_name()).add_argument("--{}".format(self.short_vm_type_name), default=None, help="{vm} to run the benchmark with.".format(vm=self.vm_type_name))
-        get_parser(self.get_parser_name()).add_argument("--{}-config".format(self.short_vm_type_name), default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
+        get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}", default=None, help=f"{self.vm_type_name} to run the benchmark with.")
+        get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}-config", default=None, help=f"{self.vm_type_name} configuration for the selected {self.vm_type_name}.")
         # Separator to stack guest and host VM options. Though ignored, must be consumed by the parser.
-        get_parser(self.get_parser_name()).add_argument('--guest', action='store_true', dest=SUPPRESS, default=None, help='Separator for --{vm}=host --guest --{vm}=guest VM configurations.'.format(vm=self.short_vm_type_name))
+        get_parser(self.get_parser_name()).add_argument('--guest', action='store_true', dest=SUPPRESS, default=None, help=f'Separator for --{self.short_vm_type_name}=host --guest --{self.short_vm_type_name}=guest VM configurations.')
 
     def get_parser_name(self):
         return self.vm_type_name + "_parser"
@@ -249,8 +247,8 @@ class VmRegistry(object):
         return None
 
     def get_available_vm_configs_help(self):
-        avail = ['--{}={} --{}-config={}'.format(self.short_vm_type_name, vm.name(), self.short_vm_type_name, vm.config_name()) for vm in self._vms.values()]
-        return 'The following {} configurations are available:\n  {}'.format(self.vm_type_name, '\n  '.join(avail))
+        avail = [f'--{self.short_vm_type_name}={vm.name()} --{self.short_vm_type_name}-config={vm.config_name()}' for vm in self._vms.values()]
+        return f'The following {self.vm_type_name} configurations are available:\n  {os.linesep.join(avail)}'
 
     def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False, host_vm_only_as_default=False):
         """
@@ -285,7 +283,7 @@ class VmRegistry(object):
                          self._vms_priority[(vm, config)]
                          ) for (vm, config), vm_obj in self._vms.items() if (vm_config is None or config == vm_config) and not (host_vm_only_as_default and isinstance(vm_obj, GuestVm))]
                 if not vms:
-                    mx.abort("Could not find a {} to default to.\n{avail}".format(self.vm_type_name, avail=self.get_available_vm_configs_help()))
+                    mx.abort(f"Could not find a {self.vm_type_name} to default to.\n{self.get_available_vm_configs_help()}")
                 vms.sort(key=lambda t: t[1:], reverse=True)
                 vm = vms[0][0]
                 if len(vms) == 1:
@@ -296,7 +294,7 @@ class VmRegistry(object):
                     seen = set()
                     choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
                 if not quiet:
-                    notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
+                    notice(f"Defaulting the {self.vm_type_name} to '{vm}'. Consider using --{self.short_vm_type_name} {choice}")
         if vm_config is None:
             vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
@@ -304,7 +302,7 @@ class VmRegistry(object):
                             self._vms_priority[(vm, config)]
                             ) for (j, config) in self._vms if j == vm]
             if not vm_configs:
-                mx.abort("Could not find a {vm_type} config to default to for {vm_type} '{vm}'.\n{avail}".format(vm=vm, vm_type=self.vm_type_name, avail=self.get_available_vm_configs_help()))
+                mx.abort(f"Could not find a {self.vm_type_name} config to default to for {self.vm_type_name} '{vm}'.\n{self.get_available_vm_configs_help()}")
             vm_configs.sort(key=lambda t: t[1:], reverse=True)
             vm_config = vm_configs[0][0]
             if len(vm_configs) == 1:
@@ -315,11 +313,11 @@ class VmRegistry(object):
                 seen = set()
                 choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
             if not quiet:
-                notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
+                notice(f"Defaulting the {self.vm_type_name} config to '{vm_config}'. Consider using --{self.short_vm_type_name}-config {choice}.")
         vm_object = self.get_vm(vm, vm_config)
 
         if check_guest_vm and not isinstance(vm_object, GuestVm):
-            mx.abort("{vm_type} '{vm}' with config '{vm_config}' is declared as --guest but it's NOT a guest VM.".format(vm=vm, vm_type=self.vm_type_name, vm_config=vm_config))
+            mx.abort(f"{self.vm_type_name} '{vm}' with config '{vm_config}' is declared as --guest but it's NOT a guest VM.")
 
         if isinstance(vm_object, GuestVm):
             host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgsPending, hosted=True, quiet=quiet, host_vm_only_as_default=True)
@@ -329,7 +327,7 @@ class VmRegistry(object):
     def add_vm(self, vm, suite=None, priority=0):
         key = (vm.name(), vm.config_name())
         if key in self._vms:
-            mx.abort("{} and config '{}' already exist.".format(self.vm_type_name, key))
+            mx.abort(f"{self.vm_type_name} and config '{key}' already exist.")
         self._vms[key] = vm
         self._vms_suite[key] = suite
         self._vms_priority[key] = priority
@@ -337,7 +335,7 @@ class VmRegistry(object):
     def get_vm(self, vm_name, vm_config):
         key = (vm_name, vm_config)
         if key not in self._vms:
-            mx.abort("{} and config '{}' do not exist.\n{}".format(self.vm_type_name, key, self.get_available_vm_configs_help()))
+            mx.abort(f"{self.vm_type_name} and config '{key}' do not exist.\n{self.get_available_vm_configs_help()}")
         return self._vms[key]
 
     def get_vms(self):
@@ -444,7 +442,7 @@ class BenchmarkSuite(object):
         :rtype: str
         """
         if self.desiredVersion() and self.desiredVersion() not in self.availableSuiteVersions():
-            mx.abort("Available suite versions are: {}".format(self.availableSuiteVersions()))
+            mx.abort(f"Available suite versions are: {self.availableSuiteVersions()}")
 
         return self.desiredVersion() if self.desiredVersion() else self.defaultSuiteVersion()
 
@@ -484,8 +482,7 @@ class BenchmarkSuite(object):
         if len(self.availableSuiteVersions()) <= 1:
             mx.abort("The suite is not versioned. So one cannot explicitly request a suite version.")
         if version not in self.availableSuiteVersions():
-            mx.abort("Version '{}' unknown! Available suite versions are: {}".format(version,
-                                                                                     self.availableSuiteVersions()))
+            mx.abort(f"Version '{version}' unknown! Available suite versions are: {self.availableSuiteVersions()}")
         self._desired_version = version
 
     def validateEnvironment(self):
@@ -592,7 +589,7 @@ class BenchmarkSuite(object):
         with open(file_path, "w") as txtfile:
             txtfile.write(dump)
         file_size_kb = int(os.path.getsize(file_path) / 1024)
-        mx.log("{} benchmark data points dumped to {} ({} KB)".format(len(data_points), file_path, file_size_kb))
+        mx.log(f"{len(data_points)} benchmark data points dumped to {file_path} ({file_size_kb} KB)")
         return len(data_points)
 
     def workingDirectory(self, benchmarks, bmSuiteArgs):
@@ -631,9 +628,9 @@ def add_bm_suite(suite, mxsuite=None):
     if mxsuite is None:
         mxsuite = mx.currently_loading_suite.get()
 
-    full_name = "{}-{}".format(suite.name(), suite.subgroup())
+    full_name = f"{suite.name()}-{suite.subgroup()}"
     if full_name in _bm_suites:
-        raise RuntimeError("Benchmark suite full name '{0}' already exists.".format(full_name))
+        raise RuntimeError(f"Benchmark suite full name '{full_name}' already exists.")
     _bm_suites[full_name] = suite
     setattr(suite, ".mxsuite", mxsuite)
 
@@ -641,7 +638,7 @@ def add_bm_suite(suite, mxsuite=None):
     # If possible also register suite with simple_name
     if simple_name in _bm_suites:
         if _bm_suites[simple_name]:
-            mx.log("Warning: Benchmark suite '{0}' name collision. Suites only available as '{0}-<subgroup>'.".format(simple_name))
+            mx.log(f"Warning: Benchmark suite '{simple_name}' name collision. Suites only available as '{simple_name}-<subgroup>'.")
         _bm_suites[simple_name] = None
     else:
         _bm_suites[simple_name] = suite
@@ -755,7 +752,7 @@ class BaseRule(Rule):
                         if name == "iteration":
                             return str(iteration)
                         else:
-                            raise RuntimeError("Unknown var {0}".format(name))
+                            raise RuntimeError(f"Unknown var {name}")
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
                     v = capturepat.sub(lambda vm: m[vm.group(1)], v)
                     # Convert to a different type.
@@ -773,10 +770,10 @@ class BaseRule(Rule):
                     elif hasattr(vtype, '__call__'):
                         inst = vtype(v)
                     else:
-                        raise RuntimeError("Cannot handle object '{0}' of expected type {1}".format(v, vtype))
+                        raise RuntimeError(f"Cannot handle object '{v}' of expected type {vtype}")
                 if not isinstance(inst, (str, int, float, bool)):
                     if type(inst).__name__ != 'long': # Python2: int(x) can result in a long
-                        raise RuntimeError("Object '{}' has unknown type: {}".format(inst, type(inst)))
+                        raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
@@ -880,7 +877,7 @@ class JsonBaseRule(BaseRule):
     def parseResults(self, text):
         l = []
         for f in self.getJsonFiles(text):
-            mx.logv("Parsing results using '{}' on file: {}".format(self.__class__.__name__, f))
+            mx.logv(f"Parsing results using '{self.__class__.__name__}' on file: {f}")
             with open(f) as fp:
                 l = l + [{k: str(v)} for k, v in json.load(fp).items() if k in self.keys]
         return l
@@ -997,7 +994,7 @@ class JMHJsonRule(Rule):
                     elif mode == "ss":
                         metricName = "single-shot"
                     else:
-                        raise RuntimeError("Unknown benchmark mode {0}".format(mode))
+                        raise RuntimeError(f"Unknown benchmark mode {mode}")
 
                 d = {
                     "bench-suite" : self.suiteName,
@@ -1119,7 +1116,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if compiled(pat).search(out):
                 flaky_skip = True
         if flaky_skip:
-            mx.warn("Benchmark skipped, flaky pattern found. Benchmark(s): {0}".format(benchmarks))
+            mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
         datapoints = []
@@ -1147,12 +1144,12 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if retcode is not None:
                 if not self.validateReturnCode(retcode):
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                        "Benchmark failed, exit code: {0}".format(retcode))
+                        f"Benchmark failed, exit code: {retcode}")
             for pat in self.failurePatterns():
                 m = compiled(pat).search(out)
                 if m:
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                        "Benchmark failed, failure pattern found: '{0}'. Benchmark(s): {1}".format(m.group(), benchmarks))
+                        f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
             success = False
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
@@ -1161,7 +1158,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 success = True
             if not success:
                 self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                    "Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
+                    f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
@@ -1239,12 +1236,7 @@ class DeprecatedMixin(object):
 
     def run(self, *args, **kwargs):
         alternative_suite = self.alternative_suite()
-        msg = "The `{0}` benchmark suite is deprecated! {1}".format(
-              self.name(),
-              "Consider using `{0}` instead.".format(alternative_suite)
-              if alternative_suite else
-              "(No alternatives provided.)"
-        )
+        msg = f"The `{self.name()}` benchmark suite is deprecated! {f'Consider using `{alternative_suite}` instead.' if alternative_suite else '(No alternatives provided.)'}"
         if self.warning_only():
             mx.warn(msg)
         else:
@@ -1288,12 +1280,12 @@ class AveragingBenchmarkMixin(object):
 
                 if len({result["metric.iteration"] for result in warmupResults}) != len(warmupResults):
                     mx.warn("Inconsistent number of iterations ! Duplicate iteration number found.")
-                    mx.warn("Iteration results : {}".format(warmupResults))
+                    mx.warn(f"Iteration results : {warmupResults}")
 
                 if len(warmupResultsToAverage) != resultIterations:
                     mx.warn("Inconsistent number of iterations !")
-                    mx.warn("Expecting {} iterations, but got {} instead.".format(len(warmupResultsToAverage), resultIterations))
-                    mx.warn("Iteration results : {}".format(warmupResults))
+                    mx.warn(f"Expecting {len(warmupResultsToAverage)} iterations, but got {resultIterations} instead.")
+                    mx.warn(f"Iteration results : {warmupResults}")
 
                 scoresToAverage = [result["metric.value"] for result in warmupResultsToAverage]
 
@@ -1319,7 +1311,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if self.profilerNames(bmSuiteArgs):
             for profiler in self.profilerNames(bmSuiteArgs).split(','):
                 if profiler not in _profilers:
-                    mx.abort("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
+                    mx.abort(f"Unknown profiler '{profiler}'. Use one of: ({', '.join(_profilers.keys())})")
                 vmargs, prefix_command = _profilers.get(profiler).additional_options(os.getcwd())
                 args += vmargs
                 if prefix_command:
@@ -1329,9 +1321,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                     def func(cmd, bmSuite, prefix_command=prefix_command):
                         return prefix_command + cmd
                     if self._command_mapper_hooks and profiler not in self._command_mapper_hooks[0]:
-                        mx.abort("Profiler '{}' conflicts with trackers '{}'\n"
-                                "Use --tracker none to disable all trackers".format(profiler,
-                                                                                    ', '.join([n for n, _, _ in self._command_mapper_hooks])))
+                        mx.abort(f"Profiler '{profiler}' conflicts with trackers '{', '.join([n for n, _, _ in self._command_mapper_hooks])}'\nUse --tracker none to disable all trackers")
                     self._command_mapper_hooks = [(profiler, func, self)]
         return args
 
@@ -1411,9 +1401,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         for key, value in vm_dims.items():
             if key in dims and value != dims[key]:
                 if value == 'none':
-                    mx.warn("VM {}:{} ({}) tried overwriting {}='{original}' with '{}', keeping '{original}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, value, original=dims[key]))
+                    mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) tried overwriting {key}='{dims[key]}' with '{value}', keeping '{dims[key]}'")
                     continue
-                mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
+                mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) is overwriting {key}='{dims[key]}' with '{value}'")
             dims[key] = value
         return ret_code, out, dims
 
@@ -1515,7 +1505,7 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
 
     def after(self, bmSuiteArgs):
         if hasattr(self, "keepScratchDir") and self.keepScratchDir:
-            mx.warn("Scratch directory NOT deleted (--keep-scratch): {0}".format(self.workdir))
+            mx.warn(f"Scratch directory NOT deleted (--keep-scratch): {self.workdir}")
             self.scratchDirectories.append(os.path.abspath(self.workdir))
         elif self.workdir:
             shutil.rmtree(self.workdir)
@@ -1527,7 +1517,7 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
         finally:
             if self.workdir:
                 # keep old workdir for investigation, create a new one for further benchmarking
-                mx.warn("Keeping scratch directory after failed benchmark: {0}".format(self.workdir))
+                mx.warn(f"Keeping scratch directory after failed benchmark: {self.workdir}")
                 self.scratchDirectories.append(os.path.abspath(self.workdir))
                 self._create_tmp_workdir()
 
@@ -1697,7 +1687,7 @@ def _get_gc_info(version_out):
                     initial_heap_size = int(flag.split("=")[1])
                 if flag.startswith("-XX:MaxHeapSize="):
                     max_heap_size = int(flag.split("=")[1])
-    mx.logv("Detected GC is '{}'. Heap size : Initial = {}, Max = {}".format(gc, initial_heap_size, max_heap_size))
+    mx.logv(f"Detected GC is '{gc}'. Heap size : Initial = {initial_heap_size}, Max = {max_heap_size}")
     return gc, initial_heap_size, max_heap_size
 
 
@@ -1722,7 +1712,7 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         self.extract_vm_info(args)
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.post_process_command_line_args(args)
-        mx.log("Running {0} with args: {1}".format(self.name(), args))
+        mx.log(f"Running {self.name()} with args: {args}")
         code = self.run_vm(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
         out = out.underlying.data
         dims = self.dimensions(cwd, args, code, out)
@@ -1755,7 +1745,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                     java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
                     vm_opts = _get_vm_options_for_config_extraction(args)
                     vm_args = vm_opts + ["-version"]
-                    mx.logv("Extracting vm info by calling : java {}".format(' '.join(vm_args)))
+                    mx.logv(f"Extracting vm info by calling : java {' '.join(vm_args)}")
                     code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
                     if code == 0:
                         command_output = java_version_out.underlying.data
@@ -1806,7 +1796,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                         if manual_graalvm_version is not None:
                             vm_info["platform.graalvm-version"] = manual_graalvm_version
                     else:
-                        mx.log_error("VM info extraction failed ! (code={})".format(code))
+                        mx.log_error(f"VM info extraction failed ! (code={code})")
             finally:
                 self.currently_extracting_vm_info = False
                 self.command_mapper_hooks = hooks
@@ -2169,18 +2159,18 @@ def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=Tr
                 # We decide to enforce that the manifest contains no duplicate lines. The JVM would be more relaxed
                 # in that case and only consider then last Add-Opens line, but since the manifest generation is under
                 # our control, it's better to enforce it here.
-                raise ValueError("Manifest file of {} contains multiple Add-Opens lines!".format(jarfile))
+                raise ValueError(f"Manifest file of {jarfile} contains multiple Add-Opens lines!")
             if add_opens_entries:
-                vm_args += ["--add-opens={}=ALL-UNNAMED".format(package.strip()) for package in add_opens_entries[-1][len("Add-Opens:"):].strip().split(" ")]
+                vm_args += [f"--add-opens={package.strip()}=ALL-UNNAMED" for package in add_opens_entries[-1][len("Add-Opens:"):].strip().split(" ")]
         if add_exports:
             # We decide to enforce that the manifest contains no duplicate lines. The JVM would be more relaxed
             # in that case and only consider then last Add-Exports line, but since the manifest generation is under
             # our control, it's better to enforce it here.
             add_exports_entries = [line for line in lines if line.strip().startswith("Add-Exports:")]
             if len(add_exports_entries) > 1:
-                raise ValueError("Manifest file of {} contains multiple Add-Exports lines!".format(jarfile))
+                raise ValueError(f"Manifest file of {jarfile} contains multiple Add-Exports lines!")
             if add_exports_entries:
-                vm_args += ["--add-exports={}=ALL-UNNAMED".format(package.strip()) for package in add_exports_entries[-1][len("Add-Exports:"):].strip().split(" ")]
+                vm_args += [f"--add-exports={package.strip()}=ALL-UNNAMED" for package in add_exports_entries[-1][len("Add-Exports:"):].strip().split(" ")]
 
     return vm_args
 
@@ -2208,9 +2198,9 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         if benchmarks is None:
-            mx.abort("JMH Dist Suite requires a JMH distribution. (try {0}:*)".format(self.name()))
+            mx.abort(f"JMH Dist Suite requires a JMH distribution. (try {self.name()}:*)")
         if len(benchmarks) != 1:
-            mx.abort("JMH Dist Suite runs only a single JMH distribution, got: {0}".format(benchmarks))
+            mx.abort(f"JMH Dist Suite runs only a single JMH distribution, got: {benchmarks}")
         self.dist = benchmarks[0]
         mx.log("running " + self.dist)
         return super(JMHDistBenchmarkSuite, self).createCommandLineArgs(None, bmSuiteArgs)
@@ -2278,8 +2268,7 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
             partSpecification = self.jmhArgs(bmSuiteArgs).jmh_individual_part
             benchmarks_to_run = self._selectPart(extracted_jmh_benchmarks, partSpecification)
             if benchmarks_to_run != extracted_jmh_benchmarks:
-                print("Run part {}: {} of {} benchmarks, {} to {}".format(partSpecification, len(benchmarks_to_run),
-                    len(extracted_jmh_benchmarks), benchmarks_to_run[0], benchmarks_to_run[-1]))
+                print(f"Run part {partSpecification}: {len(benchmarks_to_run)} of {len(extracted_jmh_benchmarks)} benchmarks, {benchmarks_to_run[0]} to {benchmarks_to_run[-1]}")
 
             # Run each benchmark individually. Record outputs and collect the JSON result files' contents.
             allOut = ''
@@ -2290,11 +2279,10 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
                 print("Individual JMH benchmark run:", benchmark)
                 retcode, out, dims = super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, individualBmArgs)
                 if retcode is not None and retcode != 0:
-                    mx.abort("Execution with args {} exited with non-zero return code {}.".format(individualBmArgs,
-                        retcode))
+                    mx.abort(f"Execution with args {individualBmArgs} exited with non-zero return code {retcode}.")
                 allOut += out
                 if lastDims is not None and lastDims != dims:
-                    mx.abort("Expected equal dims\nlast: {}\ncurr: {}".format(lastDims, dims))
+                    mx.abort(f"Expected equal dims\nlast: {lastDims}\ncurr: {dims}")
                 lastDims = dims
                 json = open(JMHBenchmarkSuiteBase.jmh_result_file).read().strip()
                 assert json[0] == '[' and json[-1] == ']'
@@ -2328,7 +2316,7 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
         if not 1 <= part <= parts:
             mx.abort("Benchmark part specification n/m requires 1 <= n <= m")
         if parts > len(benchmarks):
-            mx.abort("Can't cut benchmark list of length {} into {} parts".format(len(benchmarks), parts))
+            mx.abort(f"Can't cut benchmark list of length {len(benchmarks)} into {parts} parts")
 
         start = (len(benchmarks) // parts) * (part - 1)
         if part < parts:
@@ -2373,7 +2361,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
         if benchmarks is None:
             mx.abort("JMH Suite runs only a single JMH version.")
         if len(benchmarks) != 1:
-            mx.abort("JMH Suite runs only a single JMH version, got: {0}".format(benchmarks))
+            mx.abort(f"JMH Suite runs only a single JMH version, got: {benchmarks}")
         self._jmh_version = benchmarks[0]
         return super(JMHRunnerBenchmarkSuite, self).createCommandLineArgs([], bmSuiteArgs)
 
@@ -2519,7 +2507,7 @@ def build_number():
     try:
         return int(build_num)
     except ValueError:
-        mx.logv("Could not parse the build number from BUILD_NUMBER. Expected int, instead got: {0}".format(build_num))
+        mx.logv(f"Could not parse the build number from BUILD_NUMBER. Expected int, instead got: {build_num}")
         return -1
 
 
@@ -2553,7 +2541,7 @@ def build_url():
     build_num = build_number()
     base_url = builder_url()
     if base_url and build_num != -1:
-        return "{0}/builds/{1}".format(base_url, build_num)
+        return f"{base_url}/builds/{build_num}"
     return ""
 
 
@@ -2631,7 +2619,7 @@ def rss_hook(cmd, bmSuite):
     elif mx.get_os() == "darwin":
         prefix = ["time", "-l"]
     else:
-        mx.log("Ignoring the 'rss' tracker since it is not supported on {}".format(mx.get_os()))
+        mx.log(f"Ignoring the 'rss' tracker since it is not supported on {mx.get_os()}")
         prefix = []
     return prefix + cmd
 
@@ -2653,10 +2641,10 @@ def psrecord_hook(cmd, bmSuite):
     import datetime
     bench_name = bmSuite.currently_running_benchmark() if bmSuite else "benchmark"
     if bmSuite:
-        bench_name = "{}-{}".format(bmSuite.name(), bench_name)
+        bench_name = f"{bmSuite.name()}-{bench_name}"
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    text_output = os.path.join(os.getcwd(), "ps_{}_{}.txt".format(bench_name, ts))
-    plot_output = os.path.join(os.getcwd(), "ps_{}_{}.png".format(bench_name, ts))
+    text_output = os.path.join(os.getcwd(), f"ps_{bench_name}_{ts}.txt")
+    plot_output = os.path.join(os.getcwd(), f"ps_{bench_name}_{ts}.png")
     return ["psrecord", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
 
 
@@ -2739,13 +2727,11 @@ class BenchmarkExecutor(object):
             for kv in mxBenchmarkArgs.extras.split(","):
                 split_kv = kv.split(":")
                 if len(split_kv) != 2:
-                    raise ValueError("Cannot handle extra '{}'. "
-                                     "Extras key-value pairs must contain a single colon.".format(kv))
+                    raise ValueError(f"Cannot handle extra '{kv}'. Extras key-value pairs must contain a single colon.")
                 k, v = split_kv
                 if not re.match(r"^[\w\d\._-]*$", k):
-                    raise ValueError("Extra key can only contain numbers, characters, underscores and dashes. "
-                                     "Got '{}'".format(k))
-                extras["extra.{}".format(k)] = v
+                    raise ValueError(f"Extra key can only contain numbers, characters, underscores and dashes. Got '{k}'")
+                extras[f"extra.{k}"] = v
         return extras
 
     def checkEnvironmentVars(self):
@@ -2830,7 +2816,7 @@ class BenchmarkExecutor(object):
             benchspec = ""
         suite = _bm_suites.get(suitename)
         if not suite:
-            mx.abort("Cannot find benchmark suite '{0}'. Available suites are: {1}".format(suitename, ' '.join(bm_suite_valid_keys())))
+            mx.abort(f"Cannot find benchmark suite '{suitename}'. Available suites are: {' '.join(bm_suite_valid_keys())}")
         if args.bench_suite_version:
             suite.setDesiredVersion(args.bench_suite_version)
         if not exclude and benchspec == "*":
@@ -2840,7 +2826,7 @@ class BenchmarkExecutor(object):
             requested_benchmarks = [bench.strip() for bench in benchspec[2:-1].split(",")]
             if not set(requested_benchmarks) <= set(all_benchmarks):
                 difference = list(set(requested_benchmarks) - set(all_benchmarks))
-                mx.abort("Benchmarks not supported by the suite: {}".format(",".join(difference)))
+                mx.abort(f"Benchmarks not supported by the suite: {','.join(difference)}")
             return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
         elif benchspec.startswith("r[") and benchspec.endswith("]"):
             all_benchmarks = suite.completeBenchmarkList(bmSuiteArgs)
@@ -2851,7 +2837,7 @@ class BenchmarkExecutor(object):
                 if regex.match(bench):
                     requested_benchmarks.add(bench)
             if requested_benchmarks == set():
-                mx.warn("The pattern '{0}' doesn't match any benchmark from the suite '{1}'.".format(regex.pattern, suitename))
+                mx.warn(f"The pattern '{regex.pattern}' doesn't match any benchmark from the suite '{suitename}'.")
             if exclude:
                 requested_benchmarks = set(all_benchmarks) - requested_benchmarks
             return (suite, [[b] for b in requested_benchmarks])
@@ -2860,7 +2846,7 @@ class BenchmarkExecutor(object):
             excluded_benchmarks = [bench.strip() for bench in benchspec[1:-1].split(",")]
             if not set(excluded_benchmarks) <= set(all_benchmarks):
                 difference = list(set(excluded_benchmarks) - set(all_benchmarks))
-                mx.abort("Benchmarks not supported by the suite: {}".format(",".join(difference)))
+                mx.abort(f"Benchmarks not supported by the suite: {','.join(difference)}")
             return (suite, [[b] for b in all_benchmarks if b not in excluded_benchmarks])
         elif benchspec == "":
             return (suite, [None])
@@ -2869,7 +2855,7 @@ class BenchmarkExecutor(object):
             all_benchmarks = suite.completeBenchmarkList(bmSuiteArgs)
             for bench in benchspec:
                 if not bench in all_benchmarks:
-                    mx.abort("Cannot find benchmark '{0}' in suite '{1}'. Available benchmarks are {2}".format(bench, suitename, all_benchmarks))
+                    mx.abort(f"Cannot find benchmark '{bench}' in suite '{suitename}'. Available benchmarks are {all_benchmarks}")
             if exclude:
                 return (suite, [[bench] for bench in all_benchmarks if bench not in benchspec])
             return (suite, [benchspec])
@@ -2889,11 +2875,10 @@ class BenchmarkExecutor(object):
                 try:
                     factor = float(factor)
                 except ValueError:
-                    raise ValueError("'metric.score-function' multiply factor must be numerical ! "
-                                     "Got '{}'".format(factor))
+                    raise ValueError(f"'metric.score-function' multiply factor must be numerical ! Got '{factor}'")
                 datapoint["metric.score-value"] = float(metric_value) * factor
             else:
-                mx.abort("Unknown score function '{0}'.".format(function))
+                mx.abort(f"Unknown score function '{function}'.")
 
     def add_fork_number(self, datapoint, fork_number):
         if 'metric.fork-number' not in datapoint:
@@ -2988,20 +2973,19 @@ class BenchmarkExecutor(object):
 
         if mxBenchmarkArgs.tracker:
             if mxBenchmarkArgs.tracker not in _available_trackers:
-                raise ValueError("Unknown tracker '{}'. Use one of: {}".format(mxBenchmarkArgs.tracker,
-                                                                               ', '.join(_available_trackers.keys())))
+                raise ValueError(f"Unknown tracker '{mxBenchmarkArgs.tracker}'. Use one of: {', '.join(_available_trackers.keys())}")
             if suite:
-                mx.log("Registering tracker: {}".format(mxBenchmarkArgs.tracker))
+                mx.log(f"Registering tracker: {mxBenchmarkArgs.tracker}")
                 suite.register_command_mapper_hook(mxBenchmarkArgs.tracker,
                                                    _available_trackers[mxBenchmarkArgs.tracker])
 
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
-                print("The following benchmarks are available in suite {}:\n".format(suite.name()))
+                print(f"The following benchmarks are available in suite {suite.name()}:\n")
                 for name in suite.benchmarkList(bmSuiteArgs):
                     print("  " + name)
                 if isinstance(suite, VmBenchmarkSuite):
-                    print("\n{}".format(suite.get_vm_registry().get_available_vm_configs_help()))
+                    print(f"\n{suite.get_vm_registry().get_available_vm_configs_help()}")
             else:
                 vmregToSuites = {}
                 noVmRegSuites = []
@@ -3012,10 +2996,10 @@ class BenchmarkExecutor(object):
                     else:
                         noVmRegSuites.append(bm_suite_name)
                 for vmreg, bm_suite_names in vmregToSuites.items():
-                    print("\nThe following {} benchmark suites are available:\n".format(vmreg.vm_type_name))
+                    print(f"\nThe following {vmreg.vm_type_name} benchmark suites are available:\n")
                     for name in bm_suite_names:
                         print("  " + name)
-                    print("\n{}".format(vmreg.get_available_vm_configs_help()))
+                    print(f"\n{vmreg.get_available_vm_configs_help()}")
                 if noVmRegSuites:
                     print("\nThe following non-VM benchmark suites are available:\n")
                     for name in noVmRegSuites:
@@ -3029,7 +3013,7 @@ class BenchmarkExecutor(object):
                     print(entry.description)
                     entry.parser.print_help()
             for vmreg in vm_registries():
-                print("\n{}".format(vmreg.get_available_vm_configs_help()))
+                print(f"\n{vmreg.get_available_vm_configs_help()}")
             return 0 if mxBenchmarkArgs.help else 1
 
         self.checkEnvironmentVars()
@@ -3053,45 +3037,42 @@ class BenchmarkExecutor(object):
                 suite.validateEnvironment()
                 fork_count = 1
                 if fork_count_spec and benchnames and len(benchnames) == 1:
-                    fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]))
+                    fork_count = fork_count_spec.get(f"{suite.name()}:{benchnames[0]}")
                     if fork_count is None and benchnames[0] in fork_count_spec:
-                        mx.log("[FORKS] Found a fallback entry '{}' in the fork counts file. "
-                               "Please use the full benchmark name instead: '{}:{}'".format(benchnames[0],
-                                                                                            suite.name(),
-                                                                                            benchnames[0]))
+                        mx.log(f"[FORKS] Found a fallback entry '{benchnames[0]}' in the fork counts file. Please use the full benchmark name instead: '{suite.name()}:{benchnames[0]}'")
                         fork_count = fork_count_spec.get(benchnames[0])
                 elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
                     # single benchmark suites executed by providing the suite name only or a wildcard
-                    fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get("{}:*".format(suite.name())))
+                    fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get(f"{suite.name()}:*"))
                 elif fork_count_spec:
                     mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\nYou might want to use: mx benchmark <options> '<benchmark-suite>:*'")
                 if fork_count_spec and fork_count is None:
-                    mx.log("[FORKS] Skipping benchmark '{}:{}' since there is no value for it in the fork count file.".format(suite.name(), benchnames[0]))
-                    skipped_benchmark_forks.append("{}:{}".format(suite.name(), benchnames[0]))
+                    mx.log(f"[FORKS] Skipping benchmark '{suite.name()}:{benchnames[0]}' since there is no value for it in the fork count file.")
+                    skipped_benchmark_forks.append(f"{suite.name()}:{benchnames[0]}")
                 else:
                     for fork_num in range(0, fork_count):
                         if fork_count_spec:
-                            mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
+                            mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
                         try:
                             if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
-                                mx.log("Skipping benchmark '{}:{}' since it isn't supported "
-                                       "on the current platform/configuration.".format(suite.name(), benchnames[0]))
-                                ignored_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
+                                mx.log(f"Skipping benchmark '{suite.name()}:{benchnames[0]}' since it isn't supported on the current platform/configuration.")
+                                ignored_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
                             else:
                                 expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
                                 for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
-                                    mx.log("Execution of variant {}/{} with suite args: {}".format(variant_num + 1, len(expandedBmSuiteArgs), suiteArgs))
+                                    mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
                                     results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
-                            failed_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
+                            failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
                             mx.log(traceback.format_exc())
                             if mxBenchmarkArgs.fail_fast:
                                 mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
             if ignored_benchmarks:
-                mx.log("Benchmarks ignored since they aren't supported on the current platform/configuration:\n\t{}".format('\n\t'.join(ignored_benchmarks)))
+                nl_tab = '\n\t'
+                mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
             if skipped_benchmark_forks:
-                mx.log("[FORKS] Benchmarks skipped since they have no entry in the fork counts file:\n\t{}".format('\n\t'.join(skipped_benchmark_forks)))
+                mx.log(f"[FORKS] Benchmarks skipped since they have no entry in the fork counts file:{nl_tab}{nl_tab.join(skipped_benchmark_forks)}")
         finally:
             try:
                 suite.after(bmSuiteArgs)
@@ -3106,8 +3087,8 @@ class BenchmarkExecutor(object):
 
         exit_code = 0
         if failures_seen:
-            mx.log_error("Failures happened during benchmark(s) execution !"
-                         "The following benchmarks failed:\n\t{}".format('\n\t'.join(failed_benchmarks)))
+            mx.log_error(f"Failures happened during benchmark(s) execution !"
+                         "The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
             exit_code = 1
 
         if returnSuiteAndResults:
@@ -3249,5 +3230,5 @@ def gate_mx_benchmark(args, out=None, err=None, nonZeroIsFatal=True):
     with TTYCapturing(out=out, err=err):
         exit_code, suite, results = benchmark(opts_and_args, returnSuiteAndResults=True)
     if exit_code != 0 and nonZeroIsFatal is True:
-        mx.abort("Benchmark gate failed with args: {}".format(opts_and_args))
+        mx.abort(f"Benchmark gate failed with args: {opts_and_args}")
     return exit_code, suite, results

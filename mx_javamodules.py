@@ -318,8 +318,7 @@ def get_module_deps(dist):
             return roots
         for root in roots:
             if not root.isJARDistribution():
-                mx.abort('moduledeps can only include JAR distributions: {}\n'
-                         'Try updating to mxversion >= 5.34.4 where `moduledeps` is not needed.'.format(root), context=dist)
+                mx.abort(f'moduledeps can only include JAR distributions: {root}\nTry updating to mxversion >= 5.34.4 where `moduledeps` is not needed.', context=dist)
 
         moduledeps = []
         def _visit(dep, edges):
@@ -328,8 +327,7 @@ def get_module_deps(dist):
                     if dep not in moduledeps:
                         moduledeps.append(dep)
                 else:
-                    mx.abort('modules can only include JAR distributions and Java projects: {}\n'
-                             'Try updating to mxversion >= 5.34.4 where `moduledeps` is not needed.'.format(dep), context=dist)
+                    mx.abort(f'modules can only include JAR distributions and Java projects: {dep}\nTry updating to mxversion >= 5.34.4 where `moduledeps` is not needed.', context=dist)
         def _preVisit(dst, edge):
             return not dst.isJreLibrary() and not dst.isJdkLibrary()
         mx.walk_deps(roots, preVisit=_preVisit, visit=_visit)
@@ -416,7 +414,7 @@ def get_library_as_module(dep, jdk):
     else:
         moduleName = jdk.get_automatic_module_name(dep.path)
         if not is_valid_module_name(moduleName):
-            mx.abort("Invalid identifier in automatic module name derived for library {}: {} (path: {})".format(dep.name, moduleName, dep.path))
+            mx.abort(f"Invalid identifier in automatic module name derived for library {dep.name}: {moduleName} (path: {dep.path})")
         dep.moduleName = moduleName
 
     modulesDir = mx.ensure_dir_exists(join(mx.primary_suite().get_output_root(), 'modules'))
@@ -429,7 +427,9 @@ def get_library_as_module(dep, jdk):
         rc = mx.run([jdk.java, '--module-path', fullpath, '--describe-module', moduleName], out=out, err=err, nonZeroIsFatal=False)
         lines = out.lines
         if rc != 0:
-            mx.abort("java --describe-module {} failed. Please verify the moduleName attribute of {}.\nstdout:\n{}\nstderr:\n{}".format(moduleName, dep.name, "\n".join(lines), "\n".join(err.lines)))
+            out_lines = "\n".join(out.lines)
+            err_lines = "\n".join(err.lines)
+            mx.abort(f"java --describe-module {moduleName} failed. Please verify the moduleName attribute of {dep.name}.\nstdout:\n{out_lines}\nstderr:\n{err_lines}")
         save = True
     else:
         with open(cache) as fp:
@@ -603,7 +603,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     prefix = spec[0:-1]
                     selection = set(p for p in available_packages if p.startswith(prefix))
                     if not selection:
-                        mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages), context=dist)
+                        mx.abort(f'The export package specifier "{spec}" does not match any of {available_packages}', context=dist)
                     res.update(selection)
                 elif spec == '<package-info>':
                     if not isinstance(project_scope, mx.Project):
@@ -611,9 +611,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     res.update(mx._find_packages(project_scope, onlyPublic=True))
                 else:
                     if spec not in module_packages:
-                        mx.abort('Cannot export package {0} from {1} as it is not defined by any project in the module {1}'.format(spec, moduleName), context=dist)
+                        mx.abort(f'Cannot export package {spec} from {moduleName} as it is not defined by any project in the module {moduleName}', context=dist)
                     if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
-                        mx.abort('Package {} in "exports" attribute not defined by project {}'.format(spec, project_scope), context=project_scope)
+                        mx.abort(f'Package {spec} in "exports" attribute not defined by project {project_scope}', context=project_scope)
                     res.add(spec)
             return res
 
@@ -644,12 +644,13 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             alt_module_info_attr_name = 'moduleInfo:' + alt_module_info_name
             alt_module_info = getattr(dist, alt_module_info_attr_name, None)
             if alt_module_info is None or not isinstance(alt_module_info, dict):
-                mx.abort('"{}" attribute must be a dictionary'.format(alt_module_info_attr_name), context=dist)
+                mx.abort(f'"{alt_module_info_attr_name}" attribute must be a dictionary', context=dist)
             if module_info is None:
-                mx.abort('"{}" attribute found but required "moduleInfo" attribute is missing'.format(alt_module_info_attr_name), context=dist)
+                mx.abort(f'"{alt_module_info_attr_name}" attribute found but required "moduleInfo" attribute is missing', context=dist)
             invalid = [k for k in alt_module_info.keys() if k != 'exports']
             if invalid:
-                mx.abort('Sub-attribute(s) "{}" of "{}" attribute not supported. Only "exports" is currently supported.'.format('", "'.join(invalid), alt_module_info_attr_name), context=dist)
+                invalid = '", "'.join(invalid)
+                mx.abort(f'Sub-attribute(s) "{invalid}" of "{alt_module_info_attr_name}" attribute not supported. Only "exports" is currently supported.', context=dist)
             alt_module_jar = join(dirname(module_jar), basename(module_jar)[:-len('.jar')] + '-' + alt_module_info_name + '.jar')
             alt_module_src_zip = alt_module_jar[:-len('.jar')] + '.src.zip'
             module_src_zip = module_jar[:-len('.jar')] + '.src.zip'
@@ -688,7 +689,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             alternatives = {}
             module_jar_staging_dir = module_jar
 
-        mx.log('Building Java module {} ({}) from {}'.format(moduleName, basename(module_jar), dist.name))
+        mx.log(f'Building Java module {moduleName} ({basename(module_jar)}) from {dist.name}')
 
         if module_info:
             for entry in module_info.get("requires", []):
@@ -800,7 +801,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         if unversioned_name.startswith('META-INF/services/'):
                             files_to_remove.add(arcname)
                         elif unversioned_name.startswith('META-INF/'):
-                            mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
+                            mx.abort(f"META-INF resources can not be versioned and will make modules fail to load ({arcname}).")
                     versioned.append((arcname, entry, version, unversioned_name))
                 else:
                     unversioned.append((arcname, entry))
@@ -885,7 +886,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                 continue
                             if arcname.startswith(_special_versioned_prefix):
                                 if not unversioned_name.startswith('META-INF/services'):
-                                    mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
+                                    mx.abort(f"The special versioned directory ({_special_versioned_prefix}) is only supported for META-INF/services files. Got {name}")
                             if unversioned_name:
                                 dst = join(dest_dir, unversioned_name)
                                 sync_file(entry.staged, dst, restore_files)
@@ -916,8 +917,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         package_exists = exists(join(dest_dir, p.replace('.', os.sep)))
                         if not package_exists and dist.suite.getMxCompatibility().enforce_spec_compliant_exports():
                             pp = [proj for proj in java_projects if p in proj.defined_java_packages()][0]
-                            dist.abort('Modular multi-release JARs cannot export packages defined only by versioned projects: '
-                                       '{} is defined by {} with multiReleaseJarVersion={}'.format(p, pp, pp.multiReleaseJarVersion))
+                            dist.abort(f'Modular multi-release JARs cannot export packages defined only by versioned projects: {p} is defined by {pp} with multiReleaseJarVersion={pp.multiReleaseJarVersion}')
                         return package_exists
 
                     # Exports of modular multi-release JARs must be exactly the same in all versions,
@@ -949,7 +949,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         Return `p` with all `\` characters replaced with `\\`, all spaces replaced
                         with `\ ` and the result enclosed in double quotes.
                         """
-                        return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
+                        return '"' + p.replace('\\', '\\\\').replace(' ', '\\ ')  + '"'
 
                     javac_args = ['-d', safe_path_arg(dest_dir)]
                     modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]
@@ -1002,7 +1002,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             self.tmp_dirpath = None
                         def __enter__(self):
                             if exists(self.dirpath):
-                                self.tmp_dirpath = join(build_directory, '{}_{}.{}'.format(version, basename(self.dirpath), os.getpid()))
+                                self.tmp_dirpath = join(build_directory, f'{version}_{basename(self.dirpath)}.{os.getpid()}')
                                 os.rename(self.dirpath, self.tmp_dirpath)
                         def __exit__(self, exc_type, exc_value, traceback):
                             if self.tmp_dirpath:
@@ -1023,7 +1023,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             target_os = mx.get_os()
                             target_os = 'macos' if target_os == 'darwin' else target_os
                             target_arch = mx.get_arch()
-                            jmod_args.append('--target-platform={}-{}'.format(target_os, target_arch))
+                            jmod_args.append(f'--target-platform={target_os}-{target_arch}')
                         if exists(jdk_jmod):
                             with ZipFile(jdk_jmod, 'r') as zf:
                                 # Copy commands and legal notices (if any) from JDK version of the module
@@ -1069,7 +1069,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 mx.rmtree(build_directory)
         jmd.save()
 
-    mx.logv('[' + moduleName + ' times: ' + ', '.join(['{}={:.3f}s'.format(name, secs) for name, secs in sorted(times, key=lambda pair: pair[1], reverse=True)]) + ']')
+    mx.logv('[' + moduleName + ' times: ' + ', '.join([f'{name}={secs:.3f}s' for name, secs in sorted(times, key=lambda pair: pair[1], reverse=True)]) + ']')
     assert version == (str(max(versions)) if versions else str(jdk.javaCompliance.value) if archive.exploded else 'common')
     return jmd
 
@@ -1087,7 +1087,7 @@ def get_transitive_closure(roots, observable_modules):
     def lookup_module(name):
         m = name_to_module.get(name, None)
         if m is None:
-            mx.abort('{} is not in the set of observable modules {}'.format(name, list(name_to_module.keys())))
+            mx.abort(f'{name} is not in the set of observable modules {list(name_to_module.keys())}')
         return m
     def add_transitive(mod):
         if mod not in transitive_closure:
@@ -1123,7 +1123,7 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
 
         matches = [jmd for jmd in all_modules if jmd.name == module]
         if not matches:
-            mx.abort('Module {} in "requiresConcealed" attribute does not exist in {}'.format(module, jdk), context=context)
+            mx.abort(f'Module {module} in "requiresConcealed" attribute does not exist in {jdk}', context=context)
         jmd = matches[0]
 
         package_set = result.setdefault(module, set())
@@ -1134,7 +1134,7 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
         else:
             star = False
             if not isinstance(packages, list):
-                mx.abort('Packages for module {} in "requiresConcealed" attribute must be either "*" or a list of package names'.format(module), context=context)
+                mx.abort(f'Packages for module {module} in "requiresConcealed" attribute must be either "*" or a list of package names', context=context)
         for package in packages:
             if package.endswith('?'):
                 optional = True
@@ -1146,12 +1146,12 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
                 package_set.add(package)
             elif visibility == 'exported':
                 if not star:
-                    suffix = '' if not importer else ' from module {}'.format(importer)
-                    mx.warn('Package {} is not concealed in module {}{}'.format(package, module, suffix), context=context)
+                    suffix = '' if not importer else f' from module {importer}'
+                    mx.warn(f'Package {package} is not concealed in module {module}{suffix}', context=context)
             elif not optional:
                 m, _ = lookup_package(all_modules, package, importer)
-                suffix = '' if not m else ' but in module {}'.format(m.name)
-                mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)
+                suffix = '' if not m else f' but in module {m.name}'
+                mx.abort(f'Package {package} is not defined in module {module}{suffix}', context=context)
     return result
 
 def requiredExports(distributions, jdk):

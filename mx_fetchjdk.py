@@ -65,28 +65,28 @@ def fetch_jdk(args):
     archive_target_location = join(jdks_dir, archive_name)
 
     if not is_quiet():
-        if not mx.ask_yes_no("Install {} to {}".format(artifact, final_path), default='y'):
+        if not mx.ask_yes_no(f"Install {artifact} to {final_path}", default='y'):
             mx.abort("JDK installation canceled")
 
     if exists(final_path):
         if settings["keep-archive"]:
             mx.warn("The --keep-archive option is ignored when the JDK is already installed.")
-        mx.log("Requested JDK is already installed at {}".format(final_path))
+        mx.log(f"Requested JDK is already installed at {final_path}")
     else:
         # Try to extract on the same file system as the target to be able to atomically move the result.
         with mx.TempDir(parent_dir=jdks_dir) as temp_dir:
-            mx.log("Fetching {} archive from {}...".format(artifact, url))
+            mx.log(f"Fetching {artifact} archive from {url}...")
             archive_location = join(temp_dir, archive_name)
             mx._opts.no_download_progress = is_quiet()
             try:
                 digest = mx._hashFromUrl(sha_url)
             except Exception as e: #pylint: disable=broad-except
-                mx.abort('Error retrieving {}: {}'.format(sha_url, e))
+                mx.abort(f'Error retrieving {sha_url}: {e}')
 
             mx.download_file_with_digest(artifact, archive_location, [url], digest, resolve=True, mustExist=True, sources=False)
             untar = mx.TarExtractor(archive_location)
 
-            mx.log("Installing {} to {}...".format(artifact, final_path))
+            mx.log(f"Installing {artifact} to {final_path}...")
 
             extracted_path = join(temp_dir, 'extracted')
             try:
@@ -99,7 +99,7 @@ def fetch_jdk(args):
             if settings["keep-archive"]:
                 atomic_file_move_with_fallback(archive_location, archive_target_location)
                 atomic_file_move_with_fallback(archive_location + '.sha1', archive_target_location + ".sha1")
-                mx.log("Archive is located at {}".format(archive_target_location))
+                mx.log(f"Archive is located at {archive_target_location}")
 
             atomic_file_move_with_fallback(join(extracted_path, jdk_root_folder), final_path)
 
@@ -277,10 +277,11 @@ def _parse_args(args):
 
 
     parser.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
-    parser.add_argument('--configuration', action='store', metavar='<path>', help='location of JSON file containing JDK definitions (default: {})'.format(default_jdk_versions_location))
-    parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='{} separated JSON files specifying location of JDK binaries (default: {})'.format(os.pathsep, default_jdk_binaries_location))
-    parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed. Specify <system> to use the system default location. (default: {})'.format(settings["jdks-dir"]))
+    parser.add_argument('--configuration', action='store', metavar='<path>', help=f'location of JSON file containing JDK definitions (default: {default_jdk_versions_location})')
+    parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {default_jdk_binaries_location})')
+    parser.add_argument('--to', action='store', metavar='<dir>', help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {settings['jdks-dir']})")
     parser.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
+    parser.add_argument('--arch', action='store', metavar='<name>', help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     args = parser.parse_args(args)
@@ -289,16 +290,18 @@ def _parse_args(args):
         if args.to == '<system>':
             args.to = _default_system_jdks_dir()
         settings["jdks-dir"] = args.to
+    elif args.arch != mx.get_arch():
+        settings["jdks-dir"] = join(settings["jdks-dir"], args.arch)
 
     if not _check_write_access(settings["jdks-dir"]):
-        mx.abort("JDK installation directory {} is not writeable.".format(settings["jdks-dir"]) + os.linesep +
+        mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
                 "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
     jdk_versions_location = _check_exists_or_None(args.configuration) or default_jdk_versions_location
     jdk_binaries_locations = (args.jdk_binaries or default_jdk_binaries_location).split(os.pathsep)
 
     jdk_versions = _parse_jdk_versions(jdk_versions_location)
-    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_versions)
+    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_versions, args.arch)
 
     if args.jdk_id is not None:
         settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, args.jdk_id)
@@ -318,7 +321,7 @@ def _parse_args(args):
 def _get_jdk_binary_or_abort(jdk_binaries, jdk_id):
     jdk_binary = jdk_binaries.get(jdk_id)
     if not jdk_binary:
-        mx.abort("Unknown JDK identifier: {} [Known JDKs: {}]".format(jdk_id, ', '.join(jdk_binaries.keys())))
+        mx.abort(f"Unknown JDK identifier: {jdk_id} [Known JDKs: {', '.join(jdk_binaries.keys())}]")
     return jdk_binary
 
 def _parse_json(path):
@@ -326,19 +329,19 @@ def _parse_json(path):
         try:
             return json.load(fp)
         except ValueError as e:
-            mx.abort('The file ({}) does not contain legal JSON: {}'.format(path, e))
+            mx.abort(f'The file ({path}) does not contain legal JSON: {e}')
 
 def _get_json_attr(json_object, name, expect_type, source):
-    value = json_object.get(name) or mx.abort('{}: missing "{}" attribute'.format(source, name))
+    value = json_object.get(name) or mx.abort(f'{source}: missing "{name}" attribute')
     if not isinstance(value, expect_type):
-        mx.abort('{} -> "{}": value ({}) must be a {}, not a {}'.format(source, name, value, expect_type.__name__, value.__class__.__name__))
+        mx.abort(f'{source} -> "{name}": value ({value}) must be a {expect_type.__name__}, not a {value.__class__.__name__}')
     return value
 
 def _parse_jdk_versions(path):
     obj = _parse_json(path)
-    return {jdk_id: _get_json_attr(jdk_obj, 'version', str, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
+    return {jdk_id: _get_json_attr(jdk_obj, 'version', str, f'{path} -> "jdks" -> "{jdk_id}"') for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
 
-def _parse_jdk_binaries(paths, jdk_versions):
+def _parse_jdk_binaries(paths, jdk_versions, arch):
     jdk_binaries = {}
     for path in paths:
         if not exists(path):
@@ -347,11 +350,11 @@ def _parse_jdk_binaries(paths, jdk_versions):
         obj = _parse_json(path)
 
         for qualified_jdk_id, config in _get_json_attr(obj, 'jdk-binaries', dict, path).items():
-            source = '{} -> "jdk-binaries" -> "{}"'.format(path, qualified_jdk_id)
+            source = f'{path} -> "jdk-binaries" -> "{qualified_jdk_id}"'
             def get_entry(name):
-                value = config.get(name) or mx.abort('{}: missing "{}" attribute'.format(source, name))
+                value = config.get(name) or mx.abort(f'{source}: missing "{name}" attribute')
                 if not isinstance(value, str):
-                    mx.abort('{} -> "{}": value ({}) must be a {}, not a {}'.format(source, name, value, str.__name__, value.__class__.__name__))
+                    mx.abort(f'{source} -> "{name}": value ({value}) must be a {str.__name__}, not a {value.__class__.__name__}')
                 return value
 
             jdk_id, qualifier = qualified_jdk_id.split(':', 1) if ':' in qualified_jdk_id else (qualified_jdk_id, '')
@@ -359,7 +362,7 @@ def _parse_jdk_binaries(paths, jdk_versions):
             version = jdk_versions.get(jdk_id)
             jdk_binary_id = jdk_id + qualifier
             if version and not jdk_binary_id in jdk_binaries:
-                jdk_binary = _JdkBinary(jdk_binary_id, version, get_entry('filename'), get_entry('url'), source)
+                jdk_binary = _JdkBinary(jdk_binary_id, version, get_entry('filename'), get_entry('url'), source, arch)
                 jdk_binaries[jdk_binary_id] = jdk_binary
     return jdk_binaries
 
@@ -401,12 +404,11 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
             default = "*"
         else:
             default = " "
-        prefix = '[{index}]{default}'.format(index=index, default=default)
+        prefix = f'[{index}]{default}'
 
-        print("{prefix:5} {jdk_id} | {version}".format(prefix=prefix,
-        jdk_id=jdk_id.ljust(25), version=jdk_binary._version))
+        print(f"{prefix:5} {jdk_id.ljust(25)} | {jdk_binary._version}")
         index += 1
-    print('{:5} Other version'.format('[{}]'.format(index)))
+    print(f"{f'[{index}]':5} Other version")
     while True:
         try:
             try:
@@ -422,42 +424,43 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
             if index < 0:
                 raise IndexError(choice)
             if index == len(choices):
-                choice = input("Select base JDK (1 .. {})> ".format(index))
+                choice = input(f"Select base JDK (1 .. {index})> ")
                 base_index = int(choice) - 1
                 if base_index < 0 or base_index >= index:
                     raise IndexError(choice)
                 base_jdk = choices[base_index][1]
-                version = input("Enter version [{}]> ".format(base_jdk._version))
+                version = input(f"Enter version [{base_jdk._version}]> ")
                 if version == "":
                     version = base_jdk._version
                 return base_jdk.with_version(version)
             return choices[index][1]
         except (NameError, IndexError) as e:
-            mx.warn("Invalid selection: {}".format(e))
+            mx.warn(f"Invalid selection: {e}")
 
 _DEFAULT_JDK_ID = "labsjdk-ce-11"
 
 class _JdkBinary(object):
 
-    def __init__(self, jdk_id, version, filename, url, source):
+    def __init__(self, jdk_id, version, filename, url, source, arch):
         self._jdk_id = jdk_id
         self._version = version
         self._filename_template = filename
         self._url_template = url
         self._source = source
-        platform = mx.get_os() + '-' + mx.get_arch()
+        self._arch = arch
+        platform = mx.get_os() + '-' + arch
         keywords = {'version': version, 'platform': platform}
         self._filename = _instantiate(filename, keywords, source)
         keywords['filename'] = self._filename
-        self._folder_name = "{}-{}".format(jdk_id, _instantiate('{version|jvmci-tag}', keywords, source))
+        self._folder_name = f"{jdk_id}-{_instantiate('{version|jvmci-tag}', keywords, source)}"
         self._url = _instantiate(url, {k: quote(v) for k, v in keywords.items()}, source)
         self._archive = self._url[self._url.rfind(self._filename):]
 
     def __repr__(self):
-        return '{}: file={}, url={}'.format(self._jdk_id, self._filename, self._url)
+        return f'{self._jdk_id}: file={self._filename}, url={self._url}'
 
     def with_version(self, version):
-        return _JdkBinary(self._jdk_id, version, self._filename_template, self._url_template, self._source)
+        return _JdkBinary(self._jdk_id, version, self._filename_template, self._url_template, self._source, self._arch)
 
     def get_final_path(self, jdk_path):
         return join(jdk_path, self._folder_name)
@@ -473,13 +476,15 @@ def _instantiate(template, keywords, source):
         keyword = parts[0]
         filters = parts[1:]
         if keyword not in keywords:
-            mx.abort('{}: Error instantiating "{}": "{}" is an unrecognized keyword.\nSupported keywords: "{}"'.format(source, template, keyword, '", "'.join(sorted(keywords.keys()))))
+            supported_keywords = '", "'.join(sorted(keywords.keys()))
+            mx.abort(f'{source}: Error instantiating "{template}": "{keyword}" is an unrecognized keyword.\nSupported keywords: "{supported_keywords}"')
         res = keywords[keyword]
 
         for f in filters:
             func = _instantiate_filters.get(f)
             if not func:
-                mx.abort('{}: Error instantiating "{}": "{}" is an unrecognized filter.\nSupported filters: "{}"'.format(source, template, f, '", "'.join(sorted(_instantiate_filters.keys()))))
+                supported_filters = '", "'.join(sorted(_instantiate_filters.keys()))
+                mx.abort(f'{source}: Error instantiating "{template}": "{f}" is an unrecognized filter.\nSupported filters: "{supported_filters}"')
             res = func(res)
         return res
     return re.sub(r'{([^}]+)}', repl, template)
