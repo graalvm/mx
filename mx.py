@@ -18290,7 +18290,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.4") # GR-42429 comparing Libraries should only consider name
+version = VersionSpec("6.12.5") # GR-42433 lcov regenerated for each --extra-lcov value
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
