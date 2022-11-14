@@ -1093,14 +1093,14 @@ def _make_coverage_report(output_directory,
                         else:
                             for p in glob.glob(e):
                                 lcovs[abspath(p)] = abspath(p)
-                        for source, lcov in lcovs.items():
-                            if has_gzip_magic_number(lcov):
-                                import gzip
-                                with gzip.open(lcov, 'rt') as lcov_in:
-                                    copy_lcov(source, lcov_in, fp)
-                            else:
-                                with open(lcov) as lcov_in:
-                                    copy_lcov(source, lcov_in, fp)
+                    for source, lcov in lcovs.items():
+                        if has_gzip_magic_number(lcov):
+                            import gzip
+                            with gzip.open(lcov, 'rt') as lcov_in:
+                                copy_lcov(source, lcov_in, fp)
+                        else:
+                            with open(lcov) as lcov_in:
+                                copy_lcov(source, lcov_in, fp)
 
             genhtml_args = ['--legend', '--prefix', genhtml_cwd, '-o', abspath(output_directory), genhtml_lcov_info]
 
