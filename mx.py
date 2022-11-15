@@ -17811,38 +17811,60 @@ def _add_command_primary_option(parser):
 
 ### ~~~~~~~~~~~~~ commands
 
-def checklinks(args):
+def checkmarkdownlinks(args):
     '''
-    Checks for broken links in given markdown files. Uses simple regular expression
-    to find the links and "HEAD" http request to check them. Reports all broken links.
+    Simple and incomplete check for unresolvable links in given markdown files.
+
+    Uses a simple regular expression and line by line based parsing to find the
+    links and "HEAD" http request to check them. Reports all problematic links
+    that should be inspected manually. This is not intended for full automation.
 
     The arguments are files to be checked. One can use shell expansion, but this
     command also internally treats the arguments as Python glob expressions.
     The default patten used, if no arguments are given, is './**/*.md'
     '''
-    pattern = re.compile(r"\[[^\]]*]\(([^)]*)\)")
+    pattern = re.compile(r"\[[^]]+]\(([^)]+)\)")
+    protocol_pattern = re.compile(r"[a-zA-Z]+://")
+    path_without_anchor_pattern = re.compile(r"([^#]+)(#[a-zA-Z-_0-9]*)?")
     result = True
     indent = "    "
+
+    def check_link(filename, line_no, link):
+        nonlocal result
+        if link.startswith('http://') or link.startswith('https://'):
+            logv(f'{indent}Checking external link: "{link}"')
+            try:
+                r = _urllib_request.Request(link, method="HEAD", headers={'User-Agent': 'Dillo/3.0.5'})
+                with _urllib_request.urlopen(r):
+                    pass
+            except urllib.error.HTTPError as e:
+                log_error(f'{filename}:{line_no}: unresolvable link "{link}"')
+                logvv(f'Error:\n {e}')
+                result = False
+        elif protocol_pattern.match(link):
+            warn(f'{filename}:{line_no}: unsupported protocol in "{link}"')
+        elif not link.startswith('#'):
+            # Else we assume it is a filesystem path relative to the file
+            link_target = path_without_anchor_pattern.findall(link)
+            assert len(link_target) >= 1, f'something went wrong with regex {path_without_anchor_pattern}'
+            path_to_check = os.path.join(os.path.dirname(filename), link_target[0][0])
+            logv(f'{indent}Checking file link: "{link}", resolved to "{path_to_check}"')
+            if not os.path.exists(path_to_check):
+                log_error(f'{filename}:{line_no}: unresolvable link "{link}" (expected location: "{path_to_check}")')
+                result = False
+
     file_patterns = args if args else ['./**/*.md']
-    logv('Checking dead links in: ' + str(file_patterns))
+    logv(f'Checking dead links in: {file_patterns}')
     for file_pattern in file_patterns:
         for filename in glob.glob(file_pattern, recursive=True):
-            logv("Checking dead links in " + filename)
+            logv(f'Checking dead links in {filename}')
             with open(filename, 'r') as file:
-                for link in pattern.findall(file.read()):
-                    if not (link.strip().startswith('http://') or link.strip().startswith('https://')):
-                        logv(indent + "Skipping: " + link)
-                        continue
-                    logv(indent + "Checking link: " + link)
-                    try:
-                        with _urllib_request.urlopen(_urllib_request.Request(link, method="HEAD", headers={'User-Agent': 'Dillo/3.0.5'})):
-                            pass
-                    except urllib.error.HTTPError as e:
-                        log_error(indent + "Dead link in {}: {}".format(filename, link))
-                        logvv(indent + "Error:\n" + str(e))
-                        result = False
+                for (line_idx, line) in enumerate(file.readlines()):
+                    for link in pattern.findall(line):
+                        check_link(filename, line_idx+1, link)
+
     if not result:
-        abort("Found dead links")
+        abort('Found dead links')
 
 
 
@@ -18003,7 +18025,7 @@ update_commands("mx", {
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
-    'checklinks': [checklinks, '[paths]'],
+    'checkmarkdownlinks': [checkmarkdownlinks, '[paths]'],
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
