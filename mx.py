@@ -11424,7 +11424,7 @@ def _deploy_skip_existing(args, dists, version, repo):
         return dists
 
 
-def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, skip_existing=False, dry_run=False):
+def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, snapshot_id, skip_existing=False, dry_run=False):
     assert exists(path), f"{path} does not exist"
     maven_artifact_id = dist.maven_artifact_id(platform)
     dist_metadata = dist.get_artifact_metadata()
@@ -11460,7 +11460,7 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
            "--extra-metadata", extra_metadata_file,
            "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
            path,
-           f"{project}/{maven_artifact_id}-{version}.{dist.remoteExtension()}",
+           f"{project}/{maven_artifact_id}-{version}-{snapshot_id}.{dist.remoteExtension()}",
            project]
     if edition:
         cmd.extend(["--edition", edition])
@@ -11750,7 +11750,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         os.unlink(repo_metadata_name)
 
 
-def _deploy_dists(uploader, dists, version_getter, skip_existing=False, dry_run=False):
+def _deploy_dists(uploader, dists, version_getter, snapshot_id, skip_existing=False, dry_run=False):
     related_suites_revisions = [{"suite": s_.name, "revision": s_.vc.parent(s_.vc_dir)} for s_ in suites() if s_.vc]
     if _opts.very_verbose or (dry_run and _opts.verbose):
         log(related_suites_revisions)
@@ -11767,7 +11767,8 @@ def _deploy_dists(uploader, dists, version_getter, skip_existing=False, dry_run=
                              platform=Distribution.platformName().replace("_", "-"),
                              suite_revisions=related_suites_revisions,
                              skip_existing=skip_existing,
-                             dry_run=dry_run)
+                             dry_run=dry_run,
+                             snapshot_id=snapshot_id)
         finally:
             if pushed_file != to_deploy:
                 os.unlink(pushed_file)
@@ -11904,7 +11905,7 @@ def deploy_artifacts(args):
         --platform          : <os>-<arch>
     All binaries must be built first using 'mx build'.
     """
-    parser = ArgumentParser(prog='mx deploy_artifacts')
+    parser = ArgumentParser(prog='mx deploy-artifacts')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--all-suites', action='store_true', help='Deploy suite and the distributions it depends on in other suites')
     parser.add_argument('--only', action='store', help='Comma-separated list of globs of distributions to be deployed')
@@ -11920,7 +11921,7 @@ def deploy_artifacts(args):
     def versionGetter(suite):
         if args.version_string:
             return args.version_string
-        return suite.release_version(snapshotSuffix='SNAPSHOT-' + str(snapshot_id))
+        return suite.release_version(snapshotSuffix='SNAPSHOT')
 
     if args.all_suites:
         _suites = suites()
@@ -11940,7 +11941,7 @@ def deploy_artifacts(args):
                 abort(f"'{dist.name}' is not built, run 'mx build' first")
 
         log(f'Deploying {s.name} distributions for version {versionGetter(s)}')
-        _deploy_dists(dists=dists, version_getter=versionGetter, uploader=args.uploader, skip_existing=args.skip_existing, dry_run=args.dry_run)
+        _deploy_dists(dists=dists, version_getter=versionGetter, snapshot_id=snapshot_id, uploader=args.uploader, skip_existing=args.skip_existing, dry_run=args.dry_run)
         has_deployed_dist = True
     if not has_deployed_dist:
         abort("No distribution was deployed!")
@@ -18290,7 +18291,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.5") # GR-42433 lcov regenerated for each --extra-lcov value
+version = VersionSpec("6.12.6") # GR-42469 Remove snapshot id from artifact versionin deploy-artifacts
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
