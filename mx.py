@@ -17827,11 +17827,9 @@ def checkmarkdownlinks(args):
     pattern = re.compile(r"\[[^]]+]\(([^)]+)\)")
     protocol_pattern = re.compile(r"[a-zA-Z]+://")
     path_without_anchor_pattern = re.compile(r"([^#]+)(#[a-zA-Z-_0-9]*)?")
-    result = True
     indent = "    "
 
     def check_link(filename, line_no, link):
-        nonlocal result
         if link.startswith('http://') or link.startswith('https://'):
             logv(f'{indent}Checking external link: "{link}"')
             try:
@@ -17841,7 +17839,7 @@ def checkmarkdownlinks(args):
             except urllib.error.HTTPError as e:
                 log_error(f'{filename}:{line_no}: unresolvable link "{link}"')
                 logvv(f'Error:\n {e}')
-                result = False
+                return False
         elif protocol_pattern.match(link):
             warn(f'{filename}:{line_no}: unsupported protocol in "{link}"')
         elif not link.startswith('#'):
@@ -17852,20 +17850,23 @@ def checkmarkdownlinks(args):
             logv(f'{indent}Checking file link: "{link}", resolved to "{path_to_check}"')
             if not os.path.exists(path_to_check):
                 log_error(f'{filename}:{line_no}: unresolvable link "{link}" (expected location: "{path_to_check}")')
-                result = False
+                return False
+        return True
 
+    issues_count = 0
     file_patterns = args if args else ['./**/*.md']
-    logv(f'Checking dead links in: {file_patterns}')
+    logv(f'Checking links in: {file_patterns}')
     for file_pattern in file_patterns:
         for filename in glob.glob(file_pattern, recursive=True):
-            logv(f'Checking dead links in {filename}')
+            logv(f'Checking links in {filename}')
             with open(filename, 'r') as file:
                 for (line_idx, line) in enumerate(file.readlines()):
                     for link in pattern.findall(line):
-                        check_link(filename, line_idx+1, link)
+                        if not check_link(filename, line_idx+1, link):
+                            issues_count += 1
 
-    if not result:
-        abort('Found dead links')
+    if issues_count > 0:
+        abort(f'Found {issues_count} suspicious links')
 
 
 
