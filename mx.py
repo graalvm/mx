@@ -17811,6 +17811,7 @@ def _add_command_primary_option(parser):
 
 ### ~~~~~~~~~~~~~ commands
 
+@suite_context_free
 def checkmarkdownlinks(args):
     '''
     Simple and incomplete check for unresolvable links in given markdown files.
