@@ -18291,7 +18291,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.6") # GR-42469 Remove snapshot id from artifact versionin deploy-artifacts
+version = VersionSpec("6.12.7") # [GR-42564] Fix mx-benchmark's log formatting
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
