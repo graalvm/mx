@@ -3068,8 +3068,8 @@ class BenchmarkExecutor(object):
                             mx.log(traceback.format_exc())
                             if mxBenchmarkArgs.fail_fast:
                                 mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
+            nl_tab = '\n\t'
             if ignored_benchmarks:
-                nl_tab = '\n\t'
                 mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
             if skipped_benchmark_forks:
                 mx.log(f"[FORKS] Benchmarks skipped since they have no entry in the fork counts file:{nl_tab}{nl_tab.join(skipped_benchmark_forks)}")
