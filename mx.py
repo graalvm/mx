@@ -2421,30 +2421,6 @@ class Suite(object):
         return v
 
     @staticmethod
-    def _pop_os_arch(attrs, context):
-        os_arch = attrs.pop('os_arch', None)
-        if os_arch:
-            os_key = None
-            if get_os_variant():
-                os_key = get_os() + '-' + get_os_variant()
-            if os_key is None or os_key not in os_arch:
-                os_key = get_os()
-            if os_key not in os_arch:
-                os_key = '<others>'
-            os_attrs = os_arch.pop(os_key, None)
-            if os_attrs:
-                arch_attrs = os_attrs.pop(get_arch(), None)
-                if not arch_attrs:
-                    arch_attrs = os_attrs.pop('<others>', None)
-                if arch_attrs:
-                    return arch_attrs
-                else:
-                    warn(f"No platform-specific definition is available for {context} for your architecture ({get_arch()})")
-            else:
-                warn(f"No platform-specific definition is available for {context} for your OS ({get_os()})")
-        return None
-
-    @staticmethod
     def _merge_os_arch_attrs(attrs, os_arch_attrs, context, path=''):
         if os_arch_attrs:
             for k, v in os_arch_attrs.items():
@@ -2456,9 +2432,49 @@ class Suite(object):
                     elif isinstance(v, list) and isinstance(other, list):
                         attrs[k] = v + other
                     else:
-                        abort(f"OS/Arch attribute must not override non-OS/Arch attribute '{key_path}' in {context}")
+                        abort(f"OS/Arch attribute must not override other attribute '{key_path}' in {context}")
                 else:
                     attrs[k] = v
+        return attrs
+
+    # expand { "os" : value } into { "os" : { "<others>" : value } }
+    @staticmethod
+    def _process_os(os):
+        return {k : {"<others>" : v} for (k, v) in os.items()}
+
+    # expand { "arch" : value } into { "<others>" : { "arch" : value } }
+    @staticmethod
+    def _process_arch(arch):
+        return {"<others>" : arch}
+
+    @staticmethod
+    def _pop_any(keys, dictionary):
+        for k in keys:
+            if k in dictionary:
+                return dictionary.pop(k)
+        return None
+
+    @staticmethod
+    def _pop_os_arch(attrs, context):
+        # try and find values for the os, os_arch and arch attributes and preprocess them into the os_arch format
+        options = [('os_arch', lambda x: x), ('os', Suite._process_os), ('arch', Suite._process_arch)]
+        options = [(k, fn(attrs.pop(k))) for (k, fn) in options if k in attrs]
+        if len(options) > 1:
+            abort(f'Specifying both {options[0][0]} and {options[1][0]} is not supported in {context}')
+        os_arch = options[0][1] if len(options) > 0 else {}
+
+        if os_arch:
+            os_variant_list = [get_os() + '-' + v for v in [get_os_variant()] if v]
+            os_attrs = Suite._pop_any([get_os()] + os_variant_list + ['<others>'], os_arch)
+            if os_attrs:
+                arch_attrs = Suite._pop_any([get_arch(), '<others>'], os_attrs)
+                if arch_attrs:
+                    return arch_attrs
+                else:
+                    warn(f"No platform-specific definition is available for {context} for your architecture ({get_arch()})")
+            else:
+                warn(f"No platform-specific definition is available for {context} for your OS ({get_os()})")
+        return None
 
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.items()):
@@ -18291,7 +18307,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.12.7") # [GR-42564] Fix mx-benchmark's log formatting
+version = VersionSpec("6.13.0") # GR-42035 - Add cmake toolchain file support as well as os and arch attributes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

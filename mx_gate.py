@@ -43,6 +43,7 @@ import sys
 from mx_urlrewrites import rewriteurl
 from mx_javacompliance import JavaCompliance
 from collections import OrderedDict
+from tests import os_arch_tests
 
 """
 Predefined Task tags.
@@ -513,6 +514,8 @@ def _run_mx_suite_tests():
     Mx suite specific tests.
     """
     mx_javacompliance._test()
+
+    os_arch_tests.tests()
 
     # (JDK, project_compliance, javaPreviewNeeded) -> expected javac args
     get_release_args_data = {
