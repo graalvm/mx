@@ -517,6 +517,8 @@ def _run_mx_suite_tests():
 
     os_arch_tests.tests()
 
+    mx.checkmarkdownlinks(['--no-external', './**/*.md'])
+
     # (JDK, project_compliance, javaPreviewNeeded) -> expected javac args
     get_release_args_data = {
         (19, '19+', None):     ['-target', '19', '-source', '19'],

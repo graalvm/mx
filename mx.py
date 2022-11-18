@@ -17812,17 +17812,23 @@ def _add_command_primary_option(parser):
 
 @suite_context_free
 def checkmarkdownlinks(args):
-    '''
+    """
     Simple and incomplete check for unresolvable links in given markdown files.
 
     Uses a simple regular expression and line by line based parsing to find the
-    links and "HEAD" http request to check them. Reports all problematic links
-    that should be inspected manually. This is not intended for full automation.
+    links. Relative file links are checked on the filesystem, external links are
+    checked by sending "HEAD" http request. The checking of external links can be
+    turned off with a switch '--no-external'.
 
     The arguments are files to be checked. One can use shell expansion, but this
     command also internally treats the arguments as Python glob expressions.
     The default patten used, if no arguments are given, is './**/*.md'
-    '''
+    """
+    parser = ArgumentParser(prog='mx checkmarkdownlinks')
+    parser.add_argument('--no-external', action='store_true',
+                        help='does not check external links, only relative links on the filesystem')
+    opts, args = parser.parse_known_args(args)
+
     pattern = re.compile(r"\[[^]]+]\(([^)]+)\)")
     protocol_pattern = re.compile(r"[a-zA-Z]+://")
     path_without_anchor_pattern = re.compile(r"([^#]+)(#[a-zA-Z-_0-9]*)?")
@@ -17830,6 +17836,9 @@ def checkmarkdownlinks(args):
 
     def check_link(filename, line_no, link):
         if link.startswith('http://') or link.startswith('https://'):
+            if opts.no_external:
+                logv(f'{indent}Skipping external link: "{link}"')
+                return True
             logv(f'{indent}Checking external link: "{link}"')
             try:
                 r = _urllib_request.Request(link, method="HEAD", headers={'User-Agent': 'Dillo/3.0.5'})
