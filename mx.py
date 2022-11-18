@@ -18368,7 +18368,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.13.0") # GR-42035 - Add cmake toolchain file support as well as os and arch attributes
+version = VersionSpec("6.14.0") # # [GR-42409] [GR-42410] - New command checkmarkdownlinks, intellijinit creates artifacts for invalid distributions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
