@@ -17810,6 +17810,74 @@ def _add_command_primary_option(parser):
 
 ### ~~~~~~~~~~~~~ commands
 
+@suite_context_free
+def checkmarkdownlinks(args):
+    """
+    Simple and incomplete check for unresolvable links in given markdown files.
+
+    Uses a simple regular expression and line by line based parsing to find the
+    links. Relative file links are checked on the filesystem, external links are
+    checked by sending "HEAD" http request. The checking of external links can be
+    turned off with a switch '--no-external'.
+
+    The arguments are files to be checked. One can use shell expansion, but this
+    command also internally treats the arguments as Python glob expressions.
+    The default patten used, if no arguments are given, is './**/*.md'
+    """
+    parser = ArgumentParser(prog='mx checkmarkdownlinks')
+    parser.add_argument('--no-external', action='store_true',
+                        help='does not check external links, only relative links on the filesystem')
+    opts, args = parser.parse_known_args(args)
+
+    pattern = re.compile(r"\[[^]]+]\(([^)]+)\)")
+    protocol_pattern = re.compile(r"[a-zA-Z]+://")
+    path_without_anchor_pattern = re.compile(r"([^#]+)(#[a-zA-Z-_0-9]*)?")
+    indent = "    "
+
+    def check_link(filename, line_no, link):
+        if link.startswith('http://') or link.startswith('https://'):
+            if opts.no_external:
+                logv(f'{indent}Skipping external link: "{link}"')
+                return True
+            logv(f'{indent}Checking external link: "{link}"')
+            try:
+                r = _urllib_request.Request(link, method="HEAD", headers={'User-Agent': 'Dillo/3.0.5'})
+                with _urllib_request.urlopen(r):
+                    pass
+            except urllib.error.HTTPError as e:
+                log_error(f'{filename}:{line_no}: unresolvable link "{link}"')
+                logvv(f'Error:\n {e}')
+                return False
+        elif protocol_pattern.match(link):
+            warn(f'{filename}:{line_no}: unsupported protocol in "{link}"')
+        elif not link.startswith('#'):
+            # Else we assume it is a filesystem path relative to the file
+            link_target = path_without_anchor_pattern.findall(link)
+            assert len(link_target) >= 1, f'something went wrong with regex {path_without_anchor_pattern}'
+            path_to_check = os.path.join(os.path.dirname(filename), link_target[0][0])
+            logv(f'{indent}Checking file link: "{link}", resolved to "{path_to_check}"')
+            if not os.path.exists(path_to_check):
+                log_error(f'{filename}:{line_no}: unresolvable link "{link}" (expected location: "{path_to_check}")')
+                return False
+        return True
+
+    issues_count = 0
+    file_patterns = args if args else ['./**/*.md']
+    logv(f'Checking links in: {file_patterns}')
+    for file_pattern in file_patterns:
+        for filename in glob.glob(file_pattern, recursive=True):
+            logv(f'Checking links in {filename}')
+            with open(filename, 'r') as file:
+                for (line_idx, line) in enumerate(file.readlines()):
+                    for link in pattern.findall(line):
+                        if not check_link(filename, line_idx+1, link):
+                            issues_count += 1
+
+    if issues_count > 0:
+        abort(f'Found {issues_count} suspicious links')
+
+
+
 def checkcopyrights(args):
     """run copyright check on the sources"""
     class CP(ArgumentParser):
@@ -17967,6 +18035,7 @@ update_commands("mx", {
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
+    'checkmarkdownlinks': [checkmarkdownlinks, '[paths]'],
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
@@ -18307,7 +18376,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.13.0") # GR-42035 - Add cmake toolchain file support as well as os and arch attributes
+version = VersionSpec("6.14.0") # # [GR-42409] [GR-42410] - New command checkmarkdownlinks, intellijinit creates artifacts for invalid distributions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

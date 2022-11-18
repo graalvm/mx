@@ -130,6 +130,10 @@ def intellij_read_sdks():
         return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
 
     xmlSdks.sort(key=verSort)
+    if len(xmlSdks) > 1:
+        mx.log("Multiple SDK definitions available (run with -v to see them)")
+        for sdk in xmlSdks:
+            mx.logv('   ' + str(sdk))
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
     mx.log(f"Using SDK definitions from {xmlSdk}")
 
@@ -175,6 +179,10 @@ def intellij_get_python_sdk_name(sdks):
         sdk = sdks[exe]
         if sdk['type'] == intellij_python_sdk_type:
             return sdk['name']
+    mx.log("Could not find Python SDK, using a default generated name (rerun with -v to see details).")
+    mx.logv("MX was searching for Python SDK with executable {} in the " +
+            "primary SDK definitions table (jdk.table.xml). Is the Python SDK " +
+            "defined in some other SDK definitions table file?")
     return f"Python {sys.version_info[0]}.{sys.version_info[1]} ({exe})"
 
 def intellij_get_ruby_sdk_name(sdks):
@@ -901,7 +909,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 artifactXML.open('root', attributes={'id': 'root'})
                 for javaProject in [dep for dep in dist.archived_deps() if dep.isJavaProject()]:
                     artifactXML.element('element', attributes={'id': 'module-output', 'name': javaProject.name})
-                for javaProject in [dep for dep in dist.deps if dep.isLibrary() or dep.isDistribution()]:
+                for javaProject in [dep for dep in dist.deps if dep.isLibrary() or (dep.isDistribution() and dep in validDistributions)]:
                     artifactXML.element('element', attributes={'id': 'artifact', 'artifact-name': javaProject.name})
                 artifactXML.close('root')
                 artifactXML.close('artifact')
