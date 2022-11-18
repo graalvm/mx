@@ -72,7 +72,6 @@ from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
 import posixpath
-import re
 
 _mx_commands = MxCommands("mx")
 
