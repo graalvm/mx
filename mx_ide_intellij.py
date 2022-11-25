@@ -148,6 +148,7 @@ def intellij_read_sdks():
     }
 
     for xmlSdk in xmlSdks:
+        mx.log(f'Parsing {xmlSdk} for SDK definitions')
         for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
             name = sdk.find("name").get("value")
             kind = sdk.find("type").get("value")
@@ -177,9 +178,9 @@ def intellij_read_sdks():
                         # Ignore Python SDKs whose version is less than that required by mx
                         continue
                 sdks[home] = {'name': name, 'type': kind, 'version': version}
-                mx.log(f"Found {lang} SDK {home} with values {sdks[home]} in {xmlSdk}")
+                mx.log(f"  Found {lang} SDK {home} with values {sdks[home]}")
             else:
-                mx.warn(f"Couldn't understand {kind} version specification \"{sdk_version}\" for {home} in {xmlSdk}")
+                mx.warn(f"  Couldn't understand {kind} version specification \"{sdk_version}\" for {home}")
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
