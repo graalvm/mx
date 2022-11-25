@@ -14536,6 +14536,7 @@ def expandvars(value, context=None):
     escaped_pcts = value.count("^%")
     value = value.replace("\\$", f"\\{graal_marker}").replace("^%", f"^{graal_marker}")
     value = os_expandvars(value)
+    assert value.count(graal_marker) == escaped_dollars + escaped_pcts, f"we assume {graal_marker} does not occur in env vars"
     if '$' in value or '%' in value:
         if context:
             abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
