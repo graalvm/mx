@@ -14536,12 +14536,13 @@ def expandvars(value, context=None):
     escaped_pcts = value.count("^%")
     value = value.replace("\\$", f"\\{graal_marker}").replace("^%", f"^{graal_marker}")
     value = os_expandvars(value)
+    assert value.count(graal_marker) == escaped_dollars + escaped_pcts, f"we assume {graal_marker} does not occur in env vars"
     if '$' in value or '%' in value:
         if context:
             abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
         else:
             abort('Property contains an undefined environment variable: ' + value)
-    return value.replace(f"\\{graal_marker}", "\\$", escaped_dollars).replace(f"^{graal_marker}", "^%", escaped_pcts)
+    return value.replace(f"\\{graal_marker}", "$", escaped_dollars).replace(f"^{graal_marker}", "%", escaped_pcts)
 
 
 def expandvars_in_property(value):
@@ -18376,7 +18377,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.1") # [GR-42686] Add a dependency to cmake toolchain
+version = VersionSpec("6.14.2")  # GR-42675 Escape chars
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
