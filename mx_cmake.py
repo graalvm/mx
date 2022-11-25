@@ -48,6 +48,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
     def __init__(self, suite, name, deps, workingSets, subDir, ninja_targets=None, ninja_install_targets=None,
                  cmake_show_warnings=True, results=None, output=None, **args):
         projectDir = args.pop('dir', None)
+        self._cmake_toolchain = args.pop('toolchain', None)
         if projectDir:
             d_rel = projectDir
         elif subDir is None:
@@ -64,7 +65,8 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
         self.silent = not cmake_show_warnings
         self._cmake_config_raw = args.pop('cmakeConfig', {})
-        self._cmake_toolchain = args.pop('toolchain', None)
+        if self._cmake_toolchain:
+            self.buildDependencies += [self._cmake_toolchain]
 
     def resolveDeps(self):
         super(CMakeNinjaProject, self).resolveDeps()
