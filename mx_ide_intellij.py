@@ -94,7 +94,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
         if dirname(mx._mx_suite.get_output_root()) == mx._mx_suite.dir:
             moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + basename(mx._mx_suite.get_output_root())})
         moduleXml.close('content')
-        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
+        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, 'mx')})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
         moduleXml.close('component')
         moduleXml.close('module')
@@ -129,41 +129,58 @@ def intellij_read_sdks():
         match = verRE.match(path)
         return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
 
-    xmlSdks.sort(key=verSort)
-    if len(xmlSdks) > 1:
-        mx.log("Multiple SDK definitions available (run with -v to see them)")
-        for sdk in xmlSdks:
-            mx.logv('   ' + str(sdk))
-    xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
-    mx.log(f"Using SDK definitions from {xmlSdk}")
+    xmlSdks.sort(key=verSort, reverse=True)
 
-    versionRegexes = {}
-    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^(Oracle OpenJDK )?version\s+(.+)$|^([\d._]+)$')
-    versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
-    # Examples:
-    #   truffleruby 19.2.0-dev-2b2a7f81, like ruby 2.6.2, Interpreted JVM [x86_64-linux]
-    #   ver.2.2.4p230 ( revision 53155) p230
-    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^\D*(\d[^ ,]+)')
+    sdk_version_regexes = {
+        intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|^(Oracle OpenJDK )?version\s+(.+)$|^([\d._]+)$'),
+        intellij_python_sdk_type: re.compile(r'^Python\s+(.+)$'),
 
-    for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
-        name = sdk.find("name").get("value")
-        kind = sdk.find("type").get("value")
-        home = realpath(os.path.expanduser(sdk.find("homePath").get("value").replace('$USER_HOME$', '~')))
-        if home.find('$APPLICATION_HOME_DIR$') != -1:
-            # Don't know how to convert this into a real path so ignore it
-            continue
-        versionRE = versionRegexes.get(kind)
-        if not versionRE or sdk.find("version") is None:
-            # ignore unknown kinds
-            continue
+        # Examples:
+        #   truffleruby 19.2.0-dev-2b2a7f81, like ruby 2.6.2, Interpreted JVM [x86_64-linux]
+        #   ver.2.2.4p230 ( revision 53155) p230
+        intellij_ruby_sdk_type: re.compile(r'^\D*(\d[^ ,]+)')
+    }
 
-        match = versionRE.match(sdk.find("version").get("value"))
-        if match:
-            version = match.group(1)
-            sdks[home] = {'name': name, 'type': kind, 'version': version}
-            mx.logv(f"Found SDK {home} with values {sdks[home]}")
-        else:
-            mx.warn(f"Couldn't understand Java version specification \"{sdk.find('version').get('value')}\" for {home} in {xmlSdk}")
+    sdk_languages = {
+        intellij_java_sdk_type: 'Java',
+        intellij_python_sdk_type: 'Python',
+        intellij_ruby_sdk_type: 'Ruby'
+    }
+
+    for xmlSdk in xmlSdks:
+        mx.log(f'Parsing {xmlSdk} for SDK definitions')
+        for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
+            name = sdk.find("name").get("value")
+            kind = sdk.find("type").get("value")
+            home_path = sdk.find("homePath").get("value")
+            home = realpath(os.path.expanduser(home_path.replace('$USER_HOME$', '~')))
+            if home.find('$APPLICATION_HOME_DIR$') != -1:
+                # Don't know how to convert this into a real path so ignore it
+                continue
+
+            if home in sdks:
+                # First SDK in sorted list of jdk.table.xml files wins
+                continue
+
+            version_re = sdk_version_regexes.get(kind)
+            if not version_re or sdk.find("version") is None:
+                # ignore unknown kinds
+                continue
+
+            sdk_version = sdk.find("version").get("value")
+            match = version_re.match(sdk_version)
+            if match:
+                version = match.group(1)
+                lang = sdk_languages[kind]
+                if kind == intellij_python_sdk_type:
+                    import mx_enter
+                    if mx.VersionSpec(version) < mx.VersionSpec(mx_enter._min_required_version_str):
+                        # Ignore Python SDKs whose version is less than that required by mx
+                        continue
+                sdks[home] = {'name': name, 'type': kind, 'version': version}
+                mx.log(f"  Found {lang} SDK {home} with values {sdks[home]}")
+            else:
+                mx.warn(f"  Couldn't understand {kind} version specification \"{sdk_version}\" for {home}")
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -173,17 +190,22 @@ def intellij_get_java_sdk_name(sdks, jdk):
             return sdk['name']
     return str(jdk.javaCompliance)
 
-def intellij_get_python_sdk_name(sdks):
+def intellij_get_python_sdk_name(sdks, requestor=None):
+    # First look for SDK matching current python executable
     exe = realpath(sys.executable)
     if exe in sdks:
         sdk = sdks[exe]
+        return sdk['name']
+
+    # Now look for any Python SDK
+    for sdk in sdks.values():
         if sdk['type'] == intellij_python_sdk_type:
             return sdk['name']
-    mx.log("Could not find Python SDK, using a default generated name (rerun with -v to see details).")
-    mx.logv("MX was searching for Python SDK with executable {} in the " +
-            "primary SDK definitions table (jdk.table.xml). Is the Python SDK " +
-            "defined in some other SDK definitions table file?")
-    return f"Python {sys.version_info[0]}.{sys.version_info[1]} ({exe})"
+
+    context = f' for {requestor}' if requestor else ''
+    gen_name = f"Python {sys.version_info[0]}.{sys.version_info[1]}"
+    mx.log(f"Could not find Python SDK{context} in Intellij configurations, using name based on {exe}: {gen_name}.")
+    return gen_name
 
 def intellij_get_ruby_sdk_name(sdks):
     for sdk in sdks.values():
@@ -292,7 +314,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 if module_type == "ruby":
                     moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_ruby_sdk_type, 'jdkName': intellij_get_ruby_sdk_name(sdks)})
                 elif module_type == "python":
-                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
+                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, project_name)})
                 elif module_type in ["web", "docs", "ci"]:
                     # nothing to do
                     pass
@@ -560,7 +582,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(directory, module_dir)})
         moduleXml.close('content')
 
-        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
+        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, f'suite {s}')})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
         processed_suites = {s.name}
 
