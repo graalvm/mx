@@ -825,7 +825,7 @@ def get_jacoco_dest_file():
 def get_jacoco_agent_path(resolve):
     return mx.library('JACOCOAGENT_0.8.8').get_path(resolve)
 
-def get_jacoco_agent_args(jacoco=None):
+def get_jacoco_agent_args(jacoco=None, agent_option_prefix=''):
     '''
     Gets the args to be added to a VM command line for injecting the JaCoCo agent
     if use of JaCoCo has been requested otherwise returns None.
@@ -844,7 +844,7 @@ def get_jacoco_agent_args(jacoco=None):
         }.items()))
 
         agent_path = get_jacoco_agent_path(True)
-        agent_args = f'-javaagent:{agent_path}={agent_options}'
+        agent_args = f'{agent_option_prefix}-javaagent:{agent_path}={agent_options}'
         # Use java arg file to handle long command lines
         with tempfile.NamedTemporaryFile(prefix="jacoco_agent", mode="w", delete=False) as args_file:
             # Make sure to remove temporary file when program exits
