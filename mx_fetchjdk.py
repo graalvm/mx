@@ -148,23 +148,30 @@ def fetch_jdk(args):
     mx.log(get_setvar_format(shell) % ("JAVA_HOME", abspath(java_home)))
     return final_path
 
+
 def _find_file(start, filename):
     """
     Searches up the directory hierarchy starting at `start` for a file named `filename`
-    and returns the first one found or None if no match is found. If a git or hg repo
-    directory is encountered in the search, its siblings are also probed for `filename`.
+    and returns the first one found or None if no match is found. The searched locations
+    for each directory ``dir`` are:
+        dir/<filename>
+        dir/.ci/<filename>
+        dir/ci/<filename>
+        dir/.git/*/<filename>
+        dir/.hg/*/<filename>
     """
     probe_dir = start
     path = join(probe_dir, filename)
     while not exists(path):
         probe_dir_parent = dirname(probe_dir)
 
-        # Look in sibling git or hg directories
-        if isdir(join(probe_dir, '.git')) or isdir(join(probe_dir, '.hg')):
-            for e in os.listdir(probe_dir_parent):
-                path = join(probe_dir_parent, e, filename)
-                if exists(path):
-                    return path
+        candidates = [join(probe_dir, '.ci', filename), join(probe_dir, 'ci', filename)] + \
+            glob.glob(join(probe_dir, '.git', '*', filename)) + \
+            glob.glob(join(probe_dir, '.hg', '*', filename))
+
+        for path in candidates:
+            if exists(path):
+                return path
 
         next_probe_dir = probe_dir_parent
         if not next_probe_dir or next_probe_dir == probe_dir:
