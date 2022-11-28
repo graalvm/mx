@@ -18377,7 +18377,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.3") # GR-42680 - improve SDK lookup in intellijinit
+version = VersionSpec("6.14.4") # GR-42696 - adapt fetch-jdk to new CI layout
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
