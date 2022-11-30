@@ -86,5 +86,8 @@ fi
 # Include the parent directory of this script in the python path variable, then
 # allow loading of the mx module
 export PYTHONPATH="$dir/..:$PYTHONPATH"
-echo $PYTHONPATH
+
+# The following allows the use of existing module names
+export PYTHONPATH="$dir/oldnames:$PYTHONPATH"
+
 exec $python_exe -u -m mx "$@"
