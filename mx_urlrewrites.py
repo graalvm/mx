@@ -26,7 +26,7 @@
 
 import re
 import json
-import mx
+from . import mx
 
 _urlrewrites = []  # list of URLRewrite objects
 

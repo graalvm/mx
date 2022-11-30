@@ -34,9 +34,9 @@ from contextlib import ExitStack
 from os.path import join, basename, dirname, exists, isdir, abspath
 from io import StringIO
 
-import mx
-import mx_ideconfig
-import mx_javamodules
+from . import mx
+from . import mx_ideconfig
+from . import mx_javamodules
 
 
 def eclipseinit_and_format_files(eclipse_exe, config, files):

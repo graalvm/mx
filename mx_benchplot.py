@@ -30,7 +30,7 @@ from argparse import RawTextHelpFormatter
 import os.path
 import sys
 
-import mx
+from . import mx
 
 def suite_context_free(func):
     """

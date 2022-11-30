@@ -34,9 +34,9 @@ try:
 except ImportError:
     from urllib.parse import quote
 
-from mx import suite_context_free, _mx_home, command, atomic_file_move_with_fallback, is_quiet
-from select_jdk import get_setvar_format
-import mx, mx_urlrewrites
+from .mx import suite_context_free, _mx_home, command, atomic_file_move_with_fallback, is_quiet
+from .select_jdk import get_setvar_format
+from . import mx, mx_urlrewrites
 
 
 @command('mx', 'fetch-jdk', '[options]')

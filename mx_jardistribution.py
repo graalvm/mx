@@ -36,8 +36,8 @@ from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
-import mx
-import mx_subst
+from . import mx
+from . import mx_subst
 
 
 class JARDistribution(mx.Distribution, mx.ClasspathDependency):

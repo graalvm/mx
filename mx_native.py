@@ -31,9 +31,9 @@ import os
 import subprocess
 import sys
 
-import mx
-import mx_compdb
-import mx_subst
+from . import mx
+from . import mx_compdb
+from . import mx_subst
 
 _target_jdk = None
 """JDK for which native projects should be built."""

@@ -25,10 +25,10 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-import mx
 from os import remove
 from os.path import exists, join
 
+from . import mx
 
 class POMDistribution(mx.Distribution):
     """

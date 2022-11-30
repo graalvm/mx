@@ -25,8 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 import os, subprocess, math, signal, time, re
-import mx
-from mx import VC
+from . import mx
+from .mx import VC
 from datetime import datetime
 from argparse import ArgumentParser
 from threading import Thread

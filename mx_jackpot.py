@@ -26,7 +26,7 @@
 #
 
 import tempfile
-import mx
+from . import mx
 import os
 from os.path import join, exists
 

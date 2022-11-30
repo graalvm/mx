@@ -32,8 +32,8 @@ import urllib.parse
 from os.path import join, exists, isabs, basename, dirname
 from argparse import ArgumentParser
 
-import mx
-import mx_urlrewrites
+from . import mx
+from . import mx_urlrewrites
 
 def testdownstream_cli(args):
     """tests a downstream repo against the current working directory state of the primary suite

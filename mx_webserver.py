@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-import mx
+from . import mx
 from argparse import ArgumentParser
 
 @mx.command(suite_name="mx",

@@ -83,4 +83,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-exec $python_exe -u "$dir/${__MX_MODULE__}" "$@"
+# Include the parent directory of this script in the python path variable, then
+# allow loading of the mx module
+export PYTHONPATH="$dir/..:$PYTHONPATH"
+echo $PYTHONPATH
+exec $python_exe -u -m mx "$@"

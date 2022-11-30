@@ -30,10 +30,10 @@ import shutil
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, exists
 
-import mx
-import mx_ide_intellij
-import mx_ide_netbeans
-import mx_ide_eclipse
+from . import mx
+from . import mx_ide_intellij
+from . import mx_ide_netbeans
+from . import mx_ide_eclipse
 
 
 def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):

@@ -27,7 +27,7 @@
 
 import re
 import itertools
-import mx
+from . import mx
 
 class JavaCompliance(mx.Comparable):
     """

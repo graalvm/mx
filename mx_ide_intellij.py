@@ -40,9 +40,9 @@ from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, dirname, exists, isdir, realpath
 from io import StringIO
 
-import mx
-import mx_ideconfig
-import mx_javamodules
+from . import mx
+from . import mx_ideconfig
+from . import mx_javamodules
 
 
 # IntelliJ SDK types.

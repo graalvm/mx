@@ -28,7 +28,7 @@ import argparse
 import os
 import re
 
-import mx
+from . import mx
 from datetime import datetime, date, timedelta
 
 

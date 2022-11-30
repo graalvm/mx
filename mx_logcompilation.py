@@ -27,7 +27,7 @@
 import collections
 from xml.etree import ElementTree
 
-import mx
+from . import mx
 from argparse import ArgumentParser, RawTextHelpFormatter, ONE_OR_MORE
 
 

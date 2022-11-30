@@ -25,9 +25,9 @@
 import os
 import shutil
 
-import mx
-import mx_native
-import mx_subst
+from . import mx
+from . import mx_native
+from . import mx_subst
 
 
 class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-ancestors

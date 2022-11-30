@@ -30,7 +30,7 @@ import tempfile
 
 from multiprocessing import Lock
 
-import mx
+from . import mx
 
 _bear_version_regex = re.compile(r"bear ([0-9]+).([0-9]+).([0-9]+)", re.IGNORECASE)
 _bear_version = '<uninitialized>'

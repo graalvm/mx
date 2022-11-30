@@ -41,9 +41,9 @@ from typing import Optional, NamedTuple, Iterable, List
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
-import mx
-import mx_benchmark
-import mx_logcompilation
+from . import mx
+from . import mx_benchmark
+from . import mx_logcompilation
 
 try:
     # import into the global scope but don't complain if it's not there.  The commands themselves

@@ -27,7 +27,7 @@
 import sys, inspect, re, bisect
 from collections import OrderedDict
 from os.path import join
-import mx
+from . import mx
 
 class MxCompatibility500(object):
     @staticmethod

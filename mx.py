@@ -70,7 +70,7 @@ import fnmatch
 import operator
 import calendar
 from stat import S_IWRITE
-from mx_commands import MxCommands, MxCommand
+from .mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
 import posixpath
 
@@ -506,7 +506,7 @@ class Comparable(object):
     def __cmp__(self, other): # to override
         raise TypeError("No override for compare")
 
-from mx_javacompliance import JavaCompliance
+from .mx_javacompliance import JavaCompliance
 
 class DynamicVar(object):
     def __init__(self, initial_value):
@@ -2928,7 +2928,7 @@ class SourceSuite(Suite):
                             p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
                                               theLicense=theLicense, testProject=testProject, **attrs)
                         else:
-                            from mx_native import DefaultNativeProject
+                            from .mx_native import DefaultNativeProject
                             p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, kind=native,
                                                      theLicense=theLicense, testProject=testProject, **attrs)
                     elif project_type_name == 'JavaProject':
@@ -3801,24 +3801,24 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     _log_discovery("Registration/Loading finished")
     return primary
 
-import mx_spotbugs
-import mx_sigtest
-import mx_gate
-import mx_compat
-import mx_urlrewrites
-import mx_benchmark
-import mx_benchplot
-import mx_proftool # pylint: disable=unused-import
-import mx_logcompilation # pylint: disable=unused-import
-import mx_downstream
-import mx_subst
-import mx_codeowners # pylint: disable=unused-import
-import mx_ideconfig # pylint: disable=unused-import
-import mx_ide_eclipse
-import mx_compdb
+from . import mx_spotbugs
+from . import mx_sigtest
+from . import mx_gate
+from . import mx_compat
+from . import mx_urlrewrites
+from . import mx_benchmark
+from . import mx_benchplot
+from . import mx_proftool # pylint: disable=unused-import
+from . import mx_logcompilation # pylint: disable=unused-import
+from . import mx_downstream
+from . import mx_subst
+from . import mx_codeowners # pylint: disable=unused-import
+from . import mx_ideconfig # pylint: disable=unused-import
+from . import mx_ide_eclipse
+from . import mx_compdb
 
-from mx_javamodules import make_java_module # pylint: disable=unused-import
-from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
+from .mx_javamodules import make_java_module # pylint: disable=unused-import
+from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
                            get_module_name, parse_requiresConcealed_attribute, \
                            as_java_module
 
@@ -4491,7 +4491,7 @@ def clean(args, parser=None):
 _tar_compressed_extensions = {'bz2', 'gz', 'lz', 'lzma', 'xz', 'Z'}
 _known_zip_pre_extensions = {'src'}
 
-from mx_util import get_file_extension, ensure_dirname_exists, ensure_dir_exists
+from .mx_util import get_file_extension, ensure_dirname_exists, ensure_dir_exists
 
 def show_envs(args):
     """print environment variables and their values
@@ -5572,8 +5572,8 @@ class Distribution(Dependency):
     def get_artifact_metadata(self):
         return None
 
-from mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build, _stage_file_impl
-from mx_pomdistribution import POMDistribution
+from .mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build, _stage_file_impl
+from .mx_pomdistribution import POMDistribution
 
 class JMHArchiveParticipant(object):
     """ Archive participant for building JMH benchmarking jars. """
@@ -15725,7 +15725,7 @@ class TempDirCwd(TempDir):
         super(TempDirCwd, self).__exit__(exc_type, exc_value, traceback)
 
 
-from mx_util import SafeFileCreation
+from .mx_util import SafeFileCreation
 
 class SafeDirectoryUpdater(object):
     """
@@ -18610,15 +18610,15 @@ update_commands("mx", {
     'version': [show_version, ''],
 })
 
-import mx_fetchjdk # pylint: disable=unused-import
-import mx_bisect # pylint: disable=unused-import
-import mx_gc # pylint: disable=unused-import
-import mx_multiplatform # pylint: disable=unused-import
-import mx_foreach # pylint: disable=unused-import
+from . import mx_fetchjdk # pylint: disable=unused-import
+from . import mx_bisect # pylint: disable=unused-import
+from . import mx_gc # pylint: disable=unused-import
+from . import mx_multiplatform # pylint: disable=unused-import
+from . import mx_foreach # pylint: disable=unused-import
 
-from mx_unittest import unittest
-from mx_jackpot import jackpot
-from mx_webserver import webserver
+from .mx_unittest import unittest
+from .mx_jackpot import jackpot
+from .mx_webserver import webserver
 _mx_commands.add_commands([
     unittest,
     jackpot,

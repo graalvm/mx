@@ -28,13 +28,13 @@ import os
 import re
 import pickle
 import shutil
-import mx_javacompliance
+from . import mx_javacompliance
 from os.path import join, exists, dirname, basename, isdir, islink
 from collections import defaultdict
 
 from zipfile import ZipFile
 
-import mx
+from . import mx
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
 import itertools

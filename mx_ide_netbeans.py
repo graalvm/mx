@@ -29,9 +29,9 @@ import os, sys
 from os.path import join, exists
 from io import StringIO
 
-import mx
-import mx_ideconfig
-import mx_ide_eclipse
+from . import mx
+from . import mx_ideconfig
+from . import mx_ide_eclipse
 
 @mx.command('mx', 'netbeansinit')
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):

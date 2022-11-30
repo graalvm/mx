@@ -33,17 +33,17 @@ import urllib.request
 import hashlib
 import shutil
 import glob
+import sys
 from os.path import join, exists, basename, abspath, dirname, isabs
 from argparse import ArgumentParser
+from collections import OrderedDict
 from datetime import datetime, timezone, timedelta
 
-import mx
-import mx_util
-import mx_javacompliance
-import sys
-from mx_urlrewrites import rewriteurl
-from mx_javacompliance import JavaCompliance
-from collections import OrderedDict
+from . import mx
+from . import mx_util
+from . import mx_javacompliance
+from .mx_urlrewrites import rewriteurl
+from .mx_javacompliance import JavaCompliance
 
 """
 Predefined Task tags.
