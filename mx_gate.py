@@ -43,7 +43,6 @@ import sys
 from mx_urlrewrites import rewriteurl
 from mx_javacompliance import JavaCompliance
 from collections import OrderedDict
-from tests import os_arch_tests
 
 """
 Predefined Task tags.
@@ -515,6 +514,7 @@ def _run_mx_suite_tests():
     """
     mx_javacompliance._test()
 
+    from tests import os_arch_tests
     os_arch_tests.tests()
 
     mx.checkmarkdownlinks(['--no-external', './**/*.md'])

@@ -18377,7 +18377,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.5") # GR-41973 - Adopt LCOV coverage reports in native-image
+version = VersionSpec("6.14.6") # GR-42825 - Fix collision with tests module
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
