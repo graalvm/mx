@@ -476,7 +476,7 @@ def _get_eclipse_output_path(project_loc, p, linkedResources=None):
 #: Highest Execution Environment defined by most recent Eclipse release.
 #: https://wiki.eclipse.org/Execution_Environments
 #: https://git.eclipse.org/c/jdt/eclipse.jdt.debug.git/plain/org.eclipse.jdt.launching/plugin.properties
-_max_Eclipse_JavaExecutionEnvironment = 15 # pylint: disable=invalid-name
+_max_Eclipse_JavaExecutionEnvironment = 18 # pylint: disable=invalid-name
 
 _EclipseJRESystemLibraries = set()
 
