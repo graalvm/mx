@@ -18377,7 +18377,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.6") # GR-42825 - Fix collision with tests module
+version = VersionSpec("6.14.7") # GR-42969 - Bump eclipse max execution environments
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
