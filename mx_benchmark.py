@@ -3088,7 +3088,7 @@ class BenchmarkExecutor(object):
         exit_code = 0
         if failures_seen:
             mx.log_error(f"Failures happened during benchmark(s) execution !"
-                         "The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
+                         f"The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
             exit_code = 1
 
         if returnSuiteAndResults:
