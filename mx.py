@@ -365,27 +365,7 @@ def _check_output_str(*args, **kwargs):
             e.stderr = e.stderr.decode()
         raise e
 
-def _with_metaclass(meta, *bases):
-    """Create a base class with a metaclass."""
-
-    # Copyright (c) 2010-2018 Benjamin Peterson
-    # Taken from https://github.com/benjaminp/six/blob/8da94b8a153ceb0d6417d76729ba75e80eaa75c1/six.py#L820
-    # MIT license
-
-    # This requires a bit of explanation: the basic idea is to make a dummy
-    # metaclass for one level of class instantiation that replaces itself with
-    # the actual metaclass.
-    class MetaClass(type):
-
-        def __new__(mcs, name, this_bases, d):
-            return meta(name, bases, d)
-
-        @classmethod
-        def __prepare__(mcs, name, this_bases):
-            return meta.__prepare__(name, bases)
-    return type.__new__(MetaClass, f'_with_metaclass({meta}, {bases})', (), {}) #pylint: disable=unused-variable
-
-def _validate_abolute_url(urlstr, acceptNone=False):
+def _validate_absolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
     url = urllib.parse.urlsplit(urlstr)
@@ -1329,8 +1309,8 @@ def primary_suite():
     return _primary_suite
 
 
-class SuiteConstituent(_with_metaclass(ABCMeta, Comparable)):
-    def __init__(self, suite, name, build_time=1): # pylint: disable=super-init-not-called
+class SuiteConstituent(Comparable, metaclass=ABCMeta):
+    def __init__(self, suite, name, build_time=1):
         """
         :type name: str
         :type suite: Suite
@@ -2153,7 +2133,7 @@ class Suite(object):
         self.developer = self._check_suiteDict('developer')
         self.url = suiteDict.get('url')
         self.ignore_suite_commit_info = suiteDict.get('ignore_suite_commit_info', False)
-        if not _validate_abolute_url(self.url, acceptNone=True):
+        if not _validate_absolute_url(self.url, acceptNone=True):
             abort(f'Invalid url in {self.suite_py()}')
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
         if isinstance(self.defaultLicense, str):
@@ -2543,7 +2523,7 @@ class Suite(object):
         for name, attrs in sorted(licenseDefs.items()):
             fullname = attrs.pop('name')
             url = attrs.pop('url')
-            if not _validate_abolute_url(url):
+            if not _validate_absolute_url(url):
                 abort(f'Invalid url in license {name} in {self.suite_py()}')
             l = License(self, name, fullname, url)
             l.__dict__.update(attrs)
@@ -2558,9 +2538,9 @@ class Suite(object):
             else:
                 snapshots_url = attrs.pop('snapshotsUrl')
                 releases_url = attrs.pop('releasesUrl')
-            if not _validate_abolute_url(snapshots_url):
+            if not _validate_absolute_url(snapshots_url):
                 abort(f'Invalid url in repository {self.suite_py()}: {snapshots_url}', context=context)
-            if releases_url != snapshots_url and not _validate_abolute_url(releases_url):
+            if releases_url != snapshots_url and not _validate_absolute_url(releases_url):
                 abort(f'Invalid url in repository {self.suite_py()}: {releases_url}', context=context)
             licenses = Suite._pop_list(attrs, self.getMxCompatibility().licensesAttribute(), context=context)
             r = Repository(self, name, snapshots_url, releases_url, licenses)
@@ -5053,7 +5033,7 @@ mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
 ### ~~~~~~~~~~~~~ Build
 
 
-class Task(_with_metaclass(ABCMeta), object):
+class Task(object, metaclass=ABCMeta):
     """A task executed during a build.
 
     :type deps: list[Task]
@@ -5062,7 +5042,7 @@ class Task(_with_metaclass(ABCMeta), object):
     :param int parallelism: the number of CPUs used when executing this task
     """
 
-    def __init__(self, subject, args, parallelism):  # pylint: disable=super-init-not-called
+    def __init__(self, subject, args, parallelism):
         self.subject = subject
         self.args = args
         self.parallelism = parallelism
@@ -8498,8 +8478,8 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 run([gmake_cmd(context=self.subject), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
-class Extractor(_with_metaclass(ABCMeta, object)):
-    def __init__(self, src): # pylint: disable=super-init-not-called
+class Extractor(object, metaclass=ABCMeta):
+    def __init__(self, src):
         self.src = src
 
     def extract(self, dst):
@@ -9143,7 +9123,7 @@ Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
 """
-class VC(_with_metaclass(ABCMeta, object)):
+class VC(object, metaclass=ABCMeta):
     """
     base class for all supported Distributed Version Control abstractions
 
@@ -9151,7 +9131,7 @@ class VC(_with_metaclass(ABCMeta, object)):
     :ivar str proper_name: the long name descriptor of the VCS
     """
 
-    def __init__(self, kind, proper_name): # pylint: disable=super-init-not-called
+    def __init__(self, kind, proper_name):
         self.kind = kind
         self.proper_name = proper_name
 
@@ -18377,7 +18357,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.7") # GR-42969 - Bump eclipse max execution environments
+version = VersionSpec("6.14.8") # GR-42494 remove _with_metaclass 2to3 migration helper
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

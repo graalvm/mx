@@ -82,10 +82,10 @@ DebugInfoTag, = struct.unpack('>i', b'DEBI')
 CompiledMethodUnloadTag, = struct.unpack('>i', b'CMUT')
 
 
-class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
+class ExperimentFiles(object, metaclass=ABCMeta):
     """A collection of data files from a performance data collection experiment."""
 
-    def __init__(self):  # pylint: disable=super-init-not-called
+    def __init__(self):
         pass
 
     @staticmethod
