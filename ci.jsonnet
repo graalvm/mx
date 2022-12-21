@@ -136,8 +136,8 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
         local base_dir = "./fetch-jdk-test-folder",
 
         run: [
-            [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-19", "--to", base_dir, "--alias", "jdk-19"],
-            [exe(base_dir + "/jdk-19/bin/java"), "-version"],
+            [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-20", "--to", base_dir, "--alias", "jdk-20"],
+            [exe(base_dir + "/jdk-20/bin/java"), "-version"],
         ],
         teardown: [
             ["rm", "-rf", "$base_dir"],
