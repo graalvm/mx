@@ -2448,7 +2448,7 @@ class Suite(object):
             os_attrs = Suite._pop_any([get_os()] + os_variant_list + ['<others>'], os_arch)
             if os_attrs:
                 arch_attrs = Suite._pop_any([get_arch(), '<others>'], os_attrs)
-                if arch_attrs:
+                if arch_attrs is not None:
                     return arch_attrs
                 else:
                     warn(f"No platform-specific definition is available for {context} for your architecture ({get_arch()})")
@@ -18357,7 +18357,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.9") # GR-42836 update JaCoCo to 0.8.9-SNAPSHOT to support JDK 20
+version = VersionSpec("6.14.10") # GR-43378 - Fix warning with empty platform-specific configuration
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
