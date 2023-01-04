@@ -2448,7 +2448,7 @@ class Suite(object):
             os_attrs = Suite._pop_any([get_os()] + os_variant_list + ['<others>'], os_arch)
             if os_attrs:
                 arch_attrs = Suite._pop_any([get_arch(), '<others>'], os_attrs)
-                if arch_attrs:
+                if arch_attrs is not None:
                     return arch_attrs
                 else:
                     warn(f"No platform-specific definition is available for {context} for your architecture ({get_arch()})")
