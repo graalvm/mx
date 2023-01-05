@@ -11430,11 +11430,11 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
             abort(f"Artifact metadata for distribution '{dist.name}' must have '{name}'")
         return dist_metadata.get(name)
 
-
     distribution_type = get_required_metadata("type")
     edition = get_required_metadata("edition")
     project = get_required_metadata("project")
     extra_metadata = {"suite": dist.suite.name,
+                      "ditributionName": _map_to_maven_dist_name(dist.name),
                       "artifactId": maven_artifact_id,
                       "groupId": dist.maven_group_id()}
     extra_metadata.update({k: v for k, v in dist_metadata.items() if k not in ["edition", "type", "project"]})
@@ -11451,7 +11451,7 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
     suite_revision_file = dump_metadata_json(suite_revisions, "suiteRevisions")
     extra_metadata_file = dump_metadata_json(extra_metadata, "extraMetadata")
 
-    cmd = [uploader, "--version", version, "--revision", dist.suite.vc.parent(dist.suite.vc_dir),
+    cmd = [uploader, "--version", version, "--revision", _primary_suite.vc.parent(_primary_suite.vc_dir),
            "--suite-revisions", suite_revision_file,
            "--extra-metadata", extra_metadata_file,
            "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
@@ -11609,8 +11609,13 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
     if deployRepoMetadata:
         repo_metadata_xml = XMLDoc()
         repo_metadata_xml.open('suite-revisions')
-        for s_ in suites():
+
+        includes_primary = False
+        loaded_suites = suites()
+        for s_ in loaded_suites:
             if s_.vc:
+                if s_.name == _primary_suite.name:
+                    includes_primary = True
                 commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
                 repo_metadata_xml.element('suite', attributes={
                     "name": s_.name,
@@ -11618,6 +11623,9 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                     "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
                     "kind": s_.vc.kind
                 })
+        if not includes_primary:
+            warn(f"Primary suite '{_primary_suite.name}' is not included in the loaded suites. {[s_.name for s_ in loaded_suites]}")
+
         for d_ in dists:
             for extra_data_tag, extra_data_attributes in d_.extra_suite_revisions_data():
                 repo_metadata_xml.element(extra_data_tag, attributes=extra_data_attributes)
@@ -18357,7 +18365,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.10") # GR-43378 - Fix warning with empty platform-specific configuration
+version = VersionSpec("6.14.11") # [GR-43395] Use primary suite's revision as main revision in deploy_artifacts
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
