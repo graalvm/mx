@@ -11430,11 +11430,11 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
             abort(f"Artifact metadata for distribution '{dist.name}' must have '{name}'")
         return dist_metadata.get(name)
 
-
     distribution_type = get_required_metadata("type")
     edition = get_required_metadata("edition")
     project = get_required_metadata("project")
     extra_metadata = {"suite": dist.suite.name,
+                      "ditributionName": _map_to_maven_dist_name(dist.name),
                       "artifactId": maven_artifact_id,
                       "groupId": dist.maven_group_id()}
     extra_metadata.update({k: v for k, v in dist_metadata.items() if k not in ["edition", "type", "project"]})
