@@ -11420,7 +11420,7 @@ def _deploy_skip_existing(args, dists, version, repo):
         return dists
 
 
-def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, snapshot_id, skip_existing=False, dry_run=False):
+def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, snapshot_id, primary_revision, skip_existing=False, dry_run=False):
     assert exists(path), f"{path} does not exist"
     maven_artifact_id = dist.maven_artifact_id(platform)
     dist_metadata = dist.get_artifact_metadata()
@@ -11434,7 +11434,7 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
     edition = get_required_metadata("edition")
     project = get_required_metadata("project")
     extra_metadata = {"suite": dist.suite.name,
-                      "ditributionName": _map_to_maven_dist_name(dist.name),
+                      "distributionName": _map_to_maven_dist_name(dist.name),
                       "artifactId": maven_artifact_id,
                       "groupId": dist.maven_group_id()}
     extra_metadata.update({k: v for k, v in dist_metadata.items() if k not in ["edition", "type", "project"]})
@@ -11451,7 +11451,7 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
     suite_revision_file = dump_metadata_json(suite_revisions, "suiteRevisions")
     extra_metadata_file = dump_metadata_json(extra_metadata, "extraMetadata")
 
-    cmd = [uploader, "--version", version, "--revision", _primary_suite.vc.parent(_primary_suite.vc_dir),
+    cmd = [uploader, "--version", version, "--revision", primary_revision,
            "--suite-revisions", suite_revision_file,
            "--extra-metadata", extra_metadata_file,
            "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
@@ -11754,7 +11754,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         os.unlink(repo_metadata_name)
 
 
-def _deploy_dists(uploader, dists, version_getter, snapshot_id, skip_existing=False, dry_run=False):
+def _deploy_dists(uploader, dists, version_getter, snapshot_id, primary_revision, skip_existing=False, dry_run=False):
     related_suites_revisions = [{"suite": s_.name, "revision": s_.vc.parent(s_.vc_dir)} for s_ in suites() if s_.vc]
     if _opts.very_verbose or (dry_run and _opts.verbose):
         log(related_suites_revisions)
@@ -11772,6 +11772,7 @@ def _deploy_dists(uploader, dists, version_getter, snapshot_id, skip_existing=Fa
                              suite_revisions=related_suites_revisions,
                              skip_existing=skip_existing,
                              dry_run=dry_run,
+                             primary_revision=primary_revision,
                              snapshot_id=snapshot_id)
         finally:
             if pushed_file != to_deploy:
@@ -11920,7 +11921,8 @@ def deploy_artifacts(args):
     parser.add_argument('--uploader', action='store', help='Uploader')
     args = parser.parse_args(args)
 
-    snapshot_id = uuid.uuid4()
+    primary_revision = _primary_suite.vc.parent(_primary_suite.vc_dir)
+    snapshot_id = f"{primary_revision[:10]}-{uuid.uuid4()}"
 
     def versionGetter(suite):
         if args.version_string:
@@ -11945,7 +11947,7 @@ def deploy_artifacts(args):
                 abort(f"'{dist.name}' is not built, run 'mx build' first")
 
         log(f'Deploying {s.name} distributions for version {versionGetter(s)}')
-        _deploy_dists(dists=dists, version_getter=versionGetter, snapshot_id=snapshot_id, uploader=args.uploader, skip_existing=args.skip_existing, dry_run=args.dry_run)
+        _deploy_dists(dists=dists, version_getter=versionGetter, primary_revision=primary_revision, snapshot_id=snapshot_id, uploader=args.uploader, skip_existing=args.skip_existing, dry_run=args.dry_run)
         has_deployed_dist = True
     if not has_deployed_dist:
         abort("No distribution was deployed!")
@@ -18365,7 +18367,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.11") # [GR-43395] Use primary suite's revision as main revision in deploy_artifacts
+version = VersionSpec("6.14.12") # GR-43395 - Use primary suite's revision as main revision in deploy_artifacts
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
