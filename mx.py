@@ -14023,9 +14023,10 @@ class JDKConfig(Comparable):
             if any(arg.startswith('-javaagent') and agent_path in arg for arg in args):
                 return []
             # jacoco flags might change in-process -> do not cache
-            if self.javaCompliance.value < 9:
+            jacaco_args = mx_gate.get_jacoco_agent_args() or []
+            if jacaco_args and self.javaCompliance.value < 9:
                 abort('Using jacoco agent only supported on JDK 9+ as it requires Java Command-Line argument files')
-            return mx_gate.get_jacoco_agent_args() or []
+            return jacaco_args
 
         if addDefaultArgs:
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args
@@ -18367,7 +18368,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.12") # GR-43395 - Use primary suite's revision as main revision in deploy_artifacts
+version = VersionSpec("6.14.13") # GR-43158 - make JaCoCo related JDK version check lazier
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
