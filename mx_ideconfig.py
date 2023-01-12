@@ -178,7 +178,7 @@ def fsckprojects(args):
                 if suite.vc:
                     omitted.append(suite.vc.metadir())
                 dirnames[:] = [d for d in dirnames if d not in omitted]
-            elif dirpath == suite.get_output_root():
+            elif dirpath == suite.get_output_root(platformDependent=False, jdkDependent=False):
                 # don't want to traverse output dir
                 dirnames[:] = []
             elif dirpath == suite.mxDir:

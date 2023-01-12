@@ -1829,7 +1829,7 @@ class Suite(object):
             attr_name = f'.output_root_{config}'
             res = getattr(self, attr_name, None)
             if res is None:
-                res = join(self.dir, 'mxbuild', config)
+                res = join(self.dir, 'mxbuild', config) if config != '' else join(self.dir, 'mxbuild')
                 setattr(self, attr_name, res)
             return res
 
