@@ -942,6 +942,9 @@ def _make_coverage_report(output_directory,
             if isinstance(p, mx.ClasspathDependency):
                 if omit_excluded and p.is_test_project():  # skip test projects when omit-excluded
                     continue
+                if not getattr(p, 'defaultBuild', True):   # skip projects that are not built by default
+                    if omit_excluded or not os.path.exists(p.classpath_repr(jdk)):
+                        continue
                 source_dirs = []
                 if p.isJavaProject():
                     if exclude_generated_sources:
@@ -1203,7 +1206,7 @@ def coverage_upload(args):
 
     with mx.Archiver(os.path.realpath(coverage_sources), kind='tgz') as sources, mx.Archiver(os.path.realpath(coverage_binaries), kind='tgz') as binaries:
         def _visit_deps(dep, edge):
-            if dep.isJavaProject() and not dep.is_test_project():
+            if dep.isJavaProject() and not dep.is_test_project() and getattr(dep, 'defaultBuild', True):
                 binaries.zf.add(dep.output_dir(), dep.name)
                 for d in dep.source_dirs():
                     sources.zf.add(d, dep.name)
