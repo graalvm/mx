@@ -30,12 +30,83 @@ import os, time, zipfile, tempfile
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
+from contextlib import ExitStack
 from os.path import join, basename, dirname, exists, isdir, abspath
 from io import StringIO
 
 import mx
 import mx_ideconfig
 import mx_javamodules
+
+
+def init_and_format_files(eclipse_exe, config, files):
+    """Wrapper for :func:`format_files` that automatically initializes the workspace and eclipse ini
+    with a temporary configuration"""
+
+    wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
+    with TempEclipseIni(eclipse_exe) as tmp_eclipseini:
+        format_files(eclipse_exe, wsroot, tmp_eclipseini.name, config, files)
+
+
+def format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
+    """Formats a list of files with the given Eclipse instance
+
+    :param eclipse_exe the eclipse executable to use for formatting
+    :param wsroot an initialized eclipse workspace root
+    :param eclipse_ini the eclipse ini configuration file to use
+    :param config the JavaCodeFormatter config to use
+    :param files a list of file paths to format
+    """
+
+    capture = mx.OutputCapture()
+    jdk = mx.get_jdk()
+    rc = mx.run([eclipse_exe,
+                 '--launcher.ini', eclipse_ini,
+                 '-nosplash',
+                 '-application',
+                 '-consolelog',
+                 '-data', wsroot,
+                 '-vm', jdk.java,
+                 'org.eclipse.jdt.core.JavaCodeFormatter',
+                 '-config', config]
+                + files, out=capture, err=capture, nonZeroIsFatal=False)
+    if rc != 0:
+        mx.log(capture.data)
+        mx.abort("Error while running formatter")
+
+
+class TempEclipseIni:
+    """Context manager that initializes a temporary eclipse ini file for the given eclipse executable.
+    Upon exit, the temporary configuration file is automatically removed."""
+
+    def __init__(self, eclipse_exe):
+        self.eclipse_exe = eclipse_exe
+        self.tmp_eclipseini = tempfile.NamedTemporaryFile(mode='w')
+
+    def __enter__(self):
+        # Use an ExitStack to make sure that the NamedTemporaryFile is closed in case
+        # there is an exception while writing its content
+        with ExitStack() as stack:
+            stack.enter_context(self.tmp_eclipseini)
+            with open(join(dirname(self.eclipse_exe),
+                           join('..', 'Eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
+                locking_added = False
+                for line in src.readlines():
+                    self.tmp_eclipseini.write(line)
+                    if line.strip() == '-vmargs':
+                        self.tmp_eclipseini.write('-Dosgi.locking=none\n')
+                        locking_added = True
+                if not locking_added:
+                    self.tmp_eclipseini.write('-vmargs\n-Dosgi.locking=none\n')
+            self.tmp_eclipseini.flush()
+
+            # Everything went fine, we will close the NamedTemporaryFile in our own exit method
+            stack.pop_all()
+            return self.tmp_eclipseini
+
+    def __exit__(self, *args):
+        self.tmp_eclipseini.__exit__(*args)
+
 
 @mx.command('mx', 'eclipseformat')
 def eclipseformat(args):
@@ -53,22 +124,13 @@ def eclipseformat(args):
     parser.add_argument('--filelist', type=FileType("r"), help='only format the files listed in the given file')
 
     args = parser.parse_args(args)
-    if args.eclipse_exe is None:
-        args.eclipse_exe = os.environ.get('ECLIPSE_EXE')
-    if args.eclipse_exe is None:
-        mx.abort('Could not find Eclipse executable. Use -e option or ensure ECLIPSE_EXE environment variable is set.')
     if args.restore:
         args.backup = False
 
-    # Maybe an Eclipse installation dir was specified - look for the executable in it
-    if isdir(args.eclipse_exe):
-        args.eclipse_exe = join(args.eclipse_exe, mx.exe_suffix('eclipse'))
-        mx.warn("The eclipse-exe was a directory, now using " + args.eclipse_exe)
+    eclipse_exe = locate_eclipse_exe(args.eclipse_exe)
 
-    if not os.path.isfile(args.eclipse_exe):
-        mx.abort('File does not exist: ' + args.eclipse_exe)
-    if not os.access(args.eclipse_exe, os.X_OK):
-        mx.abort('Not an executable file: ' + args.eclipse_exe)
+    if eclipse_exe is None:
+        mx.abort('Could not find Eclipse executable. Use -e option or ensure ECLIPSE_EXE environment variable is set.')
 
     filelist = None
     if args.filelist:
@@ -150,35 +212,9 @@ def eclipseformat(args):
         batch_num += 1
         mx.log(f"Processing batch {batch_num} ({len(javafiles)} files)...")
 
-        jdk = mx.get_jdk()
-
-        with tempfile.NamedTemporaryFile(mode='w') as tmp_eclipseini:
-            with open(join(dirname(args.eclipse_exe), join('..', 'Eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
-                locking_added = False
-                for line in src.readlines():
-                    tmp_eclipseini.write(line)
-                    if line.strip() == '-vmargs':
-                        tmp_eclipseini.write('-Dosgi.locking=none\n')
-                        locking_added = True
-                if not locking_added:
-                    tmp_eclipseini.write('-vmargs\n-Dosgi.locking=none\n')
-            tmp_eclipseini.flush()
-
+        with TempEclipseIni(eclipse_exe) as tmp_eclipseini:
             for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-                capture = mx.OutputCapture()
-                rc = mx.run([args.eclipse_exe,
-                          '--launcher.ini', tmp_eclipseini.name,
-                          '-nosplash',
-                          '-application',
-                          '-consolelog',
-                          '-data', wsroot,
-                          '-vm', jdk.java,
-                          'org.eclipse.jdt.core.JavaCodeFormatter',
-                          '-config', batch.path]
-                            + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
-                if rc != 0:
-                    mx.log(capture.data)
-                    mx.abort("Error while running formatter")
+                format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk])
                 for fi in chunk:
                     if fi.update(batch.removeTrailingWhitespace, args.restore):
                         modified.append(fi)
@@ -209,6 +245,32 @@ def eclipseformat(args):
             args.patchfile.close()
         return 1
     return 0
+
+
+def locate_eclipse_exe(eclipse_exe):
+    """
+    Tries to locate an Eclipse executable starting with the given path.
+    If the path is None, checks the ECLIPSE_EXE environment variable.
+    If the path is a directory, tries to locate the eclipse executable below the directory.
+    If the path is a file, ensures that the file is executable.
+    Returns a path to the Eclipse executable if one could be found, None otherwise.
+    """
+
+    if eclipse_exe is None:
+        eclipse_exe = os.environ.get('ECLIPSE_EXE')
+    if eclipse_exe is None:
+        return None
+    # Maybe an Eclipse installation dir was specified - look for the executable in it
+    if isdir(eclipse_exe):
+        eclipse_exe = join(eclipse_exe, mx.exe_suffix('eclipse'))
+        mx.warn("The eclipse-exe was a directory, now using " + eclipse_exe)
+    if not os.path.isfile(eclipse_exe):
+        mx.abort('File does not exist: ' + eclipse_exe)
+    if not os.access(eclipse_exe, os.X_OK):
+        mx.abort('Not an executable file: ' + eclipse_exe)
+
+    return eclipse_exe
+
 
 def _source_locator_memento(deps, jdk=None):
     slm = mx.XMLDoc()
