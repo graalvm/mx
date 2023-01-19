@@ -39,16 +39,16 @@ import mx_ideconfig
 import mx_javamodules
 
 
-def init_and_format_files(eclipse_exe, config, files):
-    """Wrapper for :func:`format_files` that automatically initializes the workspace and eclipse ini
+def eclipseinit_and_format_files(eclipse_exe, config, files):
+    """Wrapper for :func:`_format_files` that automatically initializes the workspace and eclipse ini
     with a temporary configuration"""
 
     wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
-    with TempEclipseIni(eclipse_exe) as tmp_eclipseini:
-        format_files(eclipse_exe, wsroot, tmp_eclipseini.name, config, files)
+    with _TempEclipseIni(eclipse_exe) as tmp_eclipseini:
+        _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, config, files)
 
 
-def format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
+def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
     """Formats a list of files with the given Eclipse instance
 
     :param eclipse_exe the eclipse executable to use for formatting
@@ -75,7 +75,7 @@ def format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
         mx.abort("Error while running formatter")
 
 
-class TempEclipseIni:
+class _TempEclipseIni:
     """Context manager that initializes a temporary eclipse ini file for the given eclipse executable.
     Upon exit, the temporary configuration file is automatically removed."""
 
@@ -212,9 +212,9 @@ def eclipseformat(args):
         batch_num += 1
         mx.log(f"Processing batch {batch_num} ({len(javafiles)} files)...")
 
-        with TempEclipseIni(eclipse_exe) as tmp_eclipseini:
+        with _TempEclipseIni(eclipse_exe) as tmp_eclipseini:
             for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-                format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk])
+                _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk])
                 for fi in chunk:
                     if fi.update(batch.removeTrailingWhitespace, args.restore):
                         modified.append(fi)
