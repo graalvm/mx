@@ -200,14 +200,18 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
 
     version_update_check:: self.with_name("version-update-check") + {
         run: [
-            [ path("./tag_version.py"), "--check-only", "HEAD" ],
+            [ path("./ci/check_version.py") ],
         ],
     },
 
+    # Applies and pushes a tag equal to `mx version` if no such
+    # tag already exists.
     post_merge_tag_version:: self.with_name("post-merge-tag-version") + {
       targets: ["post-merge"],
       run: [
-          [ path("./tag_version.py"), "HEAD" ],
+          ["set-export", "MX_NEW_TAG", [mx, "version"]],
+          ["git", "show", "$MX_NEW_TAG", "||", "git", "tag", "$MX_NEW_TAG", "HEAD"],
+          ["git", "push", "origin", "HEAD"],
       ],
       notify_groups:: ["mx_git_tag"]
     }
