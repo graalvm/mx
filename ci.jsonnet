@@ -211,7 +211,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
       run: [
           ["set-export", "MX_NEW_TAG", [mx, "version"]],
           ["git", "show", "$MX_NEW_TAG", "||", "git", "tag", "$MX_NEW_TAG", "HEAD"],
-          ["git", "push", "origin", "HEAD"],
+          ["git", "push", "origin", "$MX_NEW_TAG"],
       ],
       notify_groups:: ["mx_git_tag"]
     }
