@@ -18368,7 +18368,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.15") # GR-43668 - mx version check can return a false positive
+version = VersionSpec("6.14.16") # GR-43676 - fix pushing of new tag
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
