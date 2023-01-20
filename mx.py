@@ -18367,8 +18367,8 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-# The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.14.16") # GR-43676 - fix pushing of new tag
+# The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
+version = VersionSpec("6.14.17") # GR-43508 - Provide API for formatting files with eclipseformat
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
