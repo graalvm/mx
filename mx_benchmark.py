@@ -2771,6 +2771,9 @@ class BenchmarkExecutor(object):
           "warnings": "",
         }
 
+        if mx.get_env("MACHINE_CONFIG_HASH", default=None):
+            standard.update({"machine.config-hash": mx.get_env("MACHINE_CONFIG_HASH")})
+
         standard.update(suite.suiteDimensions())
         standard.update(self.extras(mxBenchmarkArgs))
 
