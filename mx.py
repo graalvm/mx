@@ -18368,7 +18368,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.14.17") # GR-43508 - Provide API for formatting files with eclipseformat
+version = VersionSpec("6.14.18") # GR-42792 capture MACHINE_CONFIG_HASH in benchmark results
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
