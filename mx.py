@@ -14577,7 +14577,7 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
             min_jdt_version = VersionSpec('3.27')
 
     if java_project_compliance and java_project_compliance > '16':
-        return None
+        min_jdt_version = VersionSpec('3.32')
 
     if spec.startswith('builtin'):
         available = {VersionSpec(lib.maven['version']): lib for lib in _libs.values() if lib.suite is _mx_suite and lib.name.startswith('ECJ_')
@@ -18368,7 +18368,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.14.18") # GR-42792 capture MACHINE_CONFIG_HASH in benchmark results
+version = VersionSpec("6.14.20") # GR-43901 support ECJ compilation with compliance >= 17
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
