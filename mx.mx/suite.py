@@ -710,7 +710,7 @@ suite = {
       },
       "licence": "EPL-2.0",
     },
-    
+
     # compatible version for JDK >= 17
     "ECJ_3.32": {
       "digest": "sha512:62b19c6701547cb30922fd336a0d40fb0610279a732a93673910954028b79d69e0e3175494d20d3dae9bf4b844677c6bc5d29f337f45b6988bcfaf93b3787602",
@@ -721,7 +721,7 @@ suite = {
       },
       "licence": "EPL-2.0",
     },
-    
+
   },
 
   "licenses" : {
