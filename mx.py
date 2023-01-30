@@ -18371,7 +18371,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.15.3") # GR-44311 add new checkstyle version
+version = VersionSpec("6.16.0") # GR-42362 update to ProGuard that supports JDK 20
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
