@@ -14576,7 +14576,10 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
         elif jdk.javaCompliance <= '17':
             min_jdt_version = VersionSpec('3.27')
 
-    if java_project_compliance and java_project_compliance > '16':
+    if java_project_compliance and java_project_compliance >= '18':
+        # not yet supported. see GR-43914.
+        return None
+    elif java_project_compliance and java_project_compliance >= '17':
         min_jdt_version = VersionSpec('3.32')
 
     if spec.startswith('builtin'):
