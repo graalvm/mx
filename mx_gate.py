@@ -174,7 +174,7 @@ class Task:
                     'duration': str(self.duration)
                 }]
                 component = mx.primary_suite().name if self.report is True else str(self.report)
-                make_test_report(test_results, component=component, tags={'task' : self.title})
+                make_test_report(test_results, self.title, component=component)
 
     @staticmethod
     def _human_fmt(num):
@@ -1463,7 +1463,7 @@ def _unpack_test_results(test_results):
 
     return test_results
 
-def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails=False):
+def make_test_report(test_results, task, component=None, tags=None, fatalIfUploadFails=False):
     """
     Creates a test report based on `test_results`. The report is a dict with the following fields:
         repo: simple name of git repository containing the primary suite (e.g., "graal")
@@ -1476,7 +1476,7 @@ def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails
                 build = get_env('BUILD_NAME', 'unclassified')
                 comp = component or mx.primary_suite().name
             Example: "gate-test-java11-compiler-linux-amd64-vectorization_compiler"
-        tags: key/value pairs describing the test configuration. (e.g., {"task": "BootstrapWithSystemAssertions"})
+        tags: key/value pairs describing the test configuration. (e.g., {"gcc-version": "7.4"})
         tests: `test_results`
 
     If ${MX_TEST_REPORTS_LOCATION} is defined, then the report is uploaded as a gzipped JSON document
@@ -1502,6 +1502,7 @@ def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails
                name: unique name for the test
                status: "PASSED", "FAILED" or "IGNORED"
                duration: duration of test in milliseconds
+    :param task: a name that can be used to differentiate between different configurations that run the same tests
     :param component: name of the tested component. Defaults to the name of the primary suite.
     :param tags: dict describing test details that make it unique compared to other test reports
              with the same `testCollection` value (e.g., {'task': 'XcompUnitTests: hosted-product compiler' }).
@@ -1518,6 +1519,9 @@ def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails
     results_timestamp = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
     build = mx.get_env("BUILD_NAME", "unclassified")
 
+    if tags is None:
+        tags = dict()
+
     # Ensure tags has a job_type entry
     if 'job_type' not in tags:
         job_types = {"gate", "post-merge", "ondemand", "daily", "weekly", "bench"}
@@ -1533,6 +1537,7 @@ def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails
         'arch': mx.get_arch(),
         'java_version': java_version,
         'component': component,
+        'task': task,
     }
     conflicting_tags = frozenset(predefined_tags.keys()).intersection(tags.keys())
     if conflicting_tags:
@@ -1549,6 +1554,10 @@ def make_test_report(test_results, component=None, tags=None, fatalIfUploadFails
         'tags': tags,
         'tests': test_results
     }
+
+    mandatory_tags = {'os', 'arch', 'java_version', 'component', 'job_type', 'task'}
+    missing_tags = frozenset(tags.keys()).difference(mandatory_tags)
+    assert len(missing_tags) == 0, f'The following mandatory tags are missing in the test report: {", ".join(missing_tags)}'
 
     upload_url_base = mx.get_env('MX_TEST_REPORTS_LOCATION')
     if upload_url_base is not None:
