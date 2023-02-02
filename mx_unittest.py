@@ -598,7 +598,10 @@ def unittest(args, test_report_tags=None):
         _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
         if make_test_report:
             import mx_gate
-            return mx_gate.make_test_report(test_results, tags=test_report_tags)
+            assert 'task' in test_report_tags, 'Task tag is mandatory'
+            task = test_report_tags['task']
+            test_report_tags.pop('task')
+            return mx_gate.make_test_report(test_results, task, tags=test_report_tags)
     except UnicodeDecodeError as e:
         mx.log(f"Cannot decode '{test_results}'")
         delete_test_results = False
