@@ -15,16 +15,28 @@ local catch_files = common.catch_files + [
   "Cannot decode '(?P<filename>[^']+)'"
 ];
 
+local composable(o) =
+std.foldl(function(obj, key)
+  obj +
+   if std.type(o[key]) == "object" then
+     { [key] +: composable(o[key]) }
+   else
+     { [key] : o[key] },
+  std.objectFields(o),
+  {}
+);
+
 # this uses <os>_<arch> or <os> depending on what field is available in 'common.json'
 # if 'common.json' is migrated to jsonnet, we could simplify this by providing reasonable defaults there
-local deps(project, os, arch) = if std.objectHasAll(common[project].deps, os) then common.sulong.deps[os] else common.sulong.deps[os + "_" + arch];
+local deps(os, arch) = composable(if std.objectHasAll(common.sulong.deps, os) then common.sulong.deps[os] else common.sulong.deps[os + "_" + arch])
+    + composable(if std.objectHasAll(common.sulong.deps, "common") then common.sulong.deps.common else {});
 
 # Common configuration for all gates. Specific gates are defined
 # by the functions at the bottom of this object.
 #
 # This structure allows for easily changing the
 # platform details of a gate builder.
-local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch) + {
+local with(os, arch, java_release, timelimit="15:00") = deps(os, arch) + {
     local path(unixpath) = if os == "windows" then std.strReplace(unixpath, "/", "\\") else unixpath,
     local exe(unixpath) = if os == "windows" then path(unixpath) + ".exe" else unixpath,
     local copydir(src, dst) = if os == "windows" then ["xcopy", path(src), path(dst), "/e", "/i", "/q"] else ["cp", "-r", src, dst],
@@ -49,9 +61,10 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
     capabilities: [os, arch],
     packages+: {
         "pip:pylint": "==" + versions.pylint,
-        "gcc": "==" + versions.gcc,
         "python3": "==" + versions.python3,
-    },
+    } + if os == "linux" then {
+        "devtoolset": "==" + versions.devtoolset,
+    } else {},
     downloads+: common.downloads.eclipse.downloads + {
         JAVA_HOME: jdks["labsjdk-ee-%s" % java_release]
     },
@@ -158,7 +171,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
         ],
     },
 
-    build_truffleruby:: self.with_name("gate-build-truffleruby") + deps("sulong", os, arch) + openssl102_for_ruby + {
+    build_truffleruby:: self.with_name("gate-build-truffleruby") + deps(os, arch) + openssl102_for_ruby + {
         packages+: {
             ruby: ">=" + versions.ruby,
             python3: "==" + versions.python3,
@@ -174,7 +187,7 @@ local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch)
         ],
     },
 
-    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + deps("sulong", os, arch) + {
+    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + deps(os, arch) + {
         packages+: {
             git: ">=" + versions.git,
             devtoolset: "==" + versions.devtoolset,
