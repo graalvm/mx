@@ -840,6 +840,15 @@ suite = {
             "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=riscv64", "-std=gnu99"],
           }
         },
+        "linux-musl": {
+          "amd64": {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-Wno-error=cpp", "-O", "-g", "-DJVMTI_ASM_ARCH=amd64", "-std=gnu99"],
+            "ldflags" : ["-lrt"],
+          },
+          "aarch64": {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-Wno-error=cpp", "-O", "-g", "-DJVMTI_ASM_ARCH=aarch64", "-std=gnu99"],
+          },
+        },
         "darwin": {
             "<others>": {
                 "ignore": "mac is currently not supported",
