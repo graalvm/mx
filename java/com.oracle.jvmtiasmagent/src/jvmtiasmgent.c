@@ -29,7 +29,7 @@
 #include <time.h>
 #include <limits.h>
 #include <pthread.h>
-#include <sys/errno.h>
+#include <errno.h>
 #include <arpa/inet.h>
 
 #include <jni.h>
