@@ -2445,7 +2445,7 @@ class Suite(object):
 
         if os_arch:
             os_variant_list = [get_os() + '-' + v for v in [get_os_variant()] if v]
-            os_attrs = Suite._pop_any([get_os()] + os_variant_list + ['<others>'], os_arch)
+            os_attrs = Suite._pop_any(os_variant_list + [get_os(), '<others>'], os_arch)
             if os_attrs:
                 arch_attrs = Suite._pop_any([get_arch(), '<others>'], os_attrs)
                 if arch_attrs is not None:
@@ -18371,7 +18371,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.14.21") # GR-42205
+version = VersionSpec("6.15.0") # musl
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
