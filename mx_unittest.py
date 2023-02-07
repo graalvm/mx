@@ -534,7 +534,7 @@ def unittest(args, test_report_tags=None):
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--max-class-failures', help='stop after N test classes that have a failure (default is no limit)', type=is_strictly_positive, metavar='<N>', dest='JUnitMaxClassFailures', action=MxJUnitWrapperArg)
     parser.add_argument('--fail-fast', help='alias for --max-class-failures=1', dest='JUnitFailFast', action=MxJUnitWrapperBoolArg)
-    parser.add_argument('--enable-timing', help='enable JUnit test timing (requires --verbose/--very-verbose)', dest='JUnitEnableTiming', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--enable-timing', help='enable JUnit test timing (always on - option retained for compatibility)', dest='JUnitEnableTiming', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
     parser.add_argument('--color', help='enable color output', dest='JUnitColor', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--gc-after-test', help='force a GC after each test', dest='JUnitGCAfterTest', action=MxJUnitWrapperBoolArg)
@@ -579,6 +579,9 @@ def unittest(args, test_report_tags=None):
                 parsed_args.blacklist = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
         except IOError:
             mx.log('warning: could not read blacklist: ' + parsed_args.blacklist)
+
+    if '-JUnitEnableTiming' not in junit_args:
+        junit_args.append('-JUnitEnableTiming')
 
     if parsed_args.eager_stacktrace is None:
         junit_args.append('-JUnitEagerStackTrace')
