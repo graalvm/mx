@@ -270,10 +270,11 @@ public class MxJUnitWrapper {
 
     public static Result runRequest(JUnitCore junitCore, JUnitSystem system, MxJUnitConfig config, MxJUnitRequest mxRequest) {
         final TextRunListener textListener;
+        int classesCount = mxRequest.classes.size();
         if (config.veryVerbose) {
-            textListener = new VerboseTextListener(system, mxRequest.classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
+            textListener = new VerboseTextListener(system, classesCount, VerboseTextListener.SHOW_ALL_TESTS);
         } else if (config.verbose) {
-            textListener = new VerboseTextListener(system, mxRequest.classes.size());
+            textListener = new VerboseTextListener(system, classesCount);
         } else {
             textListener = new TextRunListener(system);
         }
@@ -362,7 +363,7 @@ public class MxJUnitWrapper {
         final ResultCollectorDecorator finalResultLoggerDecorator = resultLoggerDecorator;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (config.enableTiming) {
-                printTimings(timings);
+                printTimings(timings, classesCount);
             }
             if (config.recordFailed != null || config.recordPassed != null) {
                 PrintStream passed = getResultStream(system, config.recordPassed);
@@ -408,7 +409,7 @@ public class MxJUnitWrapper {
     // of a command line option for customization is fine.
     private static final int TIMINGS_TO_PRINT = Integer.getInteger("mx.junit.timings_to_print", 10);
 
-    private static void printTimings(TimingDecorator timings) {
+    private static void printTimings(TimingDecorator timings, int classesCount) {
         if (TIMINGS_TO_PRINT != 0) {
             List<Timing<Class<?>>> classTimes = new ArrayList<>(timings.classTimes.size());
             List<Timing<Description>> testTimes = new ArrayList<>(timings.testTimes.size());
@@ -422,7 +423,7 @@ public class MxJUnitWrapper {
             testTimes.sort(Collections.reverseOrder());
 
             System.out.println();
-            System.out.printf("%d longest running test classes:%n", TIMINGS_TO_PRINT);
+            System.out.printf("%d longest running test classes after running %d of %d classes:%n", TIMINGS_TO_PRINT, classTimes.size(), classesCount);
             for (int i = 0; i < TIMINGS_TO_PRINT && i < classTimes.size(); i++) {
                 Timing<Class<?>> timing = classTimes.get(i);
                 System.out.printf(" %,10d ms    %s%n", timing.value, timing.subject.getName());
