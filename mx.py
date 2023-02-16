@@ -18371,7 +18371,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.15.1") # GR-44055 - enable timing unconditionally in mx unittest harness
+version = VersionSpec("6.15.2") # GR-44247 cmake source symlinks
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

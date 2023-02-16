@@ -44,11 +44,18 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         cmakeConfig: dict, optional
             Additional arguments passed to CMake in the form '-D{key}={value}'.
             Path substitution is performed on the values.
+        cmakeSubdir: str, optional
+            Subdirectory of sourceDir that contains the CMakeLists.txt. If omitted, CMakeLists.txt is assumed to be in sourceDir.
+        symlinkSource: bool, optional
+            Whether to symlink the source directory next to the build directory. This may be necessary to work around problems with
+            long paths on Windows.
     """
     def __init__(self, suite, name, deps, workingSets, subDir, ninja_targets=None, ninja_install_targets=None,
                  cmake_show_warnings=True, results=None, output=None, **args):
         projectDir = args.pop('dir', None)
         self._cmake_toolchain = args.pop('toolchain', None)
+        self._cmake_subdir = args.pop('cmakeSubdir', None)
+        self._symlink_source = args.pop('symlinkSource', False)
         if projectDir:
             d_rel = projectDir
         elif subDir is None:
@@ -110,8 +117,43 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
     def cmake_config(self):
         return [CMakeNinjaProject.config_entry(k, v) for k, v in sorted({**self._cmake_config_raw, **self._toolchain_config()}.items())]
 
+    def sourceDir(self, create=False):
+        src_dir = self.source_dirs()[0]
+        if self._symlink_source:
+            src_link = mx.join(self.out_dir, 'src')
+
+            if create:
+                def checklink():
+                    target = os.readlink(src_link)
+                    return os.path.samefile(src_dir, target)
+
+                def mklink():
+                    try:
+                        os.symlink(src_dir, src_link)
+                    except OSError:
+                        if os.path.lexists(src_link) and checklink():
+                            # assume another thread racily created the same link
+                            pass
+                        else:
+                            raise
+
+                if not os.path.exists(src_link):
+                    mklink()
+                elif os.path.islink(src_link):
+                    if not checklink():
+                        # update outdated source symlink (e.g. change in suite.py)
+                        os.unlink(src_link)
+                        mklink()
+                else:
+                    mx.abort(f"{src_link} already exists and is not a symlink!")
+
+            return src_link
+        return src_dir
+
     def generate_manifest(self, output_dir, filename, extra_cmake_config=None):
-        source_dir = self.source_dirs()[0]
+        source_dir = self.sourceDir(create=True)
+        if self._cmake_subdir:
+            source_dir = os.path.join(source_dir, self._cmake_subdir)
         cmakefile = os.path.join(output_dir, 'CMakeCache.txt')
         if os.path.exists(cmakefile):
             # remove cache file if it exist
@@ -171,7 +213,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
     def build(self):
         super(CMakeNinjaBuildTask, self).build()
         # write guard file
-        source_dir = self.subject.source_dirs()[0]
+        source_dir = self.subject.sourceDir()
         self._write_guard(source_dir, self.subject.cmake_config())
         # call install targets
         if self.subject._install_targets:
@@ -189,7 +231,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
         return source_dir + '\n' + '\n'.join(cmake_config)
 
     def _need_configure(self):
-        source_dir = self.subject.source_dirs()[0]
+        source_dir = self.subject.sourceDir()
         cmake_lists = os.path.join(source_dir, "CMakeLists.txt")
         guard_file = self.guard_file()
         cmake_config = self.subject.cmake_config()
