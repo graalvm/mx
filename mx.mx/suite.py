@@ -593,6 +593,16 @@ suite = {
       ],
     },
 
+    "PROGUARD_BASE_7_3_2_alpha" : {
+      "digest": "sha512:0dcdb47379b084a1d8358a837661111497db6919ce014e21e7772749967d996075e90717f49330b0b00374d65e122d0da211b48763d987c130567b676590bab1",
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/proguard-7.3.2-alpha.jar"],
+    },
+
+    "PROGUARD_RETRACE_7_3_2_alpha" : {
+      "digest": "sha512:f51074ef93c54b9dec6c629f4241ab4fb0e8ebc583b9293f1f95c37bc886a94dcdb95cdfa5eb9ac5e01611c289e7d7f56779627041481dd5c491894f2119313f",
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/retrace-7.3.2-alpha.jar"],
+    },
+
     "NINJA" : {
       "packedResource" : True,
       "version" : "1.10.2",
