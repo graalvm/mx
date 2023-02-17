@@ -337,7 +337,20 @@ suite = {
       }
     },
 
-    "CHECKSTYLE_8.36.1" : {
+    "CHECKSTYLE_10.7.0" : {
+      "urls" : [
+        "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.7.0/checkstyle-10.7.0-all.jar"
+      ],
+      "digest": "sha512:5527f5fca9870d02f691b4d34459386d203558414bdbfb2a117af698101487b4ab6387174e600745a7d1acf0a0358d78bb219d0fba47e4b7ef9365395b0b41b6",
+      "licence" : "LGPLv21",
+      "maven" : {
+        "groupId" : "com.puppycrawl.tools",
+        "artifactId" : "checkstyle",
+        "version" : "10.7.0",
+      }
+    },
+
+     "CHECKSTYLE_8.36.1" : {
       "urls" : [
         "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-8.36.1/checkstyle-8.36.1-all.jar"
       ],
