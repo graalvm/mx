@@ -2668,7 +2668,7 @@ class PsrecordTracker(Tracker):
             mx.abort("Memory tracking requires the 'psrecord' dependency. Install it with: 'pip install psrecord'")
 
         self.most_recent_text_output = text_output
-        return ["psrecord", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
+        return ["psrecord", "--interval", "0.050", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
 
     def get_rules(self, bmSuiteArgs):
         return [PsrecordTracker.PsrecordRule(self, bmSuiteArgs)]
