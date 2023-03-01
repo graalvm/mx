@@ -18371,7 +18371,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.16.1") # GR-44550
+version = VersionSpec("6.16.2") # GR-44520 add benchmark RSS percentile metrics using psrecord.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
