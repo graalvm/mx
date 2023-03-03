@@ -7104,7 +7104,7 @@ class JavaProject(Project, ClasspathDependency):
             outputDir = self.output_dir()
             for root, _, files in os.walk(srcDir):
                 for name in files:
-                    if name.endswith('.java') and name != 'package-info.java':
+                    if name.endswith('.java') and not name.endswith('-info.java'):
                         matchingLineFound = None
                         source = join(root, name)
                         with open(source) as f:
@@ -7147,7 +7147,7 @@ class JavaProject(Project, ClasspathDependency):
             self.walk_deps(visit=visit)
             for sourceDir in self.source_dirs():
                 for root, _, files in os.walk(sourceDir):
-                    javaSources = [name for name in files if name.endswith('.java')]
+                    javaSources = [name for name in files if name.endswith('.java') and name != 'module-info.java']
                     if len(javaSources) != 0:
                         path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
                         if path_package not in depPackages:
@@ -7174,7 +7174,7 @@ class JavaProject(Project, ClasspathDependency):
             importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.(?:(?:[A-Z][a-zA-Z\d_$]*)|\*)')
             for sourceDir in self.source_dirs():
                 for root, _, files in os.walk(sourceDir):
-                    javaSources = [name for name in files if name.endswith('.java')]
+                    javaSources = [name for name in files if name.endswith('.java') and name != 'module-info.java']
                     if len(javaSources) != 0:
                         path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
                         if path_package in depPackages:
@@ -15906,7 +15906,7 @@ def checkstyle(args):
         for sourceDir in sourceDirs:
             javafilelist = []
             for root, _, files in os.walk(sourceDir):
-                for f in [join(root, name) for name in files if name.endswith('.java') if name != 'package-info.java']:
+                for f in [join(root, name) for name in files if name.endswith('.java') if not name.endswith('-info.java')]:
                     if filelist is None or f in filelist:
                         javafilelist.append(f)
             if len(javafilelist) == 0:
@@ -18371,7 +18371,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.16.2") # GR-44520 add benchmark RSS percentile metrics using psrecord.
+version = VersionSpec("6.16.3") # GR-44614 better support for module-info.java
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
