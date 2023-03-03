@@ -3126,7 +3126,10 @@ class BenchmarkExecutor(object):
                                     results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
-                            failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
+                            if benchnames and len(benchnames) > 0:
+                                failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
+                            else:
+                                failed_benchmarks.append(f"{suite.name()}")
                             mx.log(traceback.format_exc())
                             if mxBenchmarkArgs.fail_fast:
                                 mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
