@@ -10261,6 +10261,8 @@ class GitConfig(VC):
     def _clone(self, url, dest=None, branch=None, rev=None, abortOnError=True, **extra_args):
         hashed_url = hashlib.sha1(url.encode()).hexdigest()
         cmd = ['git', 'clone']
+        if extra_args.get('quiet'):
+            cmd += ['--quiet']
         if rev and self.object_cache_mode == 'refcache' and GitConfig._is_hash(rev):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
@@ -16805,7 +16807,8 @@ def sclone(args):
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
     parser.add_argument('--subdir', help='sub-directory containing the suite in the repository (suite name)')
     parser.add_argument('--dest', help='destination directory (default basename of source)', metavar='<path>')
-    parser.add_argument('--revision', help='revision to checkout')
+    parser.add_argument('--revision', '--branch', '-b', help='revision to checkout')
+    parser.add_argument('--quiet', '-q', action='store_true', help='operate quietly (only for git clone).')
     parser.add_argument("--no-imports", action='store_true', help='do not clone imported suites')
     parser.add_argument("--kind", help='vc kind for URL suites', default='hg')
     parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
@@ -16850,7 +16853,7 @@ def sclone(args):
     dest_dir = join(dest, args.subdir) if args.subdir else dest
     source = mx_urlrewrites.rewriteurl(source)
     vc = vc_system(args.kind)
-    vc.clone(source, rev=revision, dest=dest)
+    vc.clone(source, rev=revision, dest=dest, quiet=args.quiet)
     mxDir = _is_suite_dir(dest_dir)
     if not mxDir:
         warn(f"'{dest_dir}' is not an mx suite")
@@ -18371,7 +18374,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.16.3") # GR-44614 better support for module-info.java
+version = VersionSpec("6.16.4") # GR-27301 support for --branch and --quiet in sclone
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
