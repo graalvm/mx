@@ -278,7 +278,7 @@ public class MxJUnitWrapper {
         } else {
             textListener = new TextRunListener(system);
         }
-        TimingDecorator timings = config.enableTiming ? new TimingDecorator(textListener) : null;
+        TimingAndDiskUsageDecorator timings = config.enableTiming ? new TimingAndDiskUsageDecorator(textListener) : null;
         MxRunListener mxListener = config.enableTiming ? timings : textListener;
         ResultCollectorDecorator resultLoggerDecorator = null;
 
@@ -409,7 +409,7 @@ public class MxJUnitWrapper {
     // of a command line option for customization is fine.
     private static final int TIMINGS_TO_PRINT = Integer.getInteger("mx.junit.timings_to_print", 10);
 
-    private static void printTimings(TimingDecorator timings, int classesCount) {
+    private static void printTimings(TimingAndDiskUsageDecorator timings, int classesCount) {
         if (TIMINGS_TO_PRINT != 0) {
             List<Timing<Class<?>>> classTimes = new ArrayList<>(timings.classTimes.size());
             List<Timing<Description>> testTimes = new ArrayList<>(timings.testTimes.size());

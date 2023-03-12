@@ -24,26 +24,35 @@
  */
 package com.oracle.mxtool.junit;
 
+import java.io.IOException;
+import java.nio.file.FileStore;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.runner.Description;
 
 /**
- * Timing support for JUnit test runs.
+ * Timing and disk usage support for JUnit test runs.
  */
-class TimingDecorator extends MxRunListenerDecorator {
+class TimingAndDiskUsageDecorator extends MxRunListenerDecorator {
 
     private long startTime;
     private long classStartTime;
     private Description currentTest;
     final Map<Class<?>, Long> classTimes;
     final Map<Description, Long> testTimes;
+    private final FileStore fileStore;
+    private final String totalDiskSpace;
 
-    TimingDecorator(MxRunListener l) {
+    TimingAndDiskUsageDecorator(MxRunListener l) {
         super(l);
         this.classTimes = new ConcurrentHashMap<>();
         this.testTimes = new ConcurrentHashMap<>();
+        FileStore fs = initFileStore();
+        this.fileStore = fs;
+        this.totalDiskSpace = fs == null ? null : initTotalDiskSpace(fs);
     }
 
     @Override
@@ -57,7 +66,7 @@ class TimingDecorator extends MxRunListenerDecorator {
         long totalTime = System.nanoTime() - classStartTime;
         super.testClassFinished(clazz, numPassed, numFailed, numIgnored, numAssumptionFailed);
         if (beVerbose()) {
-            getWriter().print(' ' + valueToString(totalTime));
+            getWriter().print(' ' + valueToString(totalTime) + getDiskStats());
         }
         classTimes.put(clazz, totalTime / 1_000_000);
     }
@@ -87,7 +96,7 @@ class TimingDecorator extends MxRunListenerDecorator {
     }
 
     /**
-     * Gets the test currently starting but not yet completed along with the number of milliseconds
+     * Gets the test currently started but not yet completed along with the number of milliseconds
      * it has been executing.
      *
      * @return {@code null} if there is no test currently executing
@@ -99,5 +108,53 @@ class TimingDecorator extends MxRunListenerDecorator {
             return new Object[]{current, timeMS};
         }
         return null;
+    }
+
+    private static final String[] SIZE_UNITS = {"", "K", "M", "G"};
+
+    static String humanFormat(long num) {
+        double n = num;
+
+        for (String unit : SIZE_UNITS) {
+            if (Math.abs(n) < 1024) {
+                return String.format("%3.1f%sB", n, unit);
+            }
+            n /= 1024;
+        }
+        return String.format("%.1fTB", n);
+    }
+
+    private String getDiskStats() {
+        String diskStats = "";
+        if (fileStore != null) {
+            try {
+                diskStats = String.format(", [disk (free/total): %s/%s]",
+                                humanFormat(fileStore.getUnallocatedSpace()),
+                                totalDiskSpace);
+            } catch (IOException e) {
+                diskStats = String.format(", [disk (free/total): %s]", e);
+            }
+        }
+        return diskStats;
+    }
+
+    private static FileStore initFileStore() {
+        FileStore fs = null;
+        try {
+            fs = Files.getFileStore(Paths.get("."));
+        } catch (IOException e) {
+            System.err.printf("Could not obtain FileStore for %s: %s%n",
+                            Paths.get(".").toAbsolutePath(), e);
+        }
+        return fs;
+    }
+
+    private static String initTotalDiskSpace(FileStore fs) {
+        try {
+            return humanFormat(fs.getTotalSpace());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 }
