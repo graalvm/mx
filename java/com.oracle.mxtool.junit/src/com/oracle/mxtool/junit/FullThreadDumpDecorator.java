@@ -81,8 +81,8 @@ public class FullThreadDumpDecorator extends MxRunListenerDecorator {
                         ti.getThreadName(),
                         ti.isDaemon() ? "daemon" : "",
                         ti.getPriority(),
-                        haveCPUTime ? TimingDecorator.valueToString(threadBean.getThreadCpuTime(id)) : "N/A",
-                        haveElapsedTime ? TimingDecorator.valueToString(threadBean.getThreadCpuTime(id) + (ti.getBlockedTime() + ti.getWaitedTime()) * 1_000_000) : "N/A",
+                        haveCPUTime ? TimingAndDiskUsageDecorator.valueToString(threadBean.getThreadCpuTime(id)) : "N/A",
+                        haveElapsedTime ? TimingAndDiskUsageDecorator.valueToString(threadBean.getThreadCpuTime(id) + (ti.getBlockedTime() + ti.getWaitedTime()) * 1_000_000) : "N/A",
                         id,
                         state.name().toLowerCase(),
                         state.name());
