@@ -3709,7 +3709,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
                         actual_version = discovered_suite.vc.parent(discovered_suite.vc_dir)
                         if actual_version != suite_import.version:
-                            warn(f"Failed to update {discovered_suite.name} (in {discovered_suite.vc_dir}) to version {suite_import.version}! Leaving it at {actual_version}.")
+                            abort(f"Failed to update {discovered_suite.name} (in {discovered_suite.vc_dir}) to version {suite_import.version}! Leaving it at {actual_version}.")
                         else:
                             _log_discovery(f"Updated {discovered_suite.vc_dir} after discovery (`update_existing` mode) to {suite_import.version}")
                     else:
@@ -18374,7 +18374,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.16.5") # GR-44777 disk usage stats in unittest
+version = VersionSpec("6.16.6") # sforceimports: abort if failed to update
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
