@@ -14175,9 +14175,9 @@ class JDKConfig(Comparable):
 
             if not _use_cache():
                 addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
-                _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
                 out = LinesOutputCapture()
-                run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
+                app = join(_mx_home, 'java', 'ListModules.java')
+                run([self.java, addExportsArg, app], out=out)
                 lines = out.lines
                 if isJDKImage:
                     for dst, content in [(cache_source, self.home), (cache, '\n'.join(lines))]:
@@ -18374,7 +18374,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.16.6") # sforceimports: abort if failed to update
+version = VersionSpec("6.16.7") # improve select_jdk
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -24,9 +24,9 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-import os, tempfile, shlex
+import os, tempfile, shlex, subprocess, re
 from argparse import ArgumentParser, REMAINDER
-from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
+from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath, basename, getmtime
 from io import StringIO
 
 def is_valid_jdk(jdk):
@@ -35,22 +35,25 @@ def is_valid_jdk(jdk):
 
     :return: True if there's a ``java`` executable in ``jdk/bin``
     """
+    release = join(jdk, 'release')
     java_exe = join(jdk, 'bin', 'java')
     if not exists(java_exe):
         java_exe += '.exe'
-    return isfile(java_exe) and os.access(java_exe, os.X_OK)
+    return isfile(release) and isfile(java_exe) and os.access(java_exe, os.X_OK)
 
-def find_jdks_in(base_dir, jdks):
+def find_jdks_in(base_dir):
     """
-    Finds JDKs in `base_dir` and adds them to `jdks`.
+    Finds JDKs in `base_dir` and returns them in a set.
     """
+    jdks = set()
     for n in os.listdir(base_dir):
-        jdk = join(base_dir, n)
-        mac_jdk = join(jdk, 'Contents', 'Home')
+        java_home = join(base_dir, n)
+        mac_jdk = join(java_home, 'Contents', 'Home')
         if isdir(mac_jdk):
-            jdk = mac_jdk
-        if is_valid_jdk(jdk):
-            jdks.add(realpath(jdk))
+            java_home = mac_jdk
+        if is_valid_jdk(java_home):
+            jdks.add(realpath(java_home))
+    return jdks
 
 def find_system_jdks():
     """
@@ -70,7 +73,7 @@ def find_system_jdks():
     jdks = set()
     for base in bases:
         if isdir(base):
-            find_jdks_in(base, jdks)
+            jdks.update(find_jdks_in(base))
     return jdks
 
 def get_suite_env_file(suite_dir='.'):
@@ -155,6 +158,79 @@ def apply_selection(args, jdk, extra_jdks):
             print()
             print(get_shell_commands(args, jdk, extra_jdks))
 
+class JDKInfo(object):
+    def __init__(self, java_home, java_specification_version, java_version, java_vm_version):
+        self.java_home = java_home
+        self.java_specification_version = java_specification_version
+        self.java_version = java_version
+        self.java_vm_version = java_vm_version
+        self.name = JDKInfo.init_name(java_home)
+
+    JAVA_PROP_RE = re.compile(r'\s+(java\.[\w\.]+) = (.*)')
+    VENDOR_RE = re.compile(r'([A-Za-z]+).*')
+
+    @staticmethod
+    def release_timestamp(java_home):
+        release = join(java_home, 'release')
+        return str(getmtime(release))
+
+    @staticmethod
+    def init_name(java_home):
+        jdk_dir = java_home
+        if jdk_dir.endswith('/Contents/Home'):
+            jdk_dir = jdk_dir[:-len('/Contents/Home')]
+        base = basename(jdk_dir)
+        m = JDKInfo.VENDOR_RE.fullmatch(base)
+        name = m.group(1) if m else base
+        if 'debug' in base and 'debug' not in name:
+            name += '-debug'
+        return name
+
+    @staticmethod
+    def extract_java_prop(line, props):
+        m = JDKInfo.JAVA_PROP_RE.fullmatch(line)
+        if m:
+            props[m.group(1)] = m.group(2)
+
+    @staticmethod
+    def for_java_home(java_home):
+        java_exe = join(java_home, 'bin', 'java')
+        if not exists(java_exe):
+            java_exe += '.exe'
+        p = subprocess.run([java_exe, '-XshowSettings:properties', '-version'], capture_output=True, text=True, check=True)
+        props = {}
+        for line in p.stderr.split('\n'):
+            JDKInfo.extract_java_prop(line, props)
+        java_specification_version = props['java.specification.version']
+        java_version = props['java.version']
+        java_vm_version = props['java.vm.version']
+        return JDKInfo(java_home, java_specification_version, java_version, java_vm_version)
+
+    @staticmethod
+    def load_from_jdk_cache(line, jdk_cache_path, line_num):
+        parts = line.strip().split('|')
+        java_home = parts[0]
+        if not is_valid_jdk(java_home):
+            return None
+        if len(parts) != 5:
+            return None
+        java_specification_version, java_version, java_vm_version, expect_timestamp = parts[1:]
+        actual_timestamp = JDKInfo.release_timestamp(java_home)
+        if expect_timestamp != actual_timestamp:
+            return None
+        return JDKInfo(java_home, java_specification_version, java_version, java_vm_version)
+
+    def as_jdk_cache_line(self):
+        timestamp = JDKInfo.release_timestamp(self.java_home)
+        return f'{self.java_home}|{self.java_specification_version}|{self.java_version}|{self.java_vm_version}|{timestamp}'
+
+    def __lt__(self, other):
+        if self.name == other.name:
+            if self.java_vm_version == other.java_vm_version:
+                return self.java_home < other.java_home
+            return self.java_vm_version < other.java_vm_version
+        return self.name < other.name
+
 if __name__ == '__main__':
     parser = ArgumentParser(prog='select_jdk', usage='%(prog)s [options] [<primary jdk> [<secondary jdk>...]]' + """
         Selects values for the JAVA_HOME, EXTRA_JAVA_HOMES and PATH environment variables based on
@@ -214,40 +290,55 @@ fi
         if not exists(dirname(jdk_cache_path)):
             os.makedirs(dirname(jdk_cache_path))
         with open(jdk_cache_path, 'a') as fp:
-            for jdk in args.jdks:
-                print(abspath(jdk), file=fp)
+            for java_home in args.jdks:
+                jdk = JDKInfo.for_java_home(abspath(java_home))
+                if jdk:
+                    print(f'{jdk.as_jdk_cache_line()}', file=fp)
         apply_selection(args, abspath(args.jdks[0]), [abspath(a) for a in args.jdks[1:]])
     else:
-        jdks = find_system_jdks()
+        jdks = {}
         if exists(jdk_cache_path):
             with open(jdk_cache_path) as fp:
+                line_num = 1
                 for line in fp.readlines():
-                    jdk = line.strip()
-                    if is_valid_jdk(jdk):
-                        jdks.add(jdk)
-                        base_dir = dirname(jdk)
+                    jdk = JDKInfo.load_from_jdk_cache(line, jdk_cache_path, line_num)
+                    line_num += 1
+                    if jdk:
+                        jdks[jdk.java_home] = jdk
+                        base_dir = dirname(jdk.java_home)
                         if base_dir.endswith('/Contents/Home'):
                             base_dir = base_dir[0:-len('/Contents/Home')]
-                        find_jdks_in(base_dir, jdks)
+                        for java_home in find_jdks_in(base_dir):
+                            if java_home not in jdks:
+                                jdks[java_home] = JDKInfo.for_java_home(java_home)
+        for java_home in find_system_jdks():
+            if java_home not in jdks:
+                jdks[java_home] = JDKInfo.for_java_home(java_home)
 
-        sorted_jdks = sorted(jdks)
+        sorted_jdks = sorted(jdks.values())
         choices = list(enumerate(sorted_jdks))
+        col2_width = max(((len(jdk.name + '-' + jdk.java_specification_version)) for jdk in sorted_jdks)) + 1
+        col3_width = max(((len(jdk.java_vm_version)) for jdk in sorted_jdks)) + 1
         if choices:
             _, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
             java_home = os.environ.get('JAVA_HOME', '')
             extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES', '').split(os.pathsep)
             with open(tmp_cache_path, 'w') as fp:
                 for index, jdk in choices:
-                    if jdk == java_home:
-                        print(colorize(f'[{index}] {jdk} {{JAVA_HOME}}', 'green'))
-                    elif jdk in extra_java_homes:
-                        print(colorize(f'[{index}] {jdk} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk)}]}}', 'cyan'))
-                    else:
-                        print(f'[{index}] {jdk}')
-                    print(jdk, file=fp)
+                    col1 = f'[{index}]'
+                    col2 = f'{jdk.name}-{jdk.java_specification_version}'
+                    col3 = jdk.java_vm_version
+                    col4 = jdk.java_home
+                    line = f'{col1:>5} {col2:{col2_width}} {col3:{col3_width}} {col4}'
+                    if jdk.java_home == java_home:
+                        line = colorize(f'{line} {{JAVA_HOME}}', 'green')
+                    elif jdk.java_home in extra_java_homes:
+                        line = colorize(f'{line} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk.java_home)}]}}', 'cyan')
+                    print(line)
+                    print(f'{jdk.as_jdk_cache_line()}', file=fp)
 
             os.rename(tmp_cache_path, jdk_cache_path)
             choices = {str(index):jdk for index, jdk in choices}
             jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
             if jdks:
-                apply_selection(args, jdks[0], jdks[1:])
+                apply_selection(args, jdks[0].java_home, [jdk.java_home for jdk in jdks[1:]])
