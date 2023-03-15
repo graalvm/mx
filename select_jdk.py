@@ -224,12 +224,11 @@ class JDKInfo(object):
         timestamp = JDKInfo.release_timestamp(self.java_home)
         return f'{self.java_home}|{self.java_specification_version}|{self.java_version}|{self.java_vm_version}|{timestamp}'
 
+    def sort_key(self):
+        return (self.name, self.java_specification_version, self.java_vm_version, self.java_home)
+
     def __lt__(self, other):
-        if self.name == other.name:
-            if self.java_vm_version == other.java_vm_version:
-                return self.java_home < other.java_home
-            return self.java_vm_version < other.java_vm_version
-        return self.name < other.name
+        return self.sort_key() < other.sort_key()
 
 if __name__ == '__main__':
     parser = ArgumentParser(prog='select_jdk', usage='%(prog)s [options] [<primary jdk> [<secondary jdk>...]]' + """
@@ -269,6 +268,7 @@ fi
     shell_or_env.add_argument('-s', '--shell-file', action='store', help='write shell commands for setting env vars to <path>', metavar='<path>')
     shell_or_env.add_argument('-p', '--suite-path', help='directory of suite whose env file is to be updated', metavar='<path>')
     parser.add_argument('--shell', action='store', help='shell syntax to use for commands', metavar='<format>', choices=['sh', 'fish', 'csh'])
+    parser.add_argument('--list', action='store_true', help='list the available JDKs without selecting any')
     parser.add_argument('jdks', nargs=REMAINDER, metavar='<primary jdk> [<secondary jdk>...]')
 
     args = parser.parse_args()
@@ -284,6 +284,8 @@ fi
 
     jdk_cache_path = join(expanduser('~'), '.mx', 'jdk_cache')
     if len(args.jdks) != 0:
+        if args.list:
+            print('warning: ignore --list option since JDKs were specified on the command line')
         invalid_jdks = [a for a in args.jdks if not is_valid_jdk(a)]
         if invalid_jdks:
             raise SystemExit('Following JDKs appear to be invalid (java executable not found):\n' + '\n'.join(invalid_jdks))
@@ -301,7 +303,7 @@ fi
             with open(jdk_cache_path) as fp:
                 line_num = 1
                 for line in fp.readlines():
-                    jdk = JDKInfo.load_from_jdk_cache(line, jdk_cache_path, line_num)
+                    jdk = JDKInfo.load_from_jdk_cache(line.strip(), jdk_cache_path, line_num)
                     line_num += 1
                     if jdk:
                         jdks[jdk.java_home] = jdk
@@ -329,16 +331,21 @@ fi
                     col2 = f'{jdk.name}-{jdk.java_specification_version}'
                     col3 = jdk.java_vm_version
                     col4 = jdk.java_home
-                    line = f'{col1:>5} {col2:{col2_width}} {col3:{col3_width}} {col4}'
-                    if jdk.java_home == java_home:
-                        line = colorize(f'{line} {{JAVA_HOME}}', 'green')
-                    elif jdk.java_home in extra_java_homes:
-                        line = colorize(f'{line} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk.java_home)}]}}', 'cyan')
-                    print(line)
-                    print(f'{jdk.as_jdk_cache_line()}', file=fp)
-
-            os.rename(tmp_cache_path, jdk_cache_path)
-            choices = {str(index):jdk for index, jdk in choices}
-            jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
-            if jdks:
-                apply_selection(args, jdks[0].java_home, [jdk.java_home for jdk in jdks[1:]])
+                    if args.list:
+                        print(f'{col2:{col2_width}} {col3:{col3_width}} {col4}')
+                    else:
+                        line = f'{col1:>5} {col2:{col2_width}} {col3:{col3_width}} {col4}'
+                        if jdk.java_home == java_home:
+                            line = colorize(f'{line} {{JAVA_HOME}}', 'green')
+                        elif jdk.java_home in extra_java_homes:
+                            line = colorize(f'{line} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk.java_home)}]}}', 'cyan')
+                        print(line)
+                        print(f'{jdk.as_jdk_cache_line()}', file=fp)
+            if args.list:
+                os.unlink(tmp_cache_path)
+            else:
+                os.rename(tmp_cache_path, jdk_cache_path)
+                choices = {str(index):jdk for index, jdk in choices}
+                jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
+                if jdks:
+                    apply_selection(args, jdks[0].java_home, [jdk.java_home for jdk in jdks[1:]])
