@@ -8042,7 +8042,9 @@ class JavacCompiler(JavacLikeCompiler):
         else:
             if jdk.javaCompliance >= '9':
                 warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
-        if warningsAsErrors:
+        if warningsAsErrors and lint != ['none']:
+            # Some warnings cannot be disabled, such as those for jdk incubator modules.
+            # When the linter is turned off, we also disable other warnings becoming errors to handle such cases.
             javacArgs.append('-Werror')
         if showTasks:
             abort('Showing task tags is not currently supported for javac')
