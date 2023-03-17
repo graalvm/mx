@@ -8042,7 +8042,9 @@ class JavacCompiler(JavacLikeCompiler):
         else:
             if jdk.javaCompliance >= '9':
                 warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
-        if warningsAsErrors:
+        if warningsAsErrors and lint != ['none']:
+            # Some warnings cannot be disabled, such as those for jdk incubator modules.
+            # When the linter is turned off, we also disable other warnings becoming errors to handle such cases.
             javacArgs.append('-Werror')
         if showTasks:
             abort('Showing task tags is not currently supported for javac')
@@ -14175,9 +14177,9 @@ class JDKConfig(Comparable):
 
             if not _use_cache():
                 addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
-                _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
                 out = LinesOutputCapture()
-                run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
+                app = join(_mx_home, 'java', 'ListModules.java')
+                run([self.java, addExportsArg, app], out=out)
                 lines = out.lines
                 if isJDKImage:
                     for dst, content in [(cache_source, self.home), (cache, '\n'.join(lines))]:
@@ -18374,7 +18376,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.16.6") # sforceimports: abort if failed to update
+version = VersionSpec("6.16.7") # improve select_jdk
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
