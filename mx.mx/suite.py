@@ -516,6 +516,24 @@ suite = {
       }
     },
 
+    "LOG4J_API_2_19_0" : {
+      "digest": "sha512:f7cf3647ed90de7fdef377e4321aa9b9ea2512a46d99109b359f7fc5dcfe6d3ae9f879c212707ea4fd16d358d10d21c56d5178ec4803504745de6fe48c66c3f7",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-api",
+        "version" : "2.19.0",
+      }
+    },
+
+    "LOG4J_CORE_2_19_0" : {
+      "digest": "sha512:1300ada6f86818ef4dcd17448a8965c1c6dd41ec414de2b2a5bafdf25d03c12100fa9e8f422d7b346f2984e5dfb3d599f8c1a971a6bcaca0cf938943d06364e7",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-core",
+        "version" : "2.19.0",
+      }
+    },
+
     "ORG_JSON_20211205" : {
       "digest": "sha512:bcfada5d9f87bd6494e2c9b4d8da2a700b262eb2541296cf5f38a6e4c8dddf496f1db4bb8b10277dcdf8882a7942ab84b5d73e636312c2b193cf3d5d2969ef82",
       "maven" : {
@@ -546,6 +564,16 @@ suite = {
         "version" : "9.0.3",
       },
       "dependencies" : ["LOG4J_CORE_2_17_1", "LOG4J_API_2_17_1"],
+    },
+
+    "PROGUARD_CORE_9_0_8" : {
+      "digest": "sha512:d728792f5d3b1a14ff61f4ff455bf09879dba3edd2e9af66fb738a90ae36cb2d004738564db1f1809d53deba01662a50eb5b66bf1c7df38da59a851c85dd31c5",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-core",
+        "version" : "9.0.8",
+      },
+      "dependencies" : ["LOG4J_CORE_2_19_0", "LOG4J_API_2_19_0"],
     },
 
     "PROGUARD_RETRACE_7_2_0_beta1" : {
@@ -601,6 +629,31 @@ suite = {
     "PROGUARD_RETRACE_7_3_2_alpha" : {
       "digest": "sha512:f51074ef93c54b9dec6c629f4241ab4fb0e8ebc583b9293f1f95c37bc886a94dcdb95cdfa5eb9ac5e01611c289e7d7f56779627041481dd5c491894f2119313f",
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/retrace-7.3.2-alpha.jar"],
+    },
+
+    "PROGUARD_BASE_7_3_2" : {
+      "digest": "sha512:1d5c988372930ed5d4b441d9ff3102e278173b01f2552779261d6f76da6cbeebf26c7d5cf53d860112cbf645f9c59b35b122782d5d60c4386c873ff1691a624f",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.3.2",
+      },
+      "dependencies" : [
+        "PROGUARD_CORE_9_0_8",
+        "LOG4J_CORE_2_19_0",
+        "LOG4J_API_2_19_0",
+        "ORG_JSON_20211205"
+      ],
+    },
+
+    "PROGUARD_RETRACE_7_3_2" : {
+      "digest": "sha512:5ef65868a441345716a1c4ae7fd78dceb97754246787daadd3edaaae57dcd8c3e9f9c22d1d8a97dc28cf6312214acadac94c0188f22fafbb7b293ec766b83de3",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-retrace",
+        "version" : "7.3.2",
+      },
+      "dependencies" : ["PROGUARD_BASE_7_3_2"],
     },
 
     "NINJA" : {
