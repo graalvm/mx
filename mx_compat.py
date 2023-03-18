@@ -667,7 +667,7 @@ class MxCompatibility6120(MxCompatibility691):
     def spotbugs_version(self):
         return "4.7.3"
 
-class MxCompatibility6150(MxCompatibility6120):
+class MxCompatibility6160(MxCompatibility6120):
     @staticmethod
     def version():
         return mx.VersionSpec("6.16.0")
@@ -679,6 +679,20 @@ class MxCompatibility6150(MxCompatibility6120):
         return {
             'BASE': '7_3_2_alpha',
             'RETRACE': '7_3_2_alpha',
+        }
+
+class MxCompatibility6170(MxCompatibility6160):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.17.0")
+
+    def proguard_supported_jdk_version(self):
+        return 20
+
+    def proguard_libs(self):
+        return {
+            'BASE': '7_3_2',
+            'RETRACE': '7_3_2',
         }
 
 def minVersion():
