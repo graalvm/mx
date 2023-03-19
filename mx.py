@@ -18376,7 +18376,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.17.0") # proguard 7.3.2
+version = VersionSpec("6.18.0") # GR-45001 - enhanced fetch-jdk
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
