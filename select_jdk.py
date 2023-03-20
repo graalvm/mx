@@ -46,7 +46,9 @@ def find_jdks_in(base_dir):
     Finds JDKs in `base_dir` and returns them in a set.
     """
     jdks = set()
-    for n in os.listdir(base_dir):
+    base_dirs = os.listdir(base_dir)
+    base_dirs += [join(n, 'fastdebug') for n in base_dirs]
+    for n in base_dirs:
         java_home = join(base_dir, n)
         mac_jdk = join(java_home, 'Contents', 'Home')
         if isdir(mac_jdk):
@@ -180,6 +182,8 @@ class JDKInfo(object):
         if jdk_dir.endswith('/Contents/Home'):
             jdk_dir = jdk_dir[:-len('/Contents/Home')]
         base = basename(jdk_dir)
+        if base in ('debug', 'fastdebug', 'slowdebug'):
+            base = basename(dirname(jdk_dir))
         m = JDKInfo.VENDOR_RE.fullmatch(base)
         name = m.group(1) if m else base
         if 'debug' in base and 'debug' not in name:
