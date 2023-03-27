@@ -392,6 +392,7 @@ def gate(args):
         # so we can safely overwrite other filter settings.
         Task.filters = runTaskNames
         Task.filtersExclude = False
+        Task.tags = None
 
         mx.log('Running gate with partial tasks ' + args.partial + ". " + str(len(partialTasks)) + " out of " + str(len(nonBuildTasks)) + " non-build tasks selected.")
         if len(partialTasks) == 0:
