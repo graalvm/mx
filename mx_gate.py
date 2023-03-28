@@ -64,7 +64,8 @@ class Task:
     # a non-None value from __enter__. The body of a 'with Task(...) as t'
     # statement should check 't' and exit immediately if it is None.
     filters = []
-    log = True # whether to log task messages
+    strict_filters = []  # Like `filters`, but the entire title must match
+    log = True  # whether to log task messages
     dryRun = False
     startAtFilter = None
     filtersExclude = False
@@ -139,11 +140,19 @@ class Task:
                 else:
                     self.skipped = True
             elif len(Task.filters) > 0:
+                assert len(Task.strict_filters) == 0, "A Task cannot have both `filters` and `strict_filters`"
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
                     self.skipped = any([f in t for t in titles for f in Task.filters])
                 else:
                     self.skipped = not any([f in t for t in titles for f in Task.filters])
+            elif len(Task.strict_filters) > 0:
+                assert len(Task.filters) == 0, "A Task cannot have both `filters` and `strict_filters`"
+                titles = [self.title] + self.legacyTitles
+                if Task.filtersExclude:
+                    self.skipped = any([f == t for t in titles for f in Task.strict_filters])
+                else:
+                    self.skipped = not any([f == t for t in titles for f in Task.strict_filters])
             if Task.tags is not None:
                 if Task.tagsExclude:
                     self.skipped = all([t in Task.tags for t in self.tags]) if tags else False # pylint: disable=unsupported-membership-test
@@ -388,9 +397,12 @@ def gate(args):
         partialTasks = nonBuildTasks[selected::total]
         runTaskNames = [task.title for task in buildTasks + partialTasks]
 
-        # we have already ran the filters in the dry run when collecting
+        # We have already ran the filters in the dry run when collecting
         # so we can safely overwrite other filter settings.
-        Task.filters = runTaskNames
+        # We set `strict_filters` rather than `filters` because we want
+        # exact matches, not matches by substring.
+        Task.strict_filters = runTaskNames
+        Task.filters = []
         Task.filtersExclude = False
         Task.tags = None
 
