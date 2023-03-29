@@ -2668,7 +2668,7 @@ class PsrecordTracker(Tracker):
             mx.abort("Memory tracking requires the 'psrecord' dependency. Install it with: 'pip install psrecord'")
 
         self.most_recent_text_output = text_output
-        return ["psrecord", "--interval", "0.050", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
+        return ["psrecord", "--interval", "0.1", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
 
     def get_rules(self, bmSuiteArgs):
         return [PsrecordTracker.PsrecordRule(self, bmSuiteArgs)]
@@ -2712,9 +2712,27 @@ class PsrecordTracker(Tracker):
             return [pc(100), pc(99), pc(95), pc(90), pc(75), pc(50), pc(25)]
 
 
+class PsrecordMaxrssTracker(Tracker):
+    """Uses both `time` for exact maximum RSS and `psrecord` for percentiles from sampling."""
+
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.rss = RssTracker(bmSuite)
+        self.psrecord = PsrecordTracker(bmSuite)
+
+    def map_command(self, cmd):
+        # Note that psrecord tracks the metrics of the `time` tool as well, which adds 1-2M of RSS.
+        # Vice versa, `time` would track psrecord's Python interpreter, which adds more than 10M.
+        return self.psrecord.map_command(self.rss.map_command(cmd))
+
+    def get_rules(self, bmSuiteArgs):
+        return self.rss.get_rules(bmSuiteArgs) + self.psrecord.get_rules(bmSuiteArgs)
+
+
 _available_trackers = {
     "rss": RssTracker,
     "psrecord": PsrecordTracker,
+    "psrecord+maxrss": PsrecordMaxrssTracker,
 }
 
 

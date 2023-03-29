@@ -18376,7 +18376,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.18.0") # GR-45001 - enhanced fetch-jdk
+version = VersionSpec("6.18.1") # GR-44520: sampling-based RSS percentiles
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
