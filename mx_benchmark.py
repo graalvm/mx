@@ -2648,6 +2648,10 @@ class RssTracker(Tracker):
 
 
 class PsrecordTracker(Tracker):
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.most_recent_text_output = None
+
     def map_command(self, cmd):
         """
         Delegates the command execution to 'psrecord' that will also capture memory and CPU consumption of the process.
@@ -2655,6 +2659,7 @@ class PsrecordTracker(Tracker):
         :param list[str] cmd: the input command to modify
         """
         if not _use_tracker:
+            self.most_recent_text_output = None
             return cmd
 
         import datetime
