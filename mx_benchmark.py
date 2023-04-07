@@ -36,6 +36,7 @@ import uuid
 import tempfile
 import shutil
 import zipfile
+import shlex
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
@@ -2648,6 +2649,10 @@ class RssTracker(Tracker):
 
 
 class PsrecordTracker(Tracker):
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.most_recent_text_output = None
+
     def map_command(self, cmd):
         """
         Delegates the command execution to 'psrecord' that will also capture memory and CPU consumption of the process.
@@ -2655,6 +2660,7 @@ class PsrecordTracker(Tracker):
         :param list[str] cmd: the input command to modify
         """
         if not _use_tracker:
+            self.most_recent_text_output = None
             return cmd
 
         import datetime
@@ -2668,7 +2674,8 @@ class PsrecordTracker(Tracker):
             mx.abort("Memory tracking requires the 'psrecord' dependency. Install it with: 'pip install psrecord'")
 
         self.most_recent_text_output = text_output
-        return ["psrecord", "--interval", "0.1", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
+        cmd_string = " ".join(shlex.quote(arg) for arg in cmd)
+        return ["psrecord", "--interval", "0.1", "--log", text_output, "--plot", plot_output, "--include-children", cmd_string]
 
     def get_rules(self, bmSuiteArgs):
         return [PsrecordTracker.PsrecordRule(self, bmSuiteArgs)]
