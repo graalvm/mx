@@ -4138,28 +4138,27 @@ def _is_process_alive(p):
 
 
 def _send_sigquit():
-    if is_windows():
-        warn("mx: implement me! want to send SIGQUIT to my child process")
-        return
     try:
         from psutil import Process, NoSuchProcess
 
-        def _get_args(pid):
+        def _get_args(p):
             try:
-                proc = Process(pid)
+                proc = Process(p.pid)
                 return proc.cmdline()
             except NoSuchProcess:
                 return None
     except ImportError:
-        warn("psutil is not available, java process detection is less accurate")
-        def _get_args(pid):
+
+        def _get_args(p):
+            if isinstance(p, subprocess.Popen):
+                return p.args
             return None
 
     for p, args in _currentSubprocesses:
         if p is None or not _is_process_alive(p):
             continue
 
-        real_args = _get_args(p.pid)
+        real_args = _get_args(p)
         if real_args:
             args = real_args
         if not args:
@@ -4170,7 +4169,11 @@ def _send_sigquit():
         if exe_name == "java" or exe_name == "native-image" and not real_args:
             # only send SIGQUIT to the child not the process group
             logv('sending SIGQUIT to ' + str(p.pid))
-            os.kill(p.pid, signal.SIGQUIT)
+            if is_windows():
+                # only works if process was created with CREATE_NEW_PROCESS_GROUP
+                os.kill(p.pid, signal.CTRL_BREAK_EVENT)
+            else:
+                os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
 
