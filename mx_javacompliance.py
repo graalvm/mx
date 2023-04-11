@@ -57,9 +57,6 @@ class JavaCompliance(mx.Comparable):
     # Examples: "1.8", "13"
     _singleton_range_re = re.compile(r'(1\.)?(\d+)$')
 
-    # Examples: "17-loom"
-    _loom_re = re.compile(r'(\d+)-loom$')
-
     @staticmethod
     def _error_prefix(spec, part_index, part):
         return f'JavaCompliance("{spec}"): Part {part_index} ("{part}")'
@@ -139,7 +136,6 @@ class JavaCompliance(mx.Comparable):
         """
         if parse_error is None:
             parse_error = lambda m: mx.abort(m, context=context)
-        self._loom = False
 
         def _error(part, index, msg):
             parse_error(f'JavaCompliance("{spec}"): Part {index} ("{part}") {msg}')
@@ -181,10 +177,6 @@ class JavaCompliance(mx.Comparable):
             if m:
                 low = _check_part_value(m.group(1), m.group(2), 'bound')
                 return JavaCompliance._Range(low, None)
-            m = JavaCompliance._loom_re.match(part)
-            if m:
-                self._loom = True
-                part = m.group(1)
             m = JavaCompliance._singleton_range_re.match(part)
             if m:
                 low = _check_part_value(m.group(1), m.group(2), 'bound')
@@ -227,16 +219,13 @@ class JavaCompliance(mx.Comparable):
         return all(any((other_part in self_part) for self_part in self._parts) for other_part in other._parts)
 
     def __hash__(self):
-        return hash((self._parts, self._loom))
+        return hash(self._parts)
 
     def _is_exact_bound(self):
         return self.value == self._high_bound()
 
     def _exact_match(self, version):
         assert isinstance(version, mx.VersionSpec)
-        if self._loom and not version._loom:
-            # only skip those suites who require Loom
-            return False
         if len(version.parts) > 0:
             if len(version.parts) > 1 and version.parts[0] == 1:
                 # First part is a '1',  e.g. '1.8.0'.
