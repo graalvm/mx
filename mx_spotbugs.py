@@ -113,7 +113,7 @@ def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs
 def _spotbugs(all_args, fbArgs, suite, projectsToTest, spotbugsVersion):
     """run FindBugs against non-test Java projects"""
     parser = ArgumentParser(prog='mx spotbugs')
-    parser.add_argument('--strict-mode', action='store_true', help='abort if a spotbugs cannot be executed due some reason (e.g., unsupported JDK version)')
+    parser.add_argument('--strict-mode', action='store_true', help='abort if SpotBugs cannot be executed for some reason (e.g., unsupported JDK version)')
     parsed_args, args = parser.parse_known_args(all_args)
 
     findBugsHome = mx.get_env('SPOTBUGS_HOME', mx.get_env('FINDBUGS_HOME', None))
