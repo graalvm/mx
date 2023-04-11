@@ -282,6 +282,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def gate_spotbugs_strict_mode(self):
+        """
+        True if spotbugs mx gate --strict-mode should be propagated to spotbugs.
+        """
+        return False
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -694,6 +700,15 @@ class MxCompatibility6170(MxCompatibility6160):
             'BASE': '7_3_2',
             'RETRACE': '7_3_2',
         }
+
+class MxCompatibility6190(MxCompatibility6170):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.19.0")
+
+    def gate_spotbugs_strict_mode(self):
+        return True
+
 
 def minVersion():
     _ensureCompatLoaded()

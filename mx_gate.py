@@ -675,7 +675,8 @@ def _run_gate(cleanArgs, args, tasks):
             t.abort('Checkstyle warnings were found')
 
     with Task('SpotBugs', tasks, tags=[Tags.fullbuild]) as t:
-        if t and mx.command_function('spotbugs')([]) != 0:
+        _spotbugs_strict_mode = args.strict_mode and mx.primary_suite().getMxCompatibility().gate_spotbugs_strict_mode()
+        if t and mx.command_function('spotbugs')(['--strict-mode'] if _spotbugs_strict_mode else []) != 0:
             t.abort('FindBugs warnings were found')
 
     with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
