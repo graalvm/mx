@@ -12653,6 +12653,19 @@ def dependencies(opt_limit_to_suite=False):
         it = filter(lambda d: d.suite.name in _opts.specific_suites, it)
     return it
 
+def libraries(opt_limit_to_suite=False, include_jre_libs=True, include_jdk_libs=True):
+    """
+    Gets an iterable over all registered libraries. If changes are made to the registered
+    libraries during iteration, the behavior of the iterator is undefined.
+    """
+    it = _libs.values()
+    if include_jre_libs:
+        it = itertools.chain(it, _jreLibs.values())
+    if include_jdk_libs:
+        it = itertools.chain(it, _jdkLibs.values())
+    if opt_limit_to_suite and _opts.specific_suites:
+        it = filter(lambda d: d.suite.name in _opts.specific_suites, it)
+    return it
 
 def defaultDependencies(opt_limit_to_suite=False):
     """
@@ -17362,6 +17375,29 @@ def show_jar_distributions(args):
         for e in classpath(all_jars, includeSelf=False, includeBootClasspath=True, unique=True).split(os.pathsep):
             print(e)
 
+def _thirdpartydeps(args):
+    """list third party dependencies
+
+    List all third party dependencies
+
+    """
+    for lib in libraries():
+        print(lib.name)
+
+        # Version
+        if hasattr(lib, "version"):
+            print("\tVersion: " + lib.version)
+
+        # Location
+        if hasattr(lib, "maven") and isinstance(lib.maven, dict) and 'groupId' in lib.maven and 'artifactId' in lib.maven and 'version' in lib.maven:
+            print("\tMaven: " + lib.maven['groupId'] + ":" + lib.maven['artifactId'] + ":" + lib.maven['version'])
+        elif hasattr(lib, "urls") and len(lib.urls) > 0:
+            print("\tURL: " + lib.urls[0].split('/')[-1])
+
+        # License
+        if hasattr(lib, "theLicense") and lib.theLicense:
+            print("\tLicense: " + lib.theLicense[0].name)
+
 def _update_digests(args):
     """updates library checksums
 
@@ -18075,6 +18111,7 @@ update_commands("mx", {
     'supdate': [supdate, ''],
     'sversions': [sversions, '[options]'],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
+    'thirdpartydeps': [_thirdpartydeps, ''],
     'update': [update, ''],
     'update-digests': [_update_digests, ''],
     'unstrip': [_unstrip, '[options]'],
@@ -18367,7 +18404,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.19.1")  # remove -loom javaCompliance
+version = VersionSpec("6.19.2")  # add thirdpartydeps command
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
