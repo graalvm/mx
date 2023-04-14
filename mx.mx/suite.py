@@ -978,6 +978,16 @@ suite = {
       "maven": False,
     },
 
+    "MSVC_NINJA_TOOLCHAIN": {
+      "native": True,
+      "platformDependent": False,
+      "description": "ninja rules for a MSVC toolchain found on the PATH",
+      "layout": {
+        "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+      },
+      "maven": False,
+    },
+
     "DEFAULT_NINJA_TOOLCHAIN": {
       "native": True,
       "platformDependent": True,
@@ -994,7 +1004,7 @@ suite = {
         "windows": {
           "<others>": {
             "layout": {
-              "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+              "./": "extracted-dependency:MSVC_NINJA_TOOLCHAIN",
             },
             "asm_requires_cpp": True,
           },
