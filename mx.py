@@ -18404,7 +18404,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.19.2")  # add thirdpartydeps command
+version = VersionSpec("6.19.3")  # GR-45658 allow customization of MSVC toolchain
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -4,25 +4,27 @@
 CC = gcc
 CXX = g++
 AR = ar
+CFLAGS =
+LDFLAGS =
 
 rule cc
-  command = $CC -MMD -MF $out.d $includes $cflags -c $in -o $out
+  command = $CC -MMD -MF $out.d $includes $CFLAGS $cflags -c $in -o $out
   description = CC $out
   depfile = $out.d
   deps = gcc
 
 rule cxx
-  command = $CXX -MMD -MF $out.d $includes $cflags -c $in -o $out
+  command = $CXX -MMD -MF $out.d $includes $CFLAGS $cflags -c $in -o $out
   description = CXX $out
   depfile = $out.d
   deps = gcc
 
 rule link
-  command = $CC $ldflags -o $out $in $ldlibs
+  command = $CC $LDFLAGS $ldflags -o $out $in $ldlibs
   description = LINK $out
 
 rule linkxx
-  command = $CXX $ldflags -o $out $in $ldlibs
+  command = $CXX $LDFLAGS $ldflags -o $out $in $ldlibs
   description = LINKXX $out
 
 rule ar
