@@ -62,7 +62,12 @@ local with(platform, java_release, timelimit="15:00") = {
 
     with_name(prefix):: base + {
         prefix:: prefix,
-    },
+    } + if prefix != "version-update-check" && prefix != "verify-graal-common-sync" then {
+        requireArtifacts: [
+            {name: "version-update-check"},
+            {name: "verify-graal-common-sync"}
+        ],
+    } else {},
 
     # Specific gate builders are defined by the following functions
 
@@ -176,8 +181,15 @@ local with(platform, java_release, timelimit="15:00") = {
     },
 
     version_update_check:: self.with_name("version-update-check") + {
+        publishArtifacts: [
+          {
+            name: "version-update-check",
+            patterns: ["version-update-check.ok"]
+          }
+        ],
         run: [
             [ path("./ci/check_version.py") ],
+            [ "touch", "$PWD/version-update-check.ok" ]
         ],
     },
 
@@ -198,7 +210,7 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "4729580ae1f0eb78190527e388c3b5f71eafdac0",
+    overlay: "65c7a38c72c8b8de196ec04c290f5ed209005542",
 
     # For use by overlay
     versions:: versions,

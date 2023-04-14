@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-import os, tempfile, shlex, subprocess, re
+import os, tempfile, shlex, subprocess, re, sys
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath, basename, getmtime
 from io import StringIO
@@ -91,11 +91,15 @@ def get_setvar_format(shell):
         return 'setenv %s %s'
     if shell == 'fish':
         return 'set -x %s %s'
+    if shell == 'cmd':
+        return 'set %s=%s'
     return 'export %s=%s'
 
 def get_clearvar_format(shell):
     if shell == 'fish':
         return 'set -e %s'
+    if shell == 'cmd':
+        return 'set %s='
     return 'unset %s'
 
 def get_PATH_sep(shell):
@@ -120,7 +124,9 @@ def get_shell_commands(args, jdk, extra_jdks):
             path = [e if e != replace else jdk_bin for e in path]
         else:
             path = [jdk_bin] + path
-        path = [shlex.quote(e) for e in path]
+        if not sys.platform.startswith('win32'):
+            # Quoting breaks the cmd shell
+            path = [shlex.quote(e) for e in path]
         print(setvar_format % ('PATH', get_PATH_sep(args.shell).join(path)), file=shell_commands)
     return shell_commands.getvalue().strip()
 
@@ -135,6 +141,9 @@ _ansi_color_table = {
 }
 
 def colorize(msg, color):
+    if sys.platform.startswith('win32'):
+        # Colorization does not seem to work in cmd shell
+        return msg
     code = _ansi_color_table[color]
     return '\033[' + code + ';1m' + msg + '\033[0m'
 
@@ -278,11 +287,13 @@ fi
     args = parser.parse_args()
 
     if args.shell is None:
-        shell = os.environ.get('SHELL')
+        shell = os.environ.get('SHELL', '')
         if shell.endswith('fish'):
             args.shell = 'fish'
         elif shell.endswith('csh'):
             args.shell = 'csh'
+        elif os.environ.get('COMSPEC', '').endswith('cmd.exe'):
+            args.shell = 'cmd'
         else:
             args.shell = 'sh'
 
@@ -326,7 +337,11 @@ fi
         col2_width = max(((len(jdk.name + '-' + jdk.java_specification_version)) for jdk in sorted_jdks)) + 1
         col3_width = max(((len(jdk.java_vm_version)) for jdk in sorted_jdks)) + 1
         if choices:
-            _, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
+            tmp_cache_path_fd, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
+            # Windows will complain about tmp_cache_path being in use by another process
+            # when calling os.rename if we don't close the file descriptor.
+            os.close(tmp_cache_path_fd)
+
             java_home = os.environ.get('JAVA_HOME', '')
             extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES', '').split(os.pathsep)
             with open(tmp_cache_path, 'w') as fp:
@@ -348,6 +363,7 @@ fi
             if args.list:
                 os.unlink(tmp_cache_path)
             else:
+                os.unlink(jdk_cache_path)
                 os.rename(tmp_cache_path, jdk_cache_path)
                 choices = {str(index):jdk for index, jdk in choices}
                 jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
