@@ -5,23 +5,25 @@ CL = cl
 LINK = link
 LIB = lib
 ML = ml64
+CFLAGS =
+LDFLAGS =
 
 rule cc
-  command = $CL -nologo -showIncludes $includes $cflags -c $in -Fo$out
+  command = $CL -nologo -showIncludes $includes $CFLAGS $cflags -c $in -Fo$out
   description = CC $out
   deps = msvc
 
 rule cxx
-  command = $CL -nologo -showIncludes $includes $cflags -c $in -Fo$out
+  command = $CL -nologo -showIncludes $includes $CFLAGS $cflags -c $in -Fo$out
   description = CXX $out
   deps = msvc
 
 rule link
-  command = $LINK -nologo $ldflags -out:$out $in $ldlibs
+  command = $LINK -nologo $LDFLAGS $ldflags -out:$out $in $ldlibs
   description = LINK $out
 
 rule linkxx
-  command = $LINK -nologo $ldflags -out:$out $in $ldlibs
+  command = $LINK -nologo $LDFLAGS $ldflags -out:$out $in $ldlibs
   description = LINKXX $out
 
 rule ar
@@ -33,6 +35,6 @@ rule asm
   description = ASM $out
 
 rule cpp
-  command = $CL -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out
+  command = $CL -nologo -showIncludes -EP -P $includes $CFLAGS $cflags -c $in -Fi$out
   description = CPP $out
   deps = msvc
