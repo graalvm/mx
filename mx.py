@@ -18410,7 +18410,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.19.4") # GR-45270: make select_jdk work on Windows
+version = VersionSpec("6.19.5") # GR-45679 fix eager downloading in CMakeNinjaProject
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
