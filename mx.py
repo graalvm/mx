@@ -1633,9 +1633,13 @@ class Dependency(SuiteConstituent):
         if deps:
             assert all((isinstance(d, (str, Dependency)) for d in deps))
             if isinstance(deps[0], str):
-                assert all((isinstance(d, str) for d in deps))
                 resolvedDeps = []
                 for name in deps:
+                    if not isinstance(name, str):
+                        assert isinstance(name, Dependency)
+                        # already resolved
+                        resolvedDeps.append(name)
+                        continue
                     s, _ = splitqualname(name)
                     if s and s in _jdkProvidedSuites:
                         logvv(f'[{self}: ignoring dependency {name} as it is provided by the JDK]')
@@ -4960,15 +4964,17 @@ def _replaceResultsVar(m):
 def _replacePathVar(m):
     return mx_subst.path_substitutions.substitute(m.group(0))
 
-def _get_dependency_path(dname):
+def _get_dependency_path(dname, resolve=True, collectDeps=None, **kwargs):
     d = dependency(dname)
+    if collectDeps is not None:
+        collectDeps.append(d)
     path = None
     if d.isJARDistribution() and hasattr(d, "path"):
         path = d.path
     elif d.isTARDistribution() and hasattr(d, "output"):
         path = d.output
     elif d.isLibrary() or d.isResourceLibrary():
-        path = d.get_path(resolve=True)
+        path = d.get_path(resolve=resolve)
     elif d.isProject():
         path = d.dir
     if path:
@@ -4976,7 +4982,7 @@ def _get_dependency_path(dname):
     else:
         abort('dependency ' + dname + ' has no path')
 
-mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
+mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path, keywordArgs=True)
 
 
 class ClasspathDependency(Dependency):
@@ -18404,7 +18410,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.19.4") # GR-45270: make select_jdk work on Windows
+version = VersionSpec("6.19.5") # GR-45679 fix eager downloading in CMakeNinjaProject
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

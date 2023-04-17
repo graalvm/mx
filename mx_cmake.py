@@ -66,12 +66,14 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         srcDir = args.pop('sourceDir', d)
         if not srcDir:
             mx.abort("Exactly one 'sourceDir' is required")
-        srcDir = mx_subst.path_substitutions.substitute(srcDir)
-        self._install_targets = [mx_subst.path_substitutions.substitute(x) for x in ninja_install_targets or []]
-        self._ninja_targets = [mx_subst.path_substitutions.substitute(x) for x in ninja_targets or []]
+        extraBuildDeps = []
+        srcDir = mx_subst.path_substitutions.substitute(srcDir, resolve=False, collectDeps=extraBuildDeps)
+        self._install_targets = [mx_subst.path_substitutions.substitute(x, resolve=False, collectDeps=extraBuildDeps) for x in ninja_install_targets or []]
+        self._ninja_targets = [mx_subst.path_substitutions.substitute(x, resolve=False, collectDeps=extraBuildDeps) for x in ninja_targets or []]
         super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
         self.silent = not cmake_show_warnings
         self._cmake_config_raw = args.pop('cmakeConfig', {})
+        self.buildDependencies += extraBuildDeps
         if self._cmake_toolchain:
             self.buildDependencies += [self._cmake_toolchain]
 
