@@ -18370,6 +18370,10 @@ def main():
         _send_sigquit()
     if not is_windows():
         signal.signal(signal.SIGQUIT, quit_handler)
+    else:
+        # SIGBREAK should be used when registering the "signal handler"
+        # CTRL_BREAK_EVENT should be used then sending the "signal" to another process
+        signal.signal(signal.SIGBREAK, quit_handler)
 
     try:
         if _opts.timeout != 0:
