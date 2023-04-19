@@ -762,6 +762,11 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     if not module_info:
                         mx.warn("Module {} re-packages library {} but doesn't have a `moduleInfo` attribute. Note that library packages are not auto-exported")
 
+        # Add all modules imported by concealed requires to the list of requires.
+        for module in concealedRequires:
+            if module != 'java.base':
+                requires.setdefault(module, set())
+
         build_directory = mx.ensure_dir_exists(module_jar + ".build")
         try:
             files_to_remove = set()

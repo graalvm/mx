@@ -18393,7 +18393,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.20.0") # run on_timeout
+version = VersionSpec("6.20.1") # GR-45759 - requiresConcealed implies requires
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
