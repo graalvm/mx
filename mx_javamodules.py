@@ -480,7 +480,7 @@ def get_library_as_module(dep, jdk):
 
     if save:
         try:
-            with open(cache, 'w') as fp:
+            with mx.SafeFileCreation(cache) as sfc, open(sfc.tmpPath, 'w') as fp:
                 fp.write('\n'.join(lines) + '\n')
         except IOError as e:
             mx.warn('Error writing to ' + cache + ': ' + str(e))
