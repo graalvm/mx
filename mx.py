@@ -4138,28 +4138,27 @@ def _is_process_alive(p):
 
 
 def _send_sigquit():
-    if is_windows():
-        warn("mx: implement me! want to send SIGQUIT to my child process")
-        return
     try:
         from psutil import Process, NoSuchProcess
 
-        def _get_args(pid):
+        def _get_args(p):
             try:
-                proc = Process(pid)
+                proc = Process(p.pid)
                 return proc.cmdline()
             except NoSuchProcess:
                 return None
     except ImportError:
-        warn("psutil is not available, java process detection is less accurate")
-        def _get_args(pid):
+
+        def _get_args(p):
+            if isinstance(p, subprocess.Popen):
+                return p.args
             return None
 
     for p, args in _currentSubprocesses:
         if p is None or not _is_process_alive(p):
             continue
 
-        real_args = _get_args(p.pid)
+        real_args = _get_args(p)
         if real_args:
             args = real_args
         if not args:
@@ -4170,7 +4169,11 @@ def _send_sigquit():
         if exe_name == "java" or exe_name == "native-image" and not real_args:
             # only send SIGQUIT to the child not the process group
             logv('sending SIGQUIT to ' + str(p.pid))
-            os.kill(p.pid, signal.SIGQUIT)
+            if is_windows():
+                # only works if process was created with CREATE_NEW_PROCESS_GROUP
+                os.kill(p.pid, signal.CTRL_BREAK_EVENT)
+            else:
+                os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
 
@@ -13190,13 +13193,17 @@ def java_command(args):
     """
     run_java(args)
 
-def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
+def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None, on_timeout=None):
     """
     Runs a Java program by executing the java executable in a JDK.
     """
     if jdk is None:
         jdk = get_jdk()
-    return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+    if not on_timeout:
+        # improve compatibility with mx_* extensions that implement JDKConfig that doesn't expect on_timeout
+        return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+    else:
+        return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs, on_timeout=on_timeout)
 
 def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None, run_with_heap=None):
     """computes the minimum heap size required to run a Java program within a certain overhead factor"""
@@ -13270,42 +13277,16 @@ def _kill_process(pid, sig):
         return False
 
 
-def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True):
-    def _waitpid(pid):
-        while True:
-            try:
-                return os.waitpid(pid, os.WNOHANG)
-            except OSError as e:
-                if e.errno == errno.EINTR:
-                    continue
-                raise
+def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True, on_timeout=None):
+    try:
+        return process.wait(timeout)
+    except subprocess.TimeoutExpired:
+        if on_timeout:
+            on_timeout(process)
+        log_error(f'Process timed out after {timeout} seconds: {cmd_line}')
+        process.kill()
+        return ERROR_TIMEOUT
 
-    def _returncode(status):
-        if os.WIFSIGNALED(status):
-            return -os.WTERMSIG(status)
-        elif os.WIFEXITED(status):
-            return os.WEXITSTATUS(status)
-        else:
-            # Should never happen
-            raise RuntimeError("Unknown child exit status!")
-
-    end = time.time() + timeout
-    delay = 0.0005
-    while True:
-        (pid, status) = _waitpid(process.pid)
-        if pid == process.pid:
-            return _returncode(status)
-        remaining = end - time.time()
-        if remaining <= 0:
-            msg = f'Process timed out after {timeout} seconds: {cmd_line}'
-            if nonZeroIsFatal:
-                abort(msg)
-            else:
-                log(msg)
-                _kill_process(process.pid, signal.SIGKILL)
-                return ERROR_TIMEOUT
-        delay = min(delay * 2, remaining, .05)
-        time.sleep(delay)
 
 # Makes the current subprocess accessible to the abort() function
 # This is a list of tuples of the subprocess.Popen or
@@ -13507,7 +13488,7 @@ def _list2cmdline(seq):
 
 _subprocess_start_time = None
 
-def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
+def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, on_timeout=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
     If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
@@ -13625,9 +13606,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                         # handle the signal, it will terminate and this loop exits.
                         _kill_process(p.pid, signal.SIGINT)
         else:
-            if is_windows():
-                abort('Use of timeout not (yet) supported on Windows')
-            retcode = _waitWithTimeout(p, cmd_line, timeout, nonZeroIsFatal)
+            retcode = _waitWithTimeout(p, cmd_line, timeout, nonZeroIsFatal, on_timeout)
         while any([t.is_alive() for t in joiners]):
             # Need to use timeout otherwise all signals (including CTRL-C) are blocked
             # see: http://bugs.python.org/issue1167930
@@ -14046,10 +14025,10 @@ class JDKConfig(Comparable):
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args
         return args
 
-    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, command_mapper_hooks=None):
+    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, command_mapper_hooks=None, on_timeout=None):
         cmd = self.generate_java_command(args, addDefaultArgs=addDefaultArgs)
         cmd = apply_command_mapper_hooks(cmd, command_mapper_hooks)
-        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, on_timeout=on_timeout)
 
     def generate_java_command(self, args, addDefaultArgs=True):
         """
@@ -18395,6 +18374,10 @@ def main():
         _send_sigquit()
     if not is_windows():
         signal.signal(signal.SIGQUIT, quit_handler)
+    else:
+        # SIGBREAK should be used when registering the "signal handler"
+        # CTRL_BREAK_EVENT should be used then sending the "signal" to another process
+        signal.signal(signal.SIGBREAK, quit_handler)
 
     try:
         if _opts.timeout != 0:
@@ -18410,7 +18393,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.19.5") # GR-45679 fix eager downloading in CMakeNinjaProject
+version = VersionSpec("6.20.0") # run on_timeout
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
