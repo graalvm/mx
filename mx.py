@@ -13199,7 +13199,11 @@ def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=No
     """
     if jdk is None:
         jdk = get_jdk()
-    return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs, on_timeout=on_timeout)
+    if not on_timeout:
+        # improve compatibility with mx_* extensions that implement JDKConfig that doesn't expect on_timeout
+        return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+    else:
+        return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs, on_timeout=on_timeout)
 
 def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None, run_with_heap=None):
     """computes the minimum heap size required to run a Java program within a certain overhead factor"""
