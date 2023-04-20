@@ -53,8 +53,9 @@ mx_subst.results_substitutions.register_no_arg('jdk_ver', lambda: str(_get_targe
 def _ninja_toolchain_path(toolchain):
     dist = mx.distribution(toolchain)
     path = os.path.join(dist.get_output(), 'toolchain.ninja')
-    if mx.is_windows():
-        path = path.replace(':', '$:')
+    # See ninja_syntax.escape_path
+    # Unfortunately, this could be used before ninja_syntax is loaded/loadable
+    path = path.replace('$ ', '$$ ').replace(' ', '$ ').replace(':', '$:')
     return path
 
 mx_subst.path_substitutions.register_with_arg('ninja-toolchain', _ninja_toolchain_path)
