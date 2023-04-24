@@ -58,6 +58,7 @@ import urllib
 import glob
 import filecmp
 import json
+import threading
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime, timedelta
 from threading import Thread
@@ -4189,8 +4190,7 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     If `context` defines a __abort_context__ method, the latter is called and
     its return value is printed. Otherwise str(context) is printed.
     """
-    import threading
-    if sys.version_info[0] < 3 or threading.current_thread() is threading.main_thread():
+    if threading.current_thread() is threading.main_thread():
         if is_continuous_integration() or _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
             logv('sending SIGQUIT to subprocesses on abort')
             _send_sigquit()
@@ -4238,9 +4238,6 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
         error_message = codeOrMessage
         error_code = 1
     log_error(error_message)
-    if threading.current_thread() is not threading.main_thread():
-        # sys.exit or SystemExit is not enough to exit from another thread
-        os._exit(error_code)
     raise SystemExit(error_code)
 
 
@@ -5243,9 +5240,8 @@ class BuildTask(Buildable, Task):
             try:
                 _built = self.build()
             except:
-                if self.args.parallelize:
-                    # In concurrent builds, this helps identify on the console which build failed
-                    log(self._timestamp() + f"{self}: Failed due to error: {sys.exc_info()[1]}")
+                # In concurrent builds, this helps identify on the console which build failed
+                log(self._timestamp() + f"{self}: Failed due to error: {sys.exc_info()[1]}")
                 raise
             self._persist_deps()
             # The build task is `built` if the `build()` function returns True or None (legacy)
@@ -14674,14 +14670,9 @@ def build(cmd_args, parser=None):
         deps_w_deprecation_errors = [e.name for e in primary_java_projects + primary_java_project_dists]
         logv("Deprecations are only errors for " + ", ".join(deps_w_deprecation_errors))
 
-    if is_windows() and sys.version_info[0] < 3:
-        if args.parallelize:
-            warn('parallel builds are not supported on windows: can not use -p')
-            args.parallelize = False
-    else:
-        if args.parallelize is None:
-            # Enable parallel compilation by default
-            args.parallelize = True
+    if args.parallelize is None:
+        # Enable parallel compilation by default
+        args.parallelize = True
 
     if not args.force_javac and args.jdt is not None:
         # fail early but in the end we need to resolve with JDK version
@@ -18168,6 +18159,17 @@ def shell_quoted_args(args):
 def current_mx_command(injected_args=None):
     return 'mx' + shell_quoted_args(_mx_args) + '' + shell_quoted_args(injected_args if injected_args else _mx_command_and_args)
 
+def _excepthook(args):
+    """ Custom handler for an uncaught exception on a thread. """
+    if args.thread is not threading.main_thread():
+        if not isinstance(args.exc_value, SystemExit):
+            log(f'Uncaught exception on thread {args.thread}: {args.exc_value}')
+            raise args.exc_value
+        # sys.exit or SystemExit does not exit mx from a non-main thread
+        os._exit(1)
+    else:
+        # Re-throw an exception on the main thread
+        raise args.exc_value
 
 def main():
     # make sure logv, logvv and warn work as early as possible
@@ -18177,6 +18179,9 @@ def main():
     _opts.__dict__['quiet'] = '--quiet' in sys.argv
     global _vc_systems
     _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
+
+    # Install custom uncaught exception handler
+    threading.excepthook = _excepthook
 
     global _mx_suite
     _mx_suite = MXSuite()
@@ -18393,7 +18398,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.20.0") # run on_timeout
+version = VersionSpec("6.20.1") # GR-45759 - requiresConcealed implies requires
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
