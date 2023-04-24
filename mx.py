@@ -18159,17 +18159,15 @@ def shell_quoted_args(args):
 def current_mx_command(injected_args=None):
     return 'mx' + shell_quoted_args(_mx_args) + '' + shell_quoted_args(injected_args if injected_args else _mx_command_and_args)
 
+_original_excepthook = threading.excepthook
 def _excepthook(args):
     """ Custom handler for an uncaught exception on a thread. """
-    if args.thread is not threading.main_thread():
-        if not isinstance(args.exc_value, SystemExit):
-            log(f'Uncaught exception on thread {args.thread}: {args.exc_value}')
-            raise args.exc_value
+    if args.exc_type == SystemExit:
         # sys.exit or SystemExit does not exit mx from a non-main thread
         os._exit(1)
     else:
-        # Re-throw an exception on the main thread
-        raise args.exc_value
+        # Use built-in excepthook for all other cases
+        _original_excepthook(args)
 
 def main():
     # make sure logv, logvv and warn work as early as possible
@@ -18398,7 +18396,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.20.1") # GR-45759 - requiresConcealed implies requires
+version = VersionSpec("6.20.2") # GR-45810 - simplify use of custom excepthook
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
