@@ -1789,7 +1789,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                                 vm_info["platform.jvmci-version"] = m.group(1)
                         if "GraalVM" in jdk_version_string:
                             # Until 19.3.0 the following format used to exist: 'GraalVM LIBGRAAL_CE_BASH 19.3.0'
-                            m = re.search(r'GraalVM (?P<edition>CE |EE |LIBGRAAL_CE_BASH | LIBGRAAL_EE_BASH )?(?P<version>(\.?\d+)*)', jdk_version_string)
+                            m = re.search(r'(?P<oracle>Oracle )?GraalVM (?P<edition>CE |EE |LIBGRAAL_CE_BASH | LIBGRAAL_EE_BASH )?(?P<version>(\.?\d+)*)', jdk_version_string)
                             if m:
                                 vm_info["platform.graalvm-version-string"] = m.group(0).strip()
                                 vm_info["platform.graalvm-version"] = m.group('version').strip()
@@ -1799,6 +1799,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                                         vm_info["platform.graalvm-edition"] = "CE"
                                     elif "EE" in m.group('edition').upper():
                                         vm_info["platform.graalvm-edition"] = "EE"
+                                elif m.group('oracle'):
+                                    vm_info["platform.graalvm-edition"] = "EE"
                                 else:
                                     # Edition may be absent from the version string. 'GraalVM 22.0.0-dev' is valid
                                     vm_info["platform.graalvm-edition"] = "unknown"
