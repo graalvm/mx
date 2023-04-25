@@ -18396,7 +18396,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.20.2") # GR-45810 - simplify use of custom excepthook
+version = VersionSpec("6.20.3")  # strenghten the extraction of VM info
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
