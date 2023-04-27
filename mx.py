@@ -4997,6 +4997,9 @@ def _replacePathVar(m):
     return mx_subst.path_substitutions.substitute(m.group(0))
 
 def _get_dependency_path(dname, resolve=True, collectDeps=None, **kwargs):
+    s = suite(dname, fatalIfMissing=False)
+    if s:
+        return s.dir
     d = dependency(dname)
     if collectDeps is not None:
         collectDeps.append(d)
