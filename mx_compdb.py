@@ -26,6 +26,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 
 from multiprocessing import Lock
 
@@ -133,29 +134,36 @@ class Compdb:
 
     def mergeFile(self, path):
         with open(path, 'r') as f:
-            try:
-                self.merge(json.load(f))
-            except json.JSONDecodeError:
+            self.mergeFileDesc(f, path=path)
+
+    def mergeFileDesc(self, fd, path=None):
+        try:
+            self.merge(json.load(fd))
+        except json.JSONDecodeError:
+            if path:
                 mx.warn(f"Error decoding JSON compilation database from '{path}'. Ignoring.")
+            else:
+                mx.warn("Error decoding JSON compilation database. Ignoring.")
 
 
 class CompdbCapture:
     def __init__(self, suite):
-        self.data = ""
-
-    def __call__(self, data):
-        self.data += data
+        self.file = None
 
     def __enter__(self):
         if enabled():
-            return self
+            self.file = tempfile.TemporaryFile()
+            return self.file
         else:
             return None
 
     def __exit__(self, *args):
         if enabled():
             with Compdb() as db:
-                db.mergeString(self.data)
+                self.file.seek(0)
+                db.mergeFileDesc(self.file)
+        if self.file:
+            self.file.__exit__(args)
 
 def merge_compdb(subject, path):
     if enabled():
