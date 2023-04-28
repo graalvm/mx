@@ -901,6 +901,14 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         for servicePathName in os.listdir(services_dir):
                             if servicePathName == _Archive.jdk_8268216:
                                 continue
+                            full_path = join(services_dir, servicePathName)
+                            if os.path.isdir(full_path):
+                                # Note: do not treat subdirectories of META-INF/services in any special way and just copy them to
+                                # the result as if they were just regular resource files. They are not part of the specification [1],
+                                # but some libraries are known to use them for internal purposes.
+                                # (e.g., the org.jline.terminal.spi.TerminalProvider class in JLine3).
+                                continue
+
                             # While a META-INF provider configuration file must use a fully qualified binary
                             # name[1] of the service, a provides directive in a module descriptor must use
                             # the fully qualified non-binary name[2] of the service.
@@ -910,7 +918,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             service = servicePathName.replace('$', '.')
 
                             assert '/' not in service
-                            with open(join(services_dir, servicePathName)) as fp:
+                            with open(full_path) as fp:
                                 serviceContent = fp.read()
                             provides.setdefault(service, set()).update(provider.replace('$', '.') for provider in serviceContent.splitlines())
                             # Service types defined in the module are assumed to be used by the module
