@@ -14488,19 +14488,27 @@ def flock_cmd():
 _gmake_cmd = '<uninitialized>'
 
 
+def _validate_gmake_cmd(gmake):
+    try:
+        output = _check_output_str([gmake, '--version'], stderr=subprocess.STDOUT)
+        return 'GNU' in output
+    except:
+        return False
+
+
 def gmake_cmd(context=None):
     global _gmake_cmd
+    # might also be initialized by `build()` when the `--gmake` argument is passed
     if _gmake_cmd == '<uninitialized>':
-        for a in ['make', 'gmake', 'gnumake']:
-            try:
-                output = _check_output_str([a, '--version'], stderr=subprocess.STDOUT)
-                if 'GNU' in output:
+        if _opts.gmake is not None:
+            _gmake_cmd = _opts.gmake
+        else:
+            for a in ['make', 'gmake', 'gnumake']:
+                if _validate_gmake_cmd(a):
                     _gmake_cmd = a
                     break
-            except:
-                pass
-        if _gmake_cmd == '<uninitialized>':
-            abort('Could not find a GNU make executable on the current path.', context=context)
+            else:
+                abort('Could not find a GNU make executable on the current path.', context=context)
     return _gmake_cmd
 
 
@@ -14605,6 +14613,7 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
+    global _gmake_cmd
 
     suppliedParser = parser is not None
     if not suppliedParser:
@@ -14640,6 +14649,7 @@ def build(cmd_args, parser=None):
     parser.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
     parser.add_argument('--all', action='store_true', help='build all dependencies (not just default targets)')
     parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
+    parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -14727,6 +14737,14 @@ def build(cmd_args, parser=None):
         if roots:
             roots = _dependencies_opt_limit_to_suites(roots)
             # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
+
+    if args.gmake is not None:
+        args.gmake = os.path.abspath(args.gmake)
+        if not exists(args.gmake):
+            abort(f"Invalid '--gmake' argument value: '{args.gmake}' does not exist")
+        if not _validate_gmake_cmd(args.gmake):
+            abort(f"Invalid '--gmake' argument value: '{args.gmake}' is not a valid GNU make executable")
+        _gmake_cmd = args.gmake
 
     sortedTasks = []
     taskMap = {}
@@ -18396,7 +18414,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.20.5")  # GR-45990: fix mx.cmd argument passing
+version = VersionSpec("6.20.6")  # --gmake
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
