@@ -18396,7 +18396,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.20.3")  # strenghten the extraction of VM info
+version = VersionSpec("6.20.4")  # GR-45199: mx gate --tags ... --partial ...
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

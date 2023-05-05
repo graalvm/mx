@@ -64,7 +64,8 @@ class Task:
     # a non-None value from __enter__. The body of a 'with Task(...) as t'
     # statement should check 't' and exit immediately if it is None.
     filters = []
-    log = True # whether to log task messages
+    strict_filters = []  # Like `filters`, but the entire title must match
+    log = True  # whether to log task messages
     dryRun = False
     startAtFilter = None
     filtersExclude = False
@@ -139,11 +140,19 @@ class Task:
                 else:
                     self.skipped = True
             elif len(Task.filters) > 0:
+                assert len(Task.strict_filters) == 0, "A Task cannot have both `filters` and `strict_filters`"
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
                     self.skipped = any([f in t for t in titles for f in Task.filters])
                 else:
                     self.skipped = not any([f in t for t in titles for f in Task.filters])
+            elif len(Task.strict_filters) > 0:
+                assert len(Task.filters) == 0, "A Task cannot have both `filters` and `strict_filters`"
+                titles = [self.title] + self.legacyTitles
+                if Task.filtersExclude:
+                    self.skipped = any([f == t for t in titles for f in Task.strict_filters])
+                else:
+                    self.skipped = not any([f == t for t in titles for f in Task.strict_filters])
             if Task.tags is not None:
                 if Task.tagsExclude:
                     self.skipped = all([t in Task.tags for t in self.tags]) if tags else False # pylint: disable=unsupported-membership-test
@@ -320,7 +329,7 @@ def gate(args):
     add_omit_clean_args(parser)
     parser.add_argument('--all-suites', action='store_true', help='run gate tasks for all suites, not just the primary suite')
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
-    parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
+    parser.add_argument('-x', action='store_true', help='makes --task-filter, --strict-task-filter, or --tags an exclusion instead of inclusion filter')
     jacoco = parser.add_mutually_exclusive_group()
     jacoco.add_argument('--jacocout', help='specify the output directory for jacoco report')
     jacoco.add_argument('--jacoco-zip', help='specify the output zip file for jacoco report')
@@ -337,6 +346,7 @@ def gate(args):
     summary.add_argument('--summary-format', dest='summary', action='store', default=None, help='--summary with a comma separated list of entries. Possible values ' + str(default_summary))
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
+    filtering.add_argument('-T', '--strict-task-filter', help='comma separated list of strings to select subset of tasks to be run. The entire task name must match.')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
     filtering.add_argument('--tags', help='comma separated list of tags to select subset of tasks to be run. Tags can have a range specifier `name[:from:[to]]`.'
                            'If present only the [from,to) tasks are executed. If `to` is omitted all tasks starting with `from` are executed.')
@@ -353,6 +363,9 @@ def gate(args):
     elif args.task_filter:
         Task.filters = args.task_filter.split(',')
         Task.filtersExclude = args.x
+    elif args.strict_task_filter:
+        Task.strict_filters = args.strict_task_filter.split(',')
+        Task.filtersExclude = args.x
     elif args.tags:
         parse_tags_argument(args.tags, args.x)
         Task.tagsExclude = args.x
@@ -360,7 +373,7 @@ def gate(args):
             # implicitly include 'always'
             Task.tags += [Tags.always]
     elif args.x:
-        mx.abort('-x option cannot be used without --task-filter or the --tags option')
+        mx.abort('-x option cannot be used without --task-filter, --strict-task-filter, or the --tags option')
 
     if args.jacoco_zip:
         args.jacocout = 'html'
@@ -388,10 +401,14 @@ def gate(args):
         partialTasks = nonBuildTasks[selected::total]
         runTaskNames = [task.title for task in buildTasks + partialTasks]
 
-        # we have already ran the filters in the dry run when collecting
+        # We have already ran the filters in the dry run when collecting
         # so we can safely overwrite other filter settings.
-        Task.filters = runTaskNames
+        # We set `strict_filters` rather than `filters` because we want
+        # exact matches, not matches by substring.
+        Task.strict_filters = runTaskNames
+        Task.filters = []
         Task.filtersExclude = False
+        Task.tags = None
 
         mx.log('Running gate with partial tasks ' + args.partial + ". " + str(len(partialTasks)) + " out of " + str(len(nonBuildTasks)) + " non-build tasks selected.")
         if len(partialTasks) == 0:
