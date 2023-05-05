@@ -14500,15 +14500,12 @@ def gmake_cmd(context=None):
     global _gmake_cmd
     # might also be initialized by `build()` when the `--gmake` argument is passed
     if _gmake_cmd == '<uninitialized>':
-        if _opts.gmake is not None:
-            _gmake_cmd = _opts.gmake
+        for a in ['make', 'gmake', 'gnumake']:
+            if _validate_gmake_cmd(a):
+                _gmake_cmd = a
+                break
         else:
-            for a in ['make', 'gmake', 'gnumake']:
-                if _validate_gmake_cmd(a):
-                    _gmake_cmd = a
-                    break
-            else:
-                abort('Could not find a GNU make executable on the current path.', context=context)
+            abort('Could not find a GNU make executable on the current path.', context=context)
     return _gmake_cmd
 
 
