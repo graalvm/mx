@@ -1301,7 +1301,7 @@ class _ArchiveEntry(object):
                 else:
                     # right is a normal file
                     left = left_zf.read(left_info)
-                    with open(right, 'rb') as fp:
+                    with open(right[0], 'rb') as fp:
                         right = fp.read()
                         if left == right:
                             return None
@@ -1315,7 +1315,7 @@ class _ArchiveEntry(object):
                     right = right_zf.read(right[1])
             else:
                 # right is a normal file
-                with open(right, 'rb') as fp:
+                with open(right[0], 'rb') as fp:
                     right = fp.read()
             if left == right:
                 return None
