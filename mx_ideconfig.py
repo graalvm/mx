@@ -200,6 +200,9 @@ def fsckprojects(args):
                         indicatorsInVC = suite.vc.locate(suite.vc_dir, indicators)
                         # Only proceed if there are indicator files that are not under VC
                         if len(indicators) > len(indicatorsInVC):
+                            extra_files = [join(p, f) for (p, _, files) in os.walk(dirpath) for f in files if not f in projectConfigFiles]
+                            if len(extra_files) > 0:
+                                mx.warn('Removed project ' + dirpath + ' has extra files:\n' + '\n'.join(extra_files))
                             if mx.ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                                 shutil.rmtree(dirpath)
                                 mx.log('Deleted ' + dirpath)
