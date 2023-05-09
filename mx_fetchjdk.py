@@ -246,7 +246,7 @@ def _parse_args(args):
     path_list.add(join(_mx_home, 'jdk-binaries.json'))
     default_jdk_binaries_location = str(path_list)
 
-    parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options]' + r"""
+    parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id>]' + r"""
         Download and install JDKs.
 
         The set of JDKS available for download are specified by the "jdks" field of the JSON
@@ -306,14 +306,19 @@ def _parse_args(args):
         per unique entry in the list. 
     """)
 
-    parser.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
+    jdk_id_group = parser.add_mutually_exclusive_group()
+    jdk_id_group.add_argument('jdk_id_pos', action='store', metavar='<jdk-id>', nargs='?', help='see --jdk-id')
+    jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', metavar='<path>', help=f'location of JSON file containing JDK definitions (default: {default_jdk_defs_location})')
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {default_jdk_binaries_location})')
     parser.add_argument('--to', action='store', metavar='<dir>', help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {settings['jdks-dir']})")
-    parser.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
+    alias_group = parser.add_mutually_exclusive_group()
+    alias_group.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
+    alias_group.add_argument('--auto-alias', '-A', action='store_const', dest='alias', const='-', help='make the extracted JDK available via its name (e.g. via a symlink). The path will be resolved against the value of the --to option.')
     parser.add_argument('--arch', action='store', metavar='<name>', help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
+    parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
     args = parser.parse_args(args)
 
     if args.to is not None:
@@ -333,13 +338,24 @@ def _parse_args(args):
     jdk_defs = _parse_jdk_defs(jdk_defs_location)
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, args.arch)
 
-    if args.jdk_id is not None:
-        settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, args.jdk_id)
+    if args.list:
+        for jdk in sorted(jdk_defs.keys()):
+            mx.log(jdk)
+        # cannot use mx.abort as it always adds a newline
+        raise SystemExit(0)
+
+    # use positional or option argument
+    jdk_id = args.jdk_id_pos or args.jdk_id
+    if jdk_id is not None:
+        settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, jdk_id)
     else:
         settings["jdk-binary"] = _choose_jdk_binary(jdk_binaries, is_quiet())
 
     if args.alias is not None:
-        settings["alias"] = args.alias
+        if args.alias == "-":
+            settings["alias"] = settings["jdk-binary"]._jdk_id
+        else:
+            settings["alias"] = args.alias
 
     if args.keep_archive is not None:
         settings["keep-archive"] = args.keep_archive
