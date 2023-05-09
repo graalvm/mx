@@ -7,6 +7,13 @@ _mx() {
     #  read options & commands
     IFS='|' read opts commands <<< $(_mx_completion)
 
+    #  complete fetch-jdk
+    if [[ "${prev}" == "fetch-jdk" ]]; then
+        local jdk_ids=$(mx fetch-jdk --list)
+        COMPREPLY=($(compgen -W "${jdk_ids}" -- $cur))
+        return 0
+    fi
+
     # complete command arguments
     for command in $commands; do
         if [[ "${prev}" == "${command}" ]]; then
