@@ -339,7 +339,7 @@ def _parse_args(args):
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, args.arch)
 
     if args.list:
-        for jdk in jdk_defs.keys():
+        for jdk in sorted(jdk_defs.keys()):
             mx.log(jdk)
         # cannot use mx.abort as it always adds a newline
         raise SystemExit(0)
