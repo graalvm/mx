@@ -314,6 +314,7 @@ def _parse_args(args):
     parser.add_argument('--arch', action='store', metavar='<name>', help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
+    parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
     args = parser.parse_args(args)
 
     if args.to is not None:
@@ -332,6 +333,12 @@ def _parse_args(args):
 
     jdk_defs = _parse_jdk_defs(jdk_defs_location)
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, args.arch)
+
+    if args.list:
+        for jdk in jdk_defs.keys():
+            mx.log(jdk)
+        # cannot use mx.abort as it always adds a newline
+        raise SystemExit(0)
 
     if args.jdk_id is not None:
         settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, args.jdk_id)
