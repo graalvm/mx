@@ -691,6 +691,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
         mx.log(f'Building Java module {moduleName} ({basename(module_jar)}) from {dist.name}')
 
+        ignored_service_types = set()
         if module_info:
             for entry in module_info.get("requires", []):
                 parts = entry.split()
@@ -701,6 +702,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
 
             opens = module_info.get('opens', {})
+            ignored_service_types = module_info.get("ignoredServiceTypes", [])
+            if not isinstance(ignored_service_types, list):
+                mx.abort('"ignoredServiceTypes" must be a list', context=dist)
 
             requires_concealed = module_info.get('requiresConcealed', None)
             if requires_concealed is not None:
@@ -916,6 +920,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
                             # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
                             service = servicePathName.replace('$', '.')
+                            if service in ignored_service_types:
+                                continue
 
                             assert '/' not in service
                             with open(full_path) as fp:

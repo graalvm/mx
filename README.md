@@ -200,6 +200,27 @@ module org.graalvm.truffle {
 ```
 
 The `provides` clauses are automatically derived from the `META-INF/services/` directory in the distribution's jar file.
+The generation of the `provides` clauses can be modified by utilizing the `ignoredServiceTypes` attribute.
+Here is an extract from the definition of the `TRUFFLE_NFI` distribution, which prevents adding `DefaultExportProvider` and
+`EagerExportProvider` implementations to `provides` clauses.
+```
+"TRUFFLE_NFI" : {
+    "moduleInfo" : {
+        "name" : "com.oracle.truffle.truffle_nfi",
+        "exports" : [
+            "com.oracle.truffle.nfi.api",
+            "com.oracle.truffle.nfi.backend.spi",
+            "com.oracle.truffle.nfi.backend.spi.types",
+            "com.oracle.truffle.nfi.backend.spi.util",
+        ],
+        "ignoredServiceTypes" : [
+            "com.oracle.truffle.api.library.DefaultExportProvider",
+            "com.oracle.truffle.api.library.EagerExportProvider",
+        ],
+    }
+    ...
+}
+```
 
 The GRAAL distribution shows how a single `exports` attribute can be used to specify multiple `exports` clauses:
 
