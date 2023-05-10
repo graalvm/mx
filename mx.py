@@ -18446,7 +18446,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.22.0")  # support subdirectories in META-INF/services
+version = VersionSpec("6.23.0")  # GR-46083 foreign imports
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
