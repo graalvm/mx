@@ -814,9 +814,13 @@ class _ArchiveStager(object):
                     continue
                 if not is_sources_jar and arcname == 'module-info.class':
                     mx.logv(jar_path + ' contains ' + arcname + '. It will not be included in ' + self.bin_archive.path)
-                elif not is_sources_jar and arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
-                    service = arcname[len('META-INF/services/'):]
-                    assert '/' not in service
+                    continue
+                service = arcname[len('META-INF/services/'):]
+                if not is_sources_jar and arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/' and '/' not in service:
+                    # Note: do not treat subdirectories of META-INF/services in any special way and just copy them to
+                    # the result as if they were just regular resource files. They are not part of the specification,
+                    # but some libraries are known to use them for internal purposes.
+                    # (e.g., the org.jline.terminal.spi.TerminalProvider class in JLine3).
                     self.services.setdefault(service, []).extend(zf.read(arcname).decode().splitlines())
                 else:
                     entry = _ArchiveEntry(dep, arcname, archive, jar_path + '!' + arcname)
