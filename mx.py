@@ -987,9 +987,13 @@ class SuiteModel:
                 candidate = join(searchDir, dd, suite_import.name)
             else:
                 candidate = join(searchDir, dd)
-            sd = _is_suite_dir(candidate, _mxDirName(suite_import.name))
-            if sd is not None:
-                found.append(sd)
+            if suite_import.foreign:
+                if basename(candidate) == suite_import.name:
+                    found.append(candidate)
+            else:
+                sd = _is_suite_dir(candidate, _mxDirName(suite_import.name))
+                if sd is not None:
+                    found.append(sd)
 
         if len(found) == 0:
             return None
@@ -1176,7 +1180,7 @@ class SuiteImportURLInfo:
 
 
 class SuiteImport:
-    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None, suite_dir=None):
+    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None, suite_dir=None, foreign=False):
         self.name = name
         self.urlinfos = [] if urlinfos is None else urlinfos
         self.version = self._deprecated_resolve_git_branchref(version)
@@ -1185,6 +1189,7 @@ class SuiteImport:
         self.kind = kind
         self.in_subdir = in_subdir
         self.suite_dir = suite_dir
+        self.foreign = foreign
 
     def __str__(self):
         return self.name
@@ -1263,7 +1268,8 @@ class SuiteImport:
             vc_kind = mainKind
         elif urlinfos:
             vc_kind = 'binary'
-        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from, suite_dir=suite_dir)
+        foreign = import_dict.get("foreign", False)
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from, suite_dir=suite_dir, foreign=foreign)
 
     @staticmethod
     def get_source_urls(source, kind=None):
@@ -1689,13 +1695,19 @@ class Suite(object):
     Command state and methods for all suite subclasses.
     :type dists: list[Distribution]
     """
-    def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False):
+    def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False, foreign=False):
         if primary is True and vc_dir is None:
             abort("The primary suite must be in a vcs repository or under a directory containing a file called '.mx_vcs_root' or 'ci.hocon'")
         self.imported_by = [] if primary else [importing_suite]
-        self.mxDir = mxDir
-        self.dir = dirname(mxDir)
-        self.name = _suitename(mxDir)
+        self.foreign = foreign
+        if foreign:
+            self.mxDir = None
+            self.dir = mxDir
+            self.name = basename(mxDir)
+        else:
+            self.mxDir = mxDir
+            self.dir = dirname(mxDir)
+            self.name = _suitename(mxDir)
         self.primary = primary
         self.internal = internal
         self.libs = []
@@ -1859,36 +1871,46 @@ class Suite(object):
 
     def _preload_suite_dict(self):
         dictName = 'suite'
-        moduleName = 'suite'
-        modulePath = self.suite_py()
-        assert modulePath.endswith(moduleName + ".py")
-        if not exists(modulePath):
-            abort(f'{modulePath} is missing')
-
-        savedModule = sys.modules.get(moduleName)
-        if savedModule:
-            warn(modulePath + ' conflicts with ' + savedModule.__file__)
-        # temporarily extend the Python path
-        sys.path.insert(0, self.mxDir)
-
-        snapshot = frozenset(sys.modules.keys())
-        module = __import__(moduleName)
-
-        if savedModule:
-            # restore the old module into the module name space
-            sys.modules[moduleName] = savedModule
+        if self.foreign:
+            modulePath = None
+            # foreign suites have no suite dict, populate with some defaults
+            preloaded = {"name": self.name, "mxversion": str(version)}
         else:
-            # remove moduleName from the module name space
-            sys.modules.pop(moduleName)
+            assert self.mxDir is not None
+            moduleName = 'suite'
+            modulePath = self.suite_py()
+            assert modulePath.endswith(moduleName + ".py")
+            if not exists(modulePath):
+                abort(f'{modulePath} is missing')
 
-        # For now fail fast if extra modules were loaded.
-        # This can later be relaxed to simply remove the extra modules
-        # from the sys.modules name space if necessary.
-        extraModules = frozenset(sys.modules.keys()) - snapshot
-        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join(extraModules)
+            savedModule = sys.modules.get(moduleName)
+            if savedModule:
+                warn(modulePath + ' conflicts with ' + savedModule.__file__)
+            # temporarily extend the Python path
+            sys.path.insert(0, self.mxDir)
 
-        # revert the Python path
-        del sys.path[0]
+            snapshot = frozenset(sys.modules.keys())
+            module = __import__(moduleName)
+
+            if savedModule:
+                # restore the old module into the module name space
+                sys.modules[moduleName] = savedModule
+            else:
+                # remove moduleName from the module name space
+                sys.modules.pop(moduleName)
+
+            # For now fail fast if extra modules were loaded.
+            # This can later be relaxed to simply remove the extra modules
+            # from the sys.modules name space if necessary.
+            extraModules = frozenset(sys.modules.keys()) - snapshot
+            assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join(extraModules)
+
+            # revert the Python path
+            del sys.path[0]
+
+            if not hasattr(module, dictName):
+                abort(modulePath + ' must define a variable named "' + dictName + '"')
+            preloaded = getattr(module, dictName)
 
         def expand(value, context):
             if isinstance(value, dict):
@@ -1906,10 +1928,7 @@ class Suite(object):
 
             return value
 
-        if not hasattr(module, dictName):
-            abort(modulePath + ' must define a variable named "' + dictName + '"')
-
-        self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
+        self._preloaded_suite_dict = expand(preloaded, [dictName])
 
         if self.name == 'mx':
             self.requiredMxVersion = version
@@ -1929,13 +1948,14 @@ class Suite(object):
             os_arch = Suite._pop_os_arch(_suite, context)
             Suite._merge_os_arch_attrs(_suite, os_arch, context)
 
-        (jsonifiable, errorMessage) = self._is_jsonifiable(modulePath)
-        if not jsonifiable:
-            msg = f"Cannot parse file {modulePath}. Please make sure that this file only contains dicts and arrays. {errorMessage}"
-            if self.getMxCompatibility().requireJsonifiableSuite():
-                abort(msg)
-            else:
-                warn(msg)
+        if modulePath:
+            (jsonifiable, errorMessage) = self._is_jsonifiable(modulePath)
+            if not jsonifiable:
+                msg = f"Cannot parse file {modulePath}. Please make sure that this file only contains dicts and arrays. {errorMessage}"
+                if self.getMxCompatibility().requireJsonifiableSuite():
+                    abort(msg)
+                else:
+                    warn(msg)
 
     def _is_jsonifiable(self, suiteFile):
         """Other tools require the suite.py files to be parseable without running a python interpreter.
@@ -2221,6 +2241,9 @@ class Suite(object):
         return 'mx_' + self.name.replace('-', '_')
 
     def _find_extensions(self, name):
+        if self.mxDir is None:
+            assert self.foreign
+            return None
         extensionsPath = join(self.mxDir, name + '.py')
         if exists(extensionsPath):
             return name
@@ -2732,8 +2755,11 @@ class Repository(SuiteConstituent):
 
 class SourceSuite(Suite):
     """A source suite"""
-    def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
-        vc, vc_dir = VC.get_vc_root(dirname(mxDir), abortOnError=False)
+    def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, foreign=None, **kwArgs):
+        if foreign:
+            vc, vc_dir = VC.get_vc_root(mxDir, abortOnError=False)
+        else:
+            vc, vc_dir = VC.get_vc_root(dirname(mxDir), abortOnError=False)
         if not vc_dir:
             current_dir = realpath(dirname(mxDir))
             while True:
@@ -2747,7 +2773,7 @@ class SourceSuite(Suite):
                 if os.path.splitdrive(current_dir)[1] == os.sep:
                     break
                 current_dir = dirname(current_dir)
-        Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
+        Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, foreign=foreign, **kwArgs)
         logvv(f"SourceSuite.__init__({mxDir}), got vc={self.vc}, vc_dir={self.vc_dir}")
         self.projects = []
         self.removed_projects = []
@@ -3009,7 +3035,8 @@ class SourceSuite(Suite):
             abort(f"Could not find env file: {e}")
 
     def _parse_env(self):
-        SourceSuite._load_env_in_mxDir(self.mxDir, _loadedEnv)
+        if self.mxDir:
+            SourceSuite._load_env_in_mxDir(self.mxDir, _loadedEnv)
 
     def _register_metadata(self):
         Suite._register_metadata(self)
@@ -3130,8 +3157,8 @@ class SourceSuite(Suite):
 A pre-built suite downloaded from a Maven repository.
 """
 class BinarySuite(Suite):
-    def __init__(self, mxDir, importing_suite, dynamicallyImported=False, load=True):
-        Suite.__init__(self, mxDir, False, False, importing_suite, load, BinaryVC(), dirname(mxDir), dynamicallyImported=dynamicallyImported)
+    def __init__(self, mxDir, importing_suite, load=True, **kwArgs):
+        Suite.__init__(self, mxDir, False, False, importing_suite, load, BinaryVC(), dirname(mxDir), **kwArgs)
         # At this stage the suite directory is guaranteed to exist as is the mx.suitname
         # directory. For a freshly downloaded suite, the actual distribution jars
         # have not been downloaded as we need info from the suite.py for that
@@ -3357,10 +3384,15 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
         if mode == 'binary':
             return importing_suite.binary_suite_dir(suite_import.name)
         else:
-            # Try use the URL first so that a big repo is cloned to a local
-            # directory whose named is based on the repo instead of a suite
-            # nested in the big repo.
-            root, _ = os.path.splitext(basename(urllib.parse.urlparse(url).path))
+            if suite_import.foreign:
+                # We always need to clone non-suite repos into a dir with the suite name. We can't
+                # locate it later except by name, since we don't have the mx.<name> dir inside.
+                root = suite_import.name
+            else:
+                # Try use the URL first so that a big repo is cloned to a local
+                # directory whose named is based on the repo instead of a suite
+                # nested in the big repo.
+                root, _ = os.path.splitext(basename(urllib.parse.urlparse(url).path))
             if root:
                 import_dir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
             else:
@@ -3441,7 +3473,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
         return BinarySuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
     else:
         assert _found_mode[0] == 'source'
-        return SourceSuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
+        return SourceSuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport, foreign=suite_import.foreign), _clone_status[0]
 
 def _discover_suites(primary_suite_dir, load=True, register=True, update_existing=False):
 
@@ -4965,6 +4997,9 @@ def _replacePathVar(m):
     return mx_subst.path_substitutions.substitute(m.group(0))
 
 def _get_dependency_path(dname, resolve=True, collectDeps=None, **kwargs):
+    s = suite(dname, fatalIfMissing=False)
+    if s:
+        return s.dir
     d = dependency(dname)
     if collectDeps is not None:
         collectDeps.append(d)
@@ -18411,7 +18446,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.22.0")  # support subdirectories in META-INF/services
+version = VersionSpec("6.23.0")  # GR-46083 foreign imports
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
