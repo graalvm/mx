@@ -31,7 +31,7 @@ Recommended _Format on Save_ configuration (**IntelliJ IDEA > Preferences > Tool
 
 1. Check "Reformat code" (Files:Java, Changed lines only)
 2. Check "Optimize imports" (Files:Java)
-3. Check "Run code cleanup"
+3. Check "Run code cleanup". This removes unused imports.
 
 ##### Making IntelliJ Feel Similar to Eclipse (Optional)
 
