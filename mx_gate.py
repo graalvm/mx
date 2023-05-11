@@ -809,6 +809,7 @@ def _jacoco_excludes_includes():
     for p in mx.projects():
         if p.isJavaProject():
             projsetting = getattr(p, 'jacoco', '')
+            assert isinstance(projsetting, str), f'jacoco must be a string, not a {type(projsetting)}'
             if not _jacoco_is_package_whitelisted(p.name):
                 pass
             elif projsetting == 'exclude':
@@ -818,6 +819,10 @@ def _jacoco_excludes_includes():
                 baseExcludes.append(p.name)
             elif projsetting == 'include':
                 includes.append(p.name + '.*')
+            packagelist = getattr(p, 'jacocoExcludePackages', [])
+            assert isinstance(packagelist, list), f'jacocoExcludePackages must be a list, not a {type(packagelist)}'
+            for packagename in packagelist:
+                baseExcludes.append(packagename)
     if _jacoco_whitelisted_packages:
         includes.extend((x + '.*' for x in _jacoco_whitelisted_packages))
 
