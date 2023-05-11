@@ -30,7 +30,8 @@ Configure the `Eclipse Code Formatter` (**IntelliJ IDEA > Preferences > Other Se
 Recommended _Format on Save_ configuration (**IntelliJ IDEA > Preferences > Tools > Actions on Save**):
 
 1. Check "Reformat code" (Files:Java, Changed lines only)
-2. Check "Opimize imports" (Files:Java)
+2. Check "Optimize imports" (Files:Java)
+3. Check "Run code cleanup"
 
 ##### Making IntelliJ Feel Similar to Eclipse (Optional)
 
@@ -91,7 +92,7 @@ By default Eclipse generates a working set for each mx suite e.g. named `Suite t
 
 Distribution builders (all upper-case imported projects) build synchronously when building the workspace.
 Since building distributions can take some time and this might block using the IDE it is possible to run such builders in parallel by setting the environment variable `MX_IDE_ECLIPSE_ASYNC_DISTRIBUTIONS=true` in `~/.mx/env`.
-A downside of this option is that Eclipse will no longer show when it is building distributions. 
+A downside of this option is that Eclipse will no longer show when it is building distributions.
 However, it is typically enough to wait a few seconds before running other `mx` commands like `mx unittest` that expect the distributions to be built.
 
 It is planned to enable this feature by default in the future when more feedback has been collected.
