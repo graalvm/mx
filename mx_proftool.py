@@ -36,6 +36,8 @@ import sys
 import zipfile
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
+from itertools import islice
+from typing import Optional, NamedTuple, Iterable
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -82,6 +84,18 @@ DebugInfoTag, = struct.unpack('>i', b'DEBI')
 CompiledMethodUnloadTag, = struct.unpack('>i', b'CMUT')
 
 
+class ExperimentManifest(NamedTuple):
+    vm: str
+    image_path: str
+
+    def save(self, fp):
+        return json.dump(self._asdict(), fp=fp, indent=4)
+
+    @staticmethod
+    def load(fp):
+        return ExperimentManifest(**json.load(fp))
+
+
 class ExperimentFiles(object, metaclass=ABCMeta):
     """A collection of data files from a performance data collection experiment."""
 
@@ -109,6 +123,14 @@ class ExperimentFiles(object, metaclass=ABCMeta):
 
     @abstractmethod
     def open_jvmti_asm_file(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def has_manifest(self) -> bool:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def read_manifest(self) -> ExperimentManifest:
         raise NotImplementedError()
 
     @abstractmethod
@@ -155,6 +177,10 @@ class ExperimentFiles(object, metaclass=ABCMeta):
     def open_block_info(self, compilation_id):
         raise NotImplementedError()
 
+    def is_native_image_experiment(self) -> bool:
+        return self.has_manifest() and self.read_manifest().vm == 'native-image'
+
+
 def find_basic_block_info_filename(compilation_id, files, block_extension='blocks'):
     if compilation_id[-1] == '%':
         # It is an OSR compilation id
@@ -177,7 +203,7 @@ class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
 
     def __init__(self, directory, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
-                 perf_output_name='perf_output_file', log_compilation_name='log_compilation'):
+                 perf_output_name='perf_output_file', log_compilation_name='log_compilation', manifest_name='manifest.json'):
         super(FlatExperimentFiles, self).__init__()
         if not os.path.isdir(directory):
             raise AssertionError('Must be directory')
@@ -186,6 +212,7 @@ class FlatExperimentFiles(ExperimentFiles):
         self.perf_binary_filename = os.path.join(self.directory, perf_binary_name)
         self.perf_output_filename = os.path.join(self.directory, perf_output_name)
         self.log_compilation_filename = os.path.join(self.directory, log_compilation_name)
+        self.manifest_filename = os.path.join(self.directory, manifest_name)
 
         self.dump_path = None
         path = os.path.join(self.directory, 'graal_dump')
@@ -208,6 +235,17 @@ class FlatExperimentFiles(ExperimentFiles):
 
     def has_assembly(self):
         return self.jvmti_asm_filename and os.path.exists(self.jvmti_asm_filename)
+
+    def has_manifest(self) -> bool:
+        return self.manifest_filename and os.path.exists(self.manifest_filename)
+
+    def read_manifest(self) -> ExperimentManifest:
+        with open(self.manifest_filename, 'r') as fp:
+            return ExperimentManifest.load(fp)
+
+    def write_manifest(self, manifest: ExperimentManifest):
+        with open(self.manifest_filename, 'w') as fp:
+            manifest.save(fp)
 
     def open_perf_output_file(self, mode='r'):
         return open(self.perf_output_filename, mode)
@@ -300,10 +338,11 @@ class ZipExperimentFiles(ExperimentFiles):
     def __init__(self, filename):
         super(ZipExperimentFiles, self).__init__()
         self.experiment_file = ZipFile(filename)
-        self.jvmti_asm_file = self.find_file('jvmti_asm_file')
+        self.jvmti_asm_file = self.find_file('jvmti_asm_file', error=False)
         self.perf_output_filename = self.find_file('perf_output_file')
         self.log_compilation_filename = self.find_file('log_compilation', error=False)
         self.dump_path = self.find_file('graal_dump' + os.sep, error=False)
+        self.manifest_file = self.find_file('manifest.json', error=False)
 
     def find_file(self, name, error=True):
         for f in self.experiment_file.namelist():
@@ -321,6 +360,20 @@ class ZipExperimentFiles(ExperimentFiles):
 
     def has_assembly(self):
         return self.jvmti_asm_file is not None
+
+    def has_manifest(self) -> bool:
+        return self.manifest_file is not None
+
+    def read_manifest(self) -> ExperimentManifest:
+        with self._open_manifest('r') as fp:
+            return ExperimentManifest.load(fp)
+
+    def write_manifest(self, manifest: ExperimentManifest):
+        with self._open_manifest('w') as fp:
+            manifest.save(fp)
+
+    def _open_manifest(self, mode):
+        return io.TextIOWrapper(self.experiment_file.open(self.manifest_file, mode), encoding='utf-8')
 
     def ensure_perf_output(self):
         if self.perf_output_filename is None:
@@ -872,6 +925,135 @@ class PerfEvent:
         return self.symbol
 
 
+class PerfMethod(NamedTuple):
+    symbol: str
+    dso: str
+    total_period: int
+    samples: int
+
+    def demangled_name(self):
+        if self.symbol is None or not NativeImageBFDDemangler.is_mangled_name(self.symbol):
+            return self.symbol
+        return NativeImageBFDDemangler().format_mangled_name(self.symbol)
+
+
+class NativeImageBFDDemangler:
+    _primitive_encoding = {'b': 'bool',
+                           'a': 'byte',
+                           's': 'short',
+                           't': 'char',
+                           'i': 'int',
+                           'l': 'long',
+                           'f': 'float',
+                           'd': 'double',
+                           'v': 'void'}
+
+    def __init__(self):
+        self._method_encoding: Optional[list[str]] = None
+        self._return_type: Optional[str] = None
+        self._parameter_encodings: Optional[list[str]] = None
+        self._rest: Optional[str] = None
+
+    @classmethod
+    def is_mangled_name(cls, name: Optional[str]) -> bool:
+        return name and name.startswith('_Z')
+
+    def format_mangled_name(self, mangled: str) -> str:
+        self._read_mangled_name(mangled)
+        params = [param.split('.')[-1] for param in self._parameter_encodings]
+        return f"{'.'.join(self._method_encoding)}({', '.join(params)})"
+
+    def _error(self, cause: str):
+        raise ValueError(f"Failed to parse mangled a name.\n\n"
+                         f"Input: {self._mangled}\n"
+                         f"Cause: {cause}\n"
+                         f"Position: {self._mangled[:-len(self._rest)]} <HERE> {self._rest}")
+
+    def _read_mangled_name(self, mangled: str):
+        self._mangled = mangled
+        self._rest = mangled
+        self._remove_prefix('_Z')
+        self._method_encoding = self._read_method_encoding()
+        self._return_type = self._read_return_type()
+        self._parameter_encodings = self._read_parameter_encodings()
+
+    def _read_base_symbol(self) -> str:
+        str_len = 0
+        prefix_len = 0
+        for ch in self._rest:
+            if ch.isdigit():
+                str_len = 10 * str_len + int(ch)
+                prefix_len += 1
+            else:
+                break
+        base_symbol = self._rest[prefix_len:prefix_len + str_len]
+        self._rest = self._rest[prefix_len + str_len:]
+        return base_symbol
+
+    def _remove_prefix(self, prefix: str):
+        if not self._rest.startswith(prefix):
+            self._error(f"'{prefix}' expected next.")
+        self._rest = self._rest[len(prefix):]
+
+    def _read_method_encoding(self, ) -> list[str]:
+        self._remove_prefix('N')
+        method_encoding = []
+        while not self._rest.startswith('E'):
+            method_encoding.append(self._read_base_symbol())
+        self._remove_prefix('E')
+        return method_encoding
+
+    def _read_return_type(self) -> Optional[str]:
+        if self._rest and self._rest.startswith('J'):
+            self._remove_prefix('J')
+            return self._read_type()
+        return None
+
+    def _read_type(self) -> str:
+        if not self._rest:
+            self._error(f'Expected a type.')
+        peek = self._rest[0]
+        if peek == 'N':
+            self._remove_prefix(peek)
+            result = ''
+            while not self._rest.startswith('E'):
+                result += self._read_type()
+            return result
+        elif peek == 'P':
+            self._remove_prefix(peek)
+            return self._read_type()
+        elif peek == 'S':
+            self._remove_prefix(peek)
+            return self._method_encoding[self._read_base_36_number()]
+        elif peek in self._primitive_encoding:
+            self._remove_prefix(peek)
+            return self._primitive_encoding[peek]
+        else:
+            return self._read_base_symbol()
+
+    def _read_base_36_number(self) -> int:
+        number = 0
+        number_len = 0
+        for ch in self._rest:
+            number_len += 1
+            if ch == '_':
+                self._rest = self._rest[number_len:]
+                return number + 1
+            elif ch.isdigit():
+                number = 36 * number + int(ch)
+            else:
+                number = 36 * number + ord(ch) - ord('A') + 10
+        self._error('Invalid base 36 number.')
+
+    def _read_parameter_encodings(self) -> list[str]:
+        parameters = []
+        while self._rest:
+            parameters.append(self._read_type())
+        if len(parameters) == 1 and parameters[0] == 'void':
+            return []
+        return parameters
+
+
 def _which(executable):
     for path in os.environ['PATH'].split(os.pathsep):
         f = os.path.join(path.strip('"'), executable)
@@ -910,8 +1092,11 @@ class PerfOutput:
 
     @staticmethod
     def perf_convert_binary_command(files):
-        return ['perf', 'script', '--fields', 'sym,time,event,dso,ip,sym,period', '-i',
-                files.get_perf_binary_filename()]
+        convert_cmd = ['perf', 'script', '--fields', 'sym,time,event,dso,ip,sym,period', '-i',
+                       files.get_perf_binary_filename()]
+        if files.is_native_image_experiment():
+            convert_cmd.append('--no-demangle')
+        return convert_cmd
 
     def read_perf_output(self, fp):
         """Parse the perf script output"""
@@ -964,6 +1149,19 @@ class PerfOutput:
             entries.sort(key=count_func, reverse=True)
             self.top_methods = entries
         return self.top_methods
+
+    def get_perf_methods(self) -> Iterable[PerfMethod]:
+        methods = {}
+        for event in self.events:
+            key = (event.symbol, event.dso)
+            period_count = methods.get(key)
+            if period_count is None:
+                methods[key] = [event.period, event.samples]
+            else:
+                period_count[0] += event.period
+                period_count[1] += event.samples
+        for key, period_count in methods.items():
+            yield PerfMethod(symbol=key[0], dso=key[1], total_period=period_count[0], samples=period_count[1])
 
 
 class GeneratedAssembly:
@@ -1504,31 +1702,43 @@ def profhot(args):
     files = ExperimentFiles.open(options)
     files.ensure_perf_output()
     perf_data = PerfOutput(files)
-    assembly = GeneratedAssembly(files)
-    assembly.attribute_events(perf_data)
-    entries = perf_data.get_top_methods()
-    non_jit_entries = [(s, d, c) for s, d, c in entries if d not in ('[JIT]', '[Generated]')]
     fp = sys.stdout
     if options.output:
         fp = open(options.output, 'w')
-    print('Hot C functions:', file=fp)
-    print('  Percent   Name', file=fp)
-    for symbol, _, count in non_jit_entries[:options.limit]:
-        print(f'   {100 * (float(count) / perf_data.total_period):5.2f}%   {symbol}', file=fp)
-    print('', file=fp)
+    if files.is_native_image_experiment():
+        print('Hot code:', file=fp)
+        print('  Percent   Name', file=fp)
+        perf_methods = sorted(perf_data.get_perf_methods(), key=lambda method: method.total_period, reverse=True)
+        for code in islice(perf_methods, options.limit):
+            print(f'   {100 * (float(code.total_period) / perf_data.total_period):5.2f}%   {code.demangled_name()}',
+                  file=fp)
+        if isinstance(files, FlatExperimentFiles):
+            perf_report = f'perf report -Mintel --sort symbol -i {files.perf_binary_filename}'
+            print(f'\nDisplay annotated code by running:\n  {perf_report}', file=fp)
+        else:
+            print(f'\nPlease unzip the experiment display annotated code.', file=fp)
+    else:
+        assembly = GeneratedAssembly(files)
+        assembly.attribute_events(perf_data)
+        entries = perf_data.get_top_methods()
+        non_jit_entries = [(s, d, c) for s, d, c in entries if d not in ('[JIT]', '[Generated]')]
+        print('Hot C functions:', file=fp)
+        print('  Percent   Name', file=fp)
+        for symbol, _, count in non_jit_entries[:options.limit]:
+            print(f'   {100 * (float(count) / perf_data.total_period):5.2f}%   {symbol}', file=fp)
+        print('', file=fp)
 
-    hot = assembly.top_methods(lambda x: x.total_period > 0)
-    hot = hot[:options.limit]
-    print('Hot generated code:', file=fp)
-    print('  Percent   Name', file=fp)
-    for code in hot:
-        print(f'   {100 * (float(code.total_period) / perf_data.total_period):5.2f}%   {code.format_name(options.short_class_names)}', file=fp)
-    print('', file=fp)
+        hot = assembly.top_methods(lambda x: x.total_period > 0)
+        hot = hot[:options.limit]
+        print('Hot generated code:', file=fp)
+        print('  Percent   Name', file=fp)
+        for code in hot:
+            print(f'   {100 * (float(code.total_period) / perf_data.total_period):5.2f}%   {code.format_name(options.short_class_names)}', file=fp)
+        print('', file=fp)
 
-    assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
-                       hide_perf=options.hide_perf, threshold=options.threshold,
-                       short_class_names=options.short_class_names)
-
+        assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
+                           hide_perf=options.hide_perf, threshold=options.threshold,
+                           short_class_names=options.short_class_names)
     if fp != sys.stdout:
         fp.close()
 
@@ -1618,25 +1828,40 @@ def profjson(args):
     files = ExperimentFiles.open(options)
     files.ensure_perf_output()
     perf_data = PerfOutput(files)
-    assembly = GeneratedAssembly(files)
-    assembly.attribute_events(perf_data)
     fp = sys.stdout
     if options.output:
         fp = open(options.output, 'w')
-    out = {
-        'executionId': assembly.execution_id,
-        'totalPeriod': perf_data.total_period,
-        'code': [
-            {
-                'compileId': code.get_compile_id(),
-                'name': code.format_name(),
-                'level': code.nmethod.level if code.nmethod else None,
-                'period': code.total_period,
-            }
-            for code in assembly.code_info
-            if code.total_period > 0
-        ]
-    }
+    if files.is_native_image_experiment():
+        perf_data.merge_perf_events()
+        image_path = os.path.normpath(files.read_manifest().image_path)
+        out = {
+            'totalPeriod': perf_data.total_period,
+            'code': [
+                {
+                    'name': method.demangled_name(),
+                    'generated': os.path.normpath(method.dso) == image_path,
+                    'period': method.total_period,
+                }
+                for method in perf_data.get_perf_methods()
+            ]
+        }
+    else:
+        assembly = GeneratedAssembly(files)
+        assembly.attribute_events(perf_data)
+        out = {
+            'executionId': assembly.execution_id,
+            'totalPeriod': perf_data.total_period,
+            'code': [
+                {
+                    'compileId': code.get_compile_id(),
+                    'name': code.format_name(),
+                    'level': code.nmethod.level if code.nmethod else None,
+                    'period': code.total_period,
+                }
+                for code in assembly.code_info
+                if code.total_period > 0
+            ]
+        }
     json.dump(out, fp=fp, indent=4)
 
 
@@ -1649,6 +1874,8 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
         super(ProftoolProfiler, self).__init__()
         self.filename = None
         self.with_bb_info = with_bb_info
+        self.vm = None
+        self.files: Optional[FlatExperimentFiles] = None
 
     def name(self):
         if self.with_bb_info:
@@ -1669,9 +1896,14 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
         if not self.nextItemName:
             return [], []
         directory = os.path.join(dump_path, self.filename)
-        files = FlatExperimentFiles.create(directory, overwrite=True)
-        extra_vm_args = ["-Dgraal.PrintBBInfo=true", f"-Dgraal.DumpPath={files.create_dump_dir()}"] if self.with_bb_info else None
-        perf_cmd, vm_args = build_capture_args(files, extra_vm_args=extra_vm_args)
+        self.files = FlatExperimentFiles.create(directory, overwrite=True)
+        if self.vm.name() == 'native-image':
+            perf_cmd = ["perf", "record", "-F", "100", "--output", self.files.get_perf_binary_filename()]
+            vm_args = ["-Dnative-image.benchmark.extra-image-build-argument=-H:-DeleteLocalSymbols",
+                       "-Dnative-image.benchmark.extra-image-build-argument=-H:+SourceLevelDebug"]
+        else:
+            extra_vm_args = ["-Dgraal.PrintBBInfo=true", f"-Dgraal.DumpPath={self.files.create_dump_dir()}"] if self.with_bb_info else None
+            perf_cmd, vm_args = build_capture_args(self.files, extra_vm_args=extra_vm_args)
 
         # reset the next item name since it has just been consumed
         self.nextItemName = None
@@ -1679,10 +1911,10 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
 
     def setup(self, benchmarks, bmSuiteArgs):
         super(ProftoolProfiler, self).setup(benchmarks, bmSuiteArgs)
+        self.vm = mx_benchmark.java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
         if self.with_bb_info:
             # check that the vm have the PrintBBInfo option availible
-            vm = mx_benchmark.java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
-            if not vm_has_bb_dumping(vm=vm):
+            if not vm_has_bb_dumping(vm=self.vm):
                 mx.abort("The vm does not allow dumping of basic block information.")
 
         import datetime
@@ -1691,6 +1923,12 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
             self.filename = f"proftool_{self.nextItemName}_{timestamp}"
         else:
             self.filename = f"proftool_{timestamp}"
+
+    def post_run(self):
+        if self.vm.name() == 'native-image':
+            image_path = os.path.join(self.vm.config.output_dir, self.vm.config.final_image_name)
+            manifest = ExperimentManifest(vm=self.vm.name(), image_path=image_path)
+            self.files.write_manifest(manifest)
 
 
 if PerfOutput.is_supported():

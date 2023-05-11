@@ -41,6 +41,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
+from typing import Optional
 
 import mx
 
@@ -84,6 +85,9 @@ class JVMProfiler(object):
         set of arguments that will be inserted as a command prefix.
         """
         return [], None
+
+    def post_run(self):
+        pass
 
 
 def register_profiler(obj):
@@ -1374,6 +1378,13 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 if profiler:
                     profiler.setup(benchmarks, bmSuiteArgs)
 
+    def _profilers_post_run(self, bmSuiteArgs):
+        if self.profilerNames(bmSuiteArgs) is not None:
+            for profilerName in self.profilerNames(bmSuiteArgs).split(','):
+                profiler = _profilers.get(profilerName)
+                if profiler:
+                    profiler.post_run()
+
     def _vmRun(self, vm, workdir, command, benchmarks, bmSuiteArgs):
         """Executes `command` on `vm` in `workdir`. A benchmark suite can override this method if its execution is
         more complicated than a VM command line.
@@ -1396,6 +1407,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
         vm.command_mapper_hooks = self._command_mapper_hooks
         t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
+        self._profilers_post_run(bmSuiteArgs)
         if len(t) == 2:
             ret_code, out = t
             vm_dims = {}
