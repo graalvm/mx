@@ -18446,7 +18446,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.23.4")  # GR-45938 fix coverage information by having a jacocoExcludePackages entry in suite.py
+version = VersionSpec("6.23.5")  # build com.oracle.jvmtiasmagent
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
