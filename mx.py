@@ -18446,7 +18446,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.23.1")  # IDE doc update
+version = VersionSpec("6.23.2")  # [GR-45990] Revert mx.cmd
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
