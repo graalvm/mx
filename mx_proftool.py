@@ -934,7 +934,12 @@ class PerfMethod(NamedTuple):
     def demangled_name(self):
         if self.symbol is None or not NativeImageBFDDemangler.is_mangled_name(self.symbol):
             return self.symbol
-        return NativeImageBFDDemangler().format_mangled_name(self.symbol)
+        try:
+            return NativeImageBFDDemangler().format_mangled_name(self.symbol)
+        except ValueError:
+            out = mx.OutputCapture()
+            mx.run(['c++filt', '-n', self.symbol], out=out)
+            return repr(out).strip('\n')
 
 
 class NativeImageBFDDemangler:
@@ -986,6 +991,8 @@ class NativeImageBFDDemangler:
                 prefix_len += 1
             else:
                 break
+        if prefix_len == 0:
+            self._error('Expected a number.')
         base_symbol = self._rest[prefix_len:prefix_len + str_len]
         self._rest = self._rest[prefix_len + str_len:]
         return base_symbol
@@ -1033,12 +1040,12 @@ class NativeImageBFDDemangler:
 
     def _read_base_36_number(self) -> int:
         number = 0
-        number_len = 0
+        prefix_len = 0
         for ch in self._rest:
-            number_len += 1
+            prefix_len += 1
             if ch == '_':
-                self._rest = self._rest[number_len:]
-                return number + 1
+                self._rest = self._rest[prefix_len + 1:]
+                return 0 if prefix_len == 1 else number + 1
             elif ch.isdigit():
                 number = 36 * number + int(ch)
             else:
