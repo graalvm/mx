@@ -18446,7 +18446,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.23.6")  # GR-44217: Truffle opens in runtime to languages and instruments on the module-path.
+version = VersionSpec("6.23.7")  # GR-45977: Add --deferred-tty option to mx benchmark to print output only at the end of the command.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
