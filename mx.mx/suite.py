@@ -3,98 +3,85 @@ suite = {
   "libraries" : {
 
     # ------------- Libraries -------------
-    # TODO update when jacoco 0.8.9 is released
-    "JACOCOCORE_0.8.9.202211161124": {
-      "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.9.202211161124/org.jacoco.core-0.8.9-20221116.112445-21.jar",
-        "https://oss.sonatype.org/content/repositories/snapshots/org/jacoco/org.jacoco.core/0.8.9-SNAPSHOT/org.jacoco.core-0.8.9-20221116.112445-21.jar",
-      ],
-      "digest": "sha512:3f80b97d0683d7120de437e558a44f7d331d53fce24ac850a9c0dc84b168149f0c3f4b2707a1b5776256163c75ea442f022b97fc74aa42a595ae6b8027937dc8",
-      #"sourceDigest": "sha512:1eb671bad9b14e87b9ae18ff2905d4c6af9e5f5517cacb2509b689162392066d2c45b8d87238dc11d94bc3c86899e3fe2ccb03cf44200eeec2927e3716d9d111",
+    "JACOCOCORE_0.8.10": {
+      "digest": "sha512:2bb06291c3717512326ad9a3cacbd29e8a057c3d2555195c82104b3f56e820effbc0870238ea891c231eaf34abb01e9b53ada02055de1736f28aceca077ac89e",
+      "sourceDigest": "sha512:1460c272ca2512dd733232daaa1e20488ca9cb5e686261cd0449213da0a2f21b661d8b044b2b3a32a4c07ea5666a9fc653cbaf8e42aed931a6034c57de217458",
       "maven": {
         "groupId": "org.jacoco",
         "artifactId": "org.jacoco.core",
-        "version": "0.8.9.202211161124",
+        "version": "0.8.10",
       },
-      "dependencies" : ["ASM_9.4", "ASM_COMMONS_9.4", "ASM_TREE_9.4"],
+      "dependencies" : ["ASM_9.5", "ASM_COMMONS_9.5", "ASM_TREE_9.5"],
       "license": "EPL-2.0",
     },
 
-    "JACOCOAGENT_0.8.9.202211161124": {
-      "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.9.202211161124/org.jacoco.agent-0.8.9-20221116.112445-21-runtime.jar",
-        "https://oss.sonatype.org/content/repositories/snapshots/org/jacoco/org.jacoco.agent/0.8.9-SNAPSHOT/org.jacoco.agent-0.8.9-20221116.112445-21-runtime.jar",
-      ],
-      "digest": "sha512:80bef0e7c9cdd27008185c036c82e6e6938d4a6df1f54ba3d16bd0364eff8619f54bc6a57a1a8257fe2dd59e85b93771af54c3cedfb74766cd73d3c3d6ecedbd",
+    "JACOCOAGENT_0.8.10": {
+      "digest": "sha512:67a50cd123be71b3f0f46f4bd94d4d6f9ffa34d08e95cfd3e497f418f71cd8124802007707fab4cae0991b509f63ab4048dfeaa73343bc966fc6091bfdccc680",
       "maven": {
         "groupId": "org.jacoco",
         "artifactId": "org.jacoco.agent",
-        "version": "0.8.9.202211161124",
+        "version": "0.8.10",
         "classifier": "runtime",
       },
       "license": "EPL-2.0",
     },
 
-    "JACOCOREPORT_0.8.9.202211161124": {
-      "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.9.202211161124/org.jacoco.report-0.8.9-20221116.112445-21.jar",
-        "https://oss.sonatype.org/content/repositories/snapshots/org/jacoco/org.jacoco.report/0.8.9-SNAPSHOT/org.jacoco.report-0.8.9-20221116.112445-21.jar",
-      ],
-      "digest": "sha512:47baa5e92bf65c34a00f69b36597f34c0d541ee8a3a2f568695e7fc5c1e9d9468c7db7e382eb1061499ed703e90fc57ceab8a0c7e8924e7fe709fddf50fc5edc",
-      #"sourceDigest": "sha512:6fd2f2f967eaaaf83c42218cefb3734eb63145d122bdf504d022ea130655793d0b75be182119a2f776fe16dcb1a07a8883600d222b18aae21e76d54df20a805c",
+    "JACOCOREPORT_0.8.10": {
+      "digest": "sha512:5973d71309c2f45529a84c7e5bf105d80f5df4d9f2cbc95006eb348cf9c5224781c34a8d564718190427913c258dd9d68ac1cd0df0715d02c617bdf95e466e3f",
+      "sourceDigest": "sha512:7a884c4aa87a20b0aa218b3a07ecb5a1a69bb38701237a0b89f61f03328361ed2d45069d5ec3f3e13a3db0d831bd35c89a34c9c01ed28e25cac79f072d29eca7",
       "maven": {
         "groupId": "org.jacoco",
         "artifactId": "org.jacoco.report",
-        "version": "0.8.9.202211161124",
+        "version": "0.8.10",
       },
-      "dependencies" : ["JACOCOCORE_0.8.9.202211161124"],
+      "dependencies" : ["JACOCOCORE_0.8.10"],
       "license": "EPL-2.0",
     },
 
-    "ASM_9.4": {
-      "digest": "sha512:41e6d8f67faa63e3993692d6606cbc68ec43d140e0232c5aee2ef7dbeea289ad5711ce04407c771e8baef844ead5f838d8b248e20a06e3fd5c41c52d3340a459",
-      "sourceDigest": "sha512:a0bedd89c91c649269a4f718729f6f8a889c206a382480e842d7ca16b671ecb77a1df2388b63f7aa483bf1ff847873bc53efc470e526e50c714bf22e3912227c",
+    "ASM_9.5": {
+      "digest": "sha512:9e65f2983783725bae196ca939b45246958731246df1c495089c8ea5ce646de77c4e01a5a9ba10642016bb3258e1727e9ebcece6e74d9e3c32f528025d76b955",
+      "sourceDigest": "sha512:64262b68c1acd473a49be3c8a89190200be66808034c55fb23ed08d8a977111c234b6dc77b6ca95310e1f1cbc43437cdc863aadb6217976cc1720d63ef01e937",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm",
-        "version": "9.4",
+        "version": "9.5",
       },
       "license": "BSD-new",
     },
 
-    "ASM_ANALYSIS_9.4": {
-      "digest": "sha512:c507d357d3bde8279b8cfe907a82c595a44242de8397a7e096c5fb7fb1fdc25e7797ed79fa99c6965c5ba5ccc55b3e7dc7a77d55947976ce2184488fd4b90c5f",
+    "ASM_ANALYSIS_9.5": {
+      "digest": "sha512:30f1300588a0464110d7a40b07501863626ca8a9085f8ee33686f20ddc5d67e7456fd30168d7168f189142027eb6bcc1a4b9990d24e8ebeada9207ac015e2b46",
       "sourceDigest": "sha512:bfcca1059a2fc5dae998615e006dda282a86a6e6a12bb43955816620642770c2cf5b1bc8d619cb4e7c3d1920a06cec2b51386571b92f3bf5025e2da0d1236822",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-analysis",
-        "version": "9.4",
+        "version": "9.5",
       },
-      "dependencies" : ["ASM_TREE_9.4"],
+      "dependencies" : ["ASM_TREE_9.5"],
       "license": "BSD-new",
     },
 
-    "ASM_COMMONS_9.4": {
-      "digest": "sha512:53e0acd2ad3bdf9ecbe08fc44a2d696f896cf52ef705aba27f7240c4ef23c71a38ab81f00159777746cf894a660301a9727ff06dccf35f8da2abc34366382d05",
+    "ASM_COMMONS_9.5": {
+      "digest": "sha512:6121a9d033627a33839d9bd264fce4a531b6a3f974720adc6150816f0316d1522c3d8caf7df039fdd46cb66bedd788e50f709d4a1f75d3525912ad7a4d87f7da",
       "sourceDigest": "sha512:688d56a1b4fb6f7d86b79b7493a848851892910d00067a0c5effdaf7132266ec7a1ba57a8248c2fd6c0ebdef18a4918908a36e85f5927b9acb55448047a1e333",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-commons",
-        "version": "9.4",
+        "version": "9.5",
       },
-      "dependencies" : ["ASM_9.4", "ASM_TREE_9.4", "ASM_ANALYSIS_9.4"],
+      "dependencies" : ["ASM_9.5", "ASM_TREE_9.5", "ASM_ANALYSIS_9.5"],
       "license": "BSD-new",
     },
 
-    "ASM_TREE_9.4": {
-      "digest": "sha512:8d008d5fd37640046ad57d8fbf803f1965a6a55a3521453411d07d48900da6436446d495daebabd705549ecec989f4d9de9434ade4ac482e94edc46ad564e02b",
-      "sourceDigest": "sha512:552adb9543b7478a783c29497e0b8373867fd31830bd52d6578fa6747a921b50f618924f74d7b7a522fcf3a41ccc6099970254c5a520f14bc821ee1b66d32b4a",
+    "ASM_TREE_9.5": {
+      "digest": "sha512:816de8f84c216a7bd97b2458bde64a4b99a039b7b59fbd1ef52edf8bf869edabb93967736fe0c61e8eb3e1520e0cefe69ba59cda12df30f9f85db75fb6c064f3",
+      "sourceDigest": "sha512:a107043c05398091e3f3c614270c626be8ea5a1a547e30dc5709ef92069c8c8baa315c385a68f244c3a37bc148c3aeeec26adc8c00afc2a03a1d21a40e076a4c",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-tree",
-        "version": "9.4",
+        "version": "9.5",
       },
-      "dependencies" : ["ASM_9.4"],
+      "dependencies" : ["ASM_9.5"],
       "license": "BSD-new",
     },
 
@@ -898,7 +885,7 @@ suite = {
       "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
       "dependencies" : [
-        "JACOCOREPORT_0.8.9.202211161124",
+        "JACOCOREPORT_0.8.10",
         "JOPTSIMPLE_4_6",
       ],
     },

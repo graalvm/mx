@@ -841,7 +841,7 @@ def get_jacoco_dest_file():
     return JACOCO_EXEC or mx.get_opts().jacoco_dest_file
 
 def get_jacoco_agent_path(resolve):
-    return mx.library('JACOCOAGENT_0.8.9.202211161124').get_path(resolve)
+    return mx.library('JACOCOAGENT_0.8.10').get_path(resolve)
 
 def get_jacoco_agent_args(jacoco=None, agent_option_prefix=''):
     '''
