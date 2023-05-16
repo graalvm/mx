@@ -1296,7 +1296,12 @@ def find_jvmti_asm_agent():
     d = mx.dependency('com.oracle.jvmtiasmagent')
     for source_file, _ in d.getArchivableResults(single=True):
         if not os.path.exists(source_file):
-            mx.abort(f'{source_file} hasn\'t been built yet')
+            mx.warn(f'jvmciasmagent hasn\'t been built yet, attempting to build it')
+            mx.build(['--dependencies', 'com.oracle.jvmtiasmagent'])
+            # if mx.buildbuild fails then it will abort so control shouldn't reach here
+            # but it's best to ensure it actually exists.
+            if not os.path.exists(source_file):
+                mx.abort('Unable to find com.oracle.jvmtiasmagent')
         return source_file
     return None
 
