@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,8 @@ import os, tempfile, shlex, subprocess, re, sys
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath, basename, getmtime
 from io import StringIO
+
+default_jdk_cache_path = join(expanduser('~'), '.mx', 'jdk_cache')
 
 def is_valid_jdk(jdk):
     """
@@ -243,6 +245,64 @@ class JDKInfo(object):
     def __lt__(self, other):
         return self.sort_key() < other.sort_key()
 
+def choose_jdks(jdk_cache_path=default_jdk_cache_path, only_list=False):
+    jdks = {}
+    if exists(jdk_cache_path):
+        with open(jdk_cache_path) as fp:
+            line_num = 1
+            for line in fp.readlines():
+                jdk = JDKInfo.load_from_jdk_cache(line.strip(), jdk_cache_path, line_num)
+                line_num += 1
+                if jdk:
+                    jdks[jdk.java_home] = jdk
+                    base_dir = dirname(jdk.java_home)
+                    if base_dir.endswith('/Contents/Home'):
+                        base_dir = base_dir[0:-len('/Contents/Home')]
+                    for java_home in find_jdks_in(base_dir):
+                        if java_home not in jdks:
+                            jdks[java_home] = JDKInfo.for_java_home(java_home)
+    for java_home in find_system_jdks():
+        if java_home not in jdks:
+            jdks[java_home] = JDKInfo.for_java_home(java_home)
+
+    sorted_jdks = sorted(jdks.values())
+    choices = list(enumerate(sorted_jdks))
+    col2_width = max(((len(jdk.name + '-' + jdk.java_specification_version)) for jdk in sorted_jdks)) + 1
+    col3_width = max(((len(jdk.java_vm_version)) for jdk in sorted_jdks)) + 1
+    if choices:
+        tmp_cache_path_fd, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
+        # Windows will complain about tmp_cache_path being in use by another process
+        # when calling os.rename if we don't close the file descriptor.
+        os.close(tmp_cache_path_fd)
+
+        java_home = os.environ.get('JAVA_HOME', '')
+        extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES', '').split(os.pathsep)
+        with open(tmp_cache_path, 'w') as fp:
+            for index, jdk in choices:
+                col1 = f'[{index}]'
+                col2 = f'{jdk.name}-{jdk.java_specification_version}'
+                col3 = jdk.java_vm_version
+                col4 = jdk.java_home
+                if only_list:
+                    print(f'{col2:{col2_width}} {col3:{col3_width}} {col4}')
+                else:
+                    line = f'{col1:>5} {col2:{col2_width}} {col3:{col3_width}} {col4}'
+                    if jdk.java_home == java_home:
+                        line = colorize(f'{line} {{JAVA_HOME}}', 'green')
+                    elif jdk.java_home in extra_java_homes:
+                        line = colorize(f'{line} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk.java_home)}]}}', 'cyan')
+                    print(line)
+                    print(f'{jdk.as_jdk_cache_line()}', file=fp)
+        if only_list:
+            os.unlink(tmp_cache_path)
+        else:
+            os.unlink(jdk_cache_path)
+            os.rename(tmp_cache_path, jdk_cache_path)
+            choices = {str(index):jdk for index, jdk in choices}
+            jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
+            if jdks:
+                return jdks
+
 if __name__ == '__main__':
     parser = ArgumentParser(prog='select_jdk', usage='%(prog)s [options] [<primary jdk> [<secondary jdk>...]]' + """
         Selects values for the JAVA_HOME, EXTRA_JAVA_HOMES and PATH environment variables based on
@@ -297,7 +357,7 @@ fi
         else:
             args.shell = 'sh'
 
-    jdk_cache_path = join(expanduser('~'), '.mx', 'jdk_cache')
+    jdk_cache_path = default_jdk_cache_path
     if len(args.jdks) != 0:
         if args.list:
             print('warning: ignore --list option since JDKs were specified on the command line')
@@ -313,59 +373,6 @@ fi
                     print(f'{jdk.as_jdk_cache_line()}', file=fp)
         apply_selection(args, abspath(args.jdks[0]), [abspath(a) for a in args.jdks[1:]])
     else:
-        jdks = {}
-        if exists(jdk_cache_path):
-            with open(jdk_cache_path) as fp:
-                line_num = 1
-                for line in fp.readlines():
-                    jdk = JDKInfo.load_from_jdk_cache(line.strip(), jdk_cache_path, line_num)
-                    line_num += 1
-                    if jdk:
-                        jdks[jdk.java_home] = jdk
-                        base_dir = dirname(jdk.java_home)
-                        if base_dir.endswith('/Contents/Home'):
-                            base_dir = base_dir[0:-len('/Contents/Home')]
-                        for java_home in find_jdks_in(base_dir):
-                            if java_home not in jdks:
-                                jdks[java_home] = JDKInfo.for_java_home(java_home)
-        for java_home in find_system_jdks():
-            if java_home not in jdks:
-                jdks[java_home] = JDKInfo.for_java_home(java_home)
-
-        sorted_jdks = sorted(jdks.values())
-        choices = list(enumerate(sorted_jdks))
-        col2_width = max(((len(jdk.name + '-' + jdk.java_specification_version)) for jdk in sorted_jdks)) + 1
-        col3_width = max(((len(jdk.java_vm_version)) for jdk in sorted_jdks)) + 1
-        if choices:
-            tmp_cache_path_fd, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
-            # Windows will complain about tmp_cache_path being in use by another process
-            # when calling os.rename if we don't close the file descriptor.
-            os.close(tmp_cache_path_fd)
-
-            java_home = os.environ.get('JAVA_HOME', '')
-            extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES', '').split(os.pathsep)
-            with open(tmp_cache_path, 'w') as fp:
-                for index, jdk in choices:
-                    col1 = f'[{index}]'
-                    col2 = f'{jdk.name}-{jdk.java_specification_version}'
-                    col3 = jdk.java_vm_version
-                    col4 = jdk.java_home
-                    if args.list:
-                        print(f'{col2:{col2_width}} {col3:{col3_width}} {col4}')
-                    else:
-                        line = f'{col1:>5} {col2:{col2_width}} {col3:{col3_width}} {col4}'
-                        if jdk.java_home == java_home:
-                            line = colorize(f'{line} {{JAVA_HOME}}', 'green')
-                        elif jdk.java_home in extra_java_homes:
-                            line = colorize(f'{line} {{EXTRA_JAVA_HOMES[{extra_java_homes.index(jdk.java_home)}]}}', 'cyan')
-                        print(line)
-                        print(f'{jdk.as_jdk_cache_line()}', file=fp)
-            if args.list:
-                os.unlink(tmp_cache_path)
-            else:
-                os.unlink(jdk_cache_path)
-                os.rename(tmp_cache_path, jdk_cache_path)
-                choices = {str(index):jdk for index, jdk in choices}
-                jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
-                if jdks:
-                    apply_selection(args, jdks[0].java_home, [jdk.java_home for jdk in jdks[1:]])
+        jdks = choose_jdks(jdk_cache_path, args.list)
+        if jdks:
+            apply_selection(args, jdks[0].java_home, [jdk.java_home for jdk in jdks[1:]])
