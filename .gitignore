@@ -19,3 +19,4 @@ eclipse-launches
 /java/*/.checkstyle
 /java/*/.factorypath
 /java/*.dist/
+/.src-rev
