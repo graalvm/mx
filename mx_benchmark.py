@@ -3043,150 +3043,160 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
         parser.add_argument(
+            "--deferred-tty", action="store_true", default=None,
+            help="Print the output of the benchmark in one block at the end.")
+        parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
-        suite = None
-        if mxBenchmarkArgs.benchmark:
-            # The suite will read the benchmark specifier,
-            # and therewith produce a list of benchmark sets to run in separate forks.
-            # Later, the harness passes each set of benchmarks from this list to the suite separately.
-            suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
+        out = None
+        err = None
+        if mxBenchmarkArgs.deferred_tty:
+            out = OutputDump(sys.stdout)
+            err = OutputDump(sys.stderr)
+
+        with TTYCapturing(out=out, err=err):
+            suite = None
+            if mxBenchmarkArgs.benchmark:
+                # The suite will read the benchmark specifier,
+                # and therewith produce a list of benchmark sets to run in separate forks.
+                # Later, the harness passes each set of benchmarks from this list to the suite separately.
+                suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
 
-        if mxBenchmarkArgs.hwloc_bind:
-            suite.register_command_mapper_hook("hwloc-bind", make_hwloc_bind(mxBenchmarkArgs.hwloc_bind))
+            if mxBenchmarkArgs.hwloc_bind:
+                suite.register_command_mapper_hook("hwloc-bind", make_hwloc_bind(mxBenchmarkArgs.hwloc_bind))
 
-        if mxBenchmarkArgs.tracker == 'none':
-            mxBenchmarkArgs.tracker = None
+            if mxBenchmarkArgs.tracker == 'none':
+                mxBenchmarkArgs.tracker = None
 
-        if mxBenchmarkArgs.tracker:
-            if mxBenchmarkArgs.tracker not in _available_trackers:
-                raise ValueError(f"Unknown tracker '{mxBenchmarkArgs.tracker}'. Use one of: {', '.join(_available_trackers.keys())}")
-            if suite:
-                mx.log(f"Registering tracker: {mxBenchmarkArgs.tracker}")
-                suite.register_tracker(mxBenchmarkArgs.tracker, _available_trackers[mxBenchmarkArgs.tracker])
+            if mxBenchmarkArgs.tracker:
+                if mxBenchmarkArgs.tracker not in _available_trackers:
+                    raise ValueError(f"Unknown tracker '{mxBenchmarkArgs.tracker}'. Use one of: {', '.join(_available_trackers.keys())}")
+                if suite:
+                    mx.log(f"Registering tracker: {mxBenchmarkArgs.tracker}")
+                    suite.register_tracker(mxBenchmarkArgs.tracker, _available_trackers[mxBenchmarkArgs.tracker])
 
-        if mxBenchmarkArgs.list:
-            if mxBenchmarkArgs.benchmark and suite:
-                print(f"The following benchmarks are available in suite {suite.name()}:\n")
-                for name in suite.benchmarkList(bmSuiteArgs):
-                    print("  " + name)
-                if isinstance(suite, VmBenchmarkSuite):
-                    print(f"\n{suite.get_vm_registry().get_available_vm_configs_help()}")
-            else:
-                vmregToSuites = {}
-                noVmRegSuites = []
-                for bm_suite_name, bm_suite in sorted([(k, v) for k, v in _bm_suites.items() if v]):
-                    if isinstance(bm_suite, VmBenchmarkSuite):
-                        vmreg = bm_suite.get_vm_registry()
-                        vmregToSuites.setdefault(vmreg, []).append(bm_suite_name)
-                    else:
-                        noVmRegSuites.append(bm_suite_name)
-                for vmreg, bm_suite_names in vmregToSuites.items():
-                    print(f"\nThe following {vmreg.vm_type_name} benchmark suites are available:\n")
-                    for name in bm_suite_names:
+            if mxBenchmarkArgs.list:
+                if mxBenchmarkArgs.benchmark and suite:
+                    print(f"The following benchmarks are available in suite {suite.name()}:\n")
+                    for name in suite.benchmarkList(bmSuiteArgs):
                         print("  " + name)
-                    print(f"\n{vmreg.get_available_vm_configs_help()}")
-                if noVmRegSuites:
-                    print("\nThe following non-VM benchmark suites are available:\n")
-                    for name in noVmRegSuites:
-                        print("  " + name)
-            return 0
-
-        if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
-            parser.print_help()
-            for key, entry in parsers.items():
-                if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
-                    print(entry.description)
-                    entry.parser.print_help()
-            for vmreg in vm_registries():
-                print(f"\n{vmreg.get_available_vm_configs_help()}")
-            return 0 if mxBenchmarkArgs.help else 1
-
-        self.checkEnvironmentVars()
-
-        results = []
-
-        # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
-        # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
-        # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
-        fork_count_spec = None
-        if mxBenchmarkArgs.fork_count_file:
-            with open(mxBenchmarkArgs.fork_count_file) as f:
-                fork_count_spec = json.load(f)
-        failures_seen = False
-        failed_benchmarks = []
-        try:
-            suite.before(bmSuiteArgs)
-            skipped_benchmark_forks = []
-            ignored_benchmarks = []
-            for benchnames in benchNamesList:
-                suite.validateEnvironment()
-                fork_count = 1
-                if fork_count_spec and benchnames and len(benchnames) == 1:
-                    fork_count = fork_count_spec.get(f"{suite.name()}:{benchnames[0]}")
-                    if fork_count is None and benchnames[0] in fork_count_spec:
-                        mx.log(f"[FORKS] Found a fallback entry '{benchnames[0]}' in the fork counts file. Please use the full benchmark name instead: '{suite.name()}:{benchnames[0]}'")
-                        fork_count = fork_count_spec.get(benchnames[0])
-                elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
-                    # single benchmark suites executed by providing the suite name only or a wildcard
-                    fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get(f"{suite.name()}:*"))
-                elif fork_count_spec:
-                    mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\nYou might want to use: mx benchmark <options> '<benchmark-suite>:*'")
-                if fork_count_spec and fork_count is None:
-                    mx.log(f"[FORKS] Skipping benchmark '{suite.name()}:{benchnames[0]}' since there is no value for it in the fork count file.")
-                    skipped_benchmark_forks.append(f"{suite.name()}:{benchnames[0]}")
+                    if isinstance(suite, VmBenchmarkSuite):
+                        print(f"\n{suite.get_vm_registry().get_available_vm_configs_help()}")
                 else:
-                    for fork_num in range(0, fork_count):
-                        if fork_count_spec:
-                            mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
-                        try:
-                            if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
-                                mx.log(f"Skipping benchmark '{suite.name()}:{benchnames[0]}' since it isn't supported on the current platform/configuration.")
-                                ignored_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
-                            else:
-                                expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
-                                for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
-                                    mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
-                                    results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
-                        except (BenchmarkFailureError, RuntimeError):
-                            failures_seen = True
-                            if benchnames and len(benchnames) > 0:
-                                failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
-                            else:
-                                failed_benchmarks.append(f"{suite.name()}")
-                            mx.log(traceback.format_exc())
-                            if mxBenchmarkArgs.fail_fast:
-                                mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
-            nl_tab = '\n\t'
-            if ignored_benchmarks:
-                mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
-            if skipped_benchmark_forks:
-                mx.log(f"[FORKS] Benchmarks skipped since they have no entry in the fork counts file:{nl_tab}{nl_tab.join(skipped_benchmark_forks)}")
-        finally:
+                    vmregToSuites = {}
+                    noVmRegSuites = []
+                    for bm_suite_name, bm_suite in sorted([(k, v) for k, v in _bm_suites.items() if v]):
+                        if isinstance(bm_suite, VmBenchmarkSuite):
+                            vmreg = bm_suite.get_vm_registry()
+                            vmregToSuites.setdefault(vmreg, []).append(bm_suite_name)
+                        else:
+                            noVmRegSuites.append(bm_suite_name)
+                    for vmreg, bm_suite_names in vmregToSuites.items():
+                        print(f"\nThe following {vmreg.vm_type_name} benchmark suites are available:\n")
+                        for name in bm_suite_names:
+                            print("  " + name)
+                        print(f"\n{vmreg.get_available_vm_configs_help()}")
+                    if noVmRegSuites:
+                        print("\nThe following non-VM benchmark suites are available:\n")
+                        for name in noVmRegSuites:
+                            print("  " + name)
+                return 0
+
+            if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
+                parser.print_help()
+                for key, entry in parsers.items():
+                    if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
+                        print(entry.description)
+                        entry.parser.print_help()
+                for vmreg in vm_registries():
+                    print(f"\n{vmreg.get_available_vm_configs_help()}")
+                return 0 if mxBenchmarkArgs.help else 1
+
+            self.checkEnvironmentVars()
+
+            results = []
+
+            # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
+            # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
+            # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
+            fork_count_spec = None
+            if mxBenchmarkArgs.fork_count_file:
+                with open(mxBenchmarkArgs.fork_count_file) as f:
+                    fork_count_spec = json.load(f)
+            failures_seen = False
+            failed_benchmarks = []
             try:
-                suite.after(bmSuiteArgs)
-            except RuntimeError:
-                failures_seen = True
-                mx.log(traceback.format_exc())
+                suite.before(bmSuiteArgs)
+                skipped_benchmark_forks = []
+                ignored_benchmarks = []
+                for benchnames in benchNamesList:
+                    suite.validateEnvironment()
+                    fork_count = 1
+                    if fork_count_spec and benchnames and len(benchnames) == 1:
+                        fork_count = fork_count_spec.get(f"{suite.name()}:{benchnames[0]}")
+                        if fork_count is None and benchnames[0] in fork_count_spec:
+                            mx.log(f"[FORKS] Found a fallback entry '{benchnames[0]}' in the fork counts file. Please use the full benchmark name instead: '{suite.name()}:{benchnames[0]}'")
+                            fork_count = fork_count_spec.get(benchnames[0])
+                    elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
+                        # single benchmark suites executed by providing the suite name only or a wildcard
+                        fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get(f"{suite.name()}:*"))
+                    elif fork_count_spec:
+                        mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\nYou might want to use: mx benchmark <options> '<benchmark-suite>:*'")
+                    if fork_count_spec and fork_count is None:
+                        mx.log(f"[FORKS] Skipping benchmark '{suite.name()}:{benchnames[0]}' since there is no value for it in the fork count file.")
+                        skipped_benchmark_forks.append(f"{suite.name()}:{benchnames[0]}")
+                    else:
+                        for fork_num in range(0, fork_count):
+                            if fork_count_spec:
+                                mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
+                            try:
+                                if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
+                                    mx.log(f"Skipping benchmark '{suite.name()}:{benchnames[0]}' since it isn't supported on the current platform/configuration.")
+                                    ignored_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
+                                else:
+                                    expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
+                                    for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
+                                        mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
+                                        results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
+                            except (BenchmarkFailureError, RuntimeError):
+                                failures_seen = True
+                                if benchnames and len(benchnames) > 0:
+                                    failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
+                                else:
+                                    failed_benchmarks.append(f"{suite.name()}")
+                                mx.log(traceback.format_exc())
+                                if mxBenchmarkArgs.fail_fast:
+                                    mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
+                nl_tab = '\n\t'
+                if ignored_benchmarks:
+                    mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
+                if skipped_benchmark_forks:
+                    mx.log(f"[FORKS] Benchmarks skipped since they have no entry in the fork counts file:{nl_tab}{nl_tab.join(skipped_benchmark_forks)}")
+            finally:
+                try:
+                    suite.after(bmSuiteArgs)
+                except RuntimeError:
+                    failures_seen = True
+                    mx.log(traceback.format_exc())
 
-        if not returnSuiteAndResults:
-            suite.dump_results_file(mxBenchmarkArgs.results_file, results)
-        else:
-            mx.log("Skipping benchmark results dumping since they're programmatically returned")
+            if not returnSuiteAndResults:
+                suite.dump_results_file(mxBenchmarkArgs.results_file, results)
+            else:
+                mx.log("Skipping benchmark results dumping since they're programmatically returned")
 
-        exit_code = 0
-        if failures_seen:
-            mx.log_error(f"Failures happened during benchmark(s) execution !"
-                         f"The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
-            exit_code = 1
+            exit_code = 0
+            if failures_seen:
+                mx.log_error(f"Failures happened during benchmark(s) execution !"
+                             f"The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
+                exit_code = 1
 
-        if returnSuiteAndResults:
-            return exit_code, suite, results
-        else:
-            return exit_code
+            if returnSuiteAndResults:
+                return exit_code, suite, results
+            else:
+                return exit_code
 
 def make_hwloc_bind(hwloc_bind_args):
     if mx.run(["hwloc-bind", "--version"], nonZeroIsFatal=False, out=mx.OutputCapture(), err=mx.OutputCapture()) != 0:
@@ -3281,6 +3291,12 @@ def benchmark(args, returnSuiteAndResults=False):
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
     return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=returnSuiteAndResults)
+
+class OutputDump:
+    def __init__(self, out):
+        self.out = out
+    def __call__(self, data):
+        self.out.write(data)
 
 class TTYCapturing(object):
     def __init__(self, out=None, err=None):
