@@ -18446,7 +18446,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.23.7")  # GR-45977: Add --deferred-tty option to mx benchmark to print output only at the end of the command.
+version = VersionSpec("6.23.8")  # GR-46197 - add remove_jdks.py
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
