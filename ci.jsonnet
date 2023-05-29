@@ -117,12 +117,18 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "-p", "../graal/compiler", "profpackage", "gate-xcomp"],
             [mx, "-p", "../graal/compiler", "profhot", "gate-xcomp.zip"],
             [mx, "-p", "../graal/compiler", "profhot", "gate-xcomp"],
+            [mx, "-p", "../graal/compiler", "profjson", "gate-xcomp", "-o", "prof_gate_xcomp.json"],
             [mx, "-p", "../graal/compiler", "benchmark", "dacapo:fop", "--tracker", "none", "--", "--profiler", "proftool"],
             [mx, "-p", "../graal/compiler", "profpackage", "-n", "proftool_fop_*"],
             [mx, "-p", "../graal/compiler", "profhot", "proftool_fop_*"],
             [mx, "-p", "../graal/compiler", "benchmark", "scala-dacapo:tmt", "--tracker", "none", "--", "--profiler", "proftool"],
             [mx, "-p", "../graal/compiler", "profpackage", "-D", "proftool_tmt_*"],
-            [mx, "-p", "../graal/compiler", "profhot", "-c", "1", "-s", "proftool_tmt_*"]
+            [mx, "-p", "../graal/compiler", "profhot", "-c", "1", "-s", "proftool_tmt_*"],
+            [mx, "-p", "../graal/vm", "--env", "ni-ce", "build"],
+            [mx, "-p", "../graal/vm", "--env", "ni-ce", "benchmark", "renaissance-native-image:scrabble", "--tracker", "none", "--", "--jvm=native-image", "--jvm-config=default-ce", "--profiler", "proftool"],
+            [mx, "profjson", "proftool_scrabble_*", "-o", "prof_scrabble.json"],
+            [mx, "profhot", "proftool_scrabble_*"],
+            [mx, "profhot", "-s", "proftool_scrabble_*"]
         ]
     },
 
