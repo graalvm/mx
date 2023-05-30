@@ -260,7 +260,7 @@ class FlatExperimentFiles(ExperimentFiles):
                 mx.abort('perf output parsing must be done on a system which supports the perf command')
             if not self.has_perf_binary():
                 mx.abort(f'perf data file \'{self.perf_binary_filename}\' is missing')
-            convert_cmd = PerfOutput.perf_convert_binary_command(self)
+            convert_cmd = PerfOutput.perf_convert_binary_command(self, self.is_native_image_experiment())
             # convert the perf binary data into text format
             with self.open_perf_output_file(mode='w') as fp:
                 mx.run(convert_cmd, out=fp)
@@ -1103,10 +1103,16 @@ class PerfOutput:
                                stderr=subprocess.DEVNULL) == 0
 
     @staticmethod
-    def perf_convert_binary_command(files):
+    def perf_convert_binary_command(files, is_native_image: bool = False):
+        """
+        Returns a command to convert a perf binary to a textual file.
+
+        We disable name demangling for executables compiled by Native Image. This is because proftool demangles the
+        names itself so that Java method names are formatted as expected.
+        """
         convert_cmd = ['perf', 'script', '--fields', 'sym,time,event,dso,ip,sym,period', '-i',
                        files.get_perf_binary_filename()]
-        if files.is_native_image_experiment():
+        if is_native_image:
             convert_cmd.append('--no-demangle')
         return convert_cmd
 
@@ -1517,10 +1523,30 @@ def find_jvmti_asm_agent():
     return None
 
 
+def is_executable_compiled_by_native_image(command: str) -> bool:
+    """
+    Infers whether the provided command is an executable compiled by Native Image.
+
+    This is done by locating the executable and checking whether it contains a section named ".svm_heap".
+    """
+    executable_path = mx.OutputCapture()
+    sections = mx.OutputCapture()
+    if mx.run(['which', command], nonZeroIsFatal=False, out=executable_path) != 0 or \
+       mx.run(['readelf', '--section-headers', repr(executable_path).strip('\n')],
+              nonZeroIsFatal=False, out=sections) != 0:
+        mx.warn(f'Could not find out whether "{command}" is an executable compiled by Native Image.')
+        return False
+    return '.svm_heap' in repr(sections)
+
+
 @mx.command('mx', 'profrecord', '[options]')
 @mx.suite_context_free
 def profrecord(args):
-    """Capture the profile of a Java program."""
+    """
+    Capture the profile of a Java program.
+
+    The command also works with executables compiled by Native Image. The type of executable is automatically inferred.
+    """
     # capstone is not required for the capture step
     parser = ArgumentParser(description='Capture a profile of a Java program.', prog='mx profrecord')
     parser.add_argument('-s', '--script', help='Emit a script to run and capture annotated assembly',
@@ -1557,13 +1583,18 @@ def profrecord(args):
     if not PerfOutput.is_supported() and not options.script:
         mx.abort('Linux perf is unsupported on this platform')
 
+    is_native_image = is_executable_compiled_by_native_image(options.command[0])
     vm_extra_args = None
     if options.with_bb_info:
-        assert vm_has_bb_dumping(options.command[0]), 'The given vm does not allow dumpling of basic block information!'
+        if is_native_image or not vm_has_bb_dumping(options.command[0]):
+            mx.abort('The given vm does not allow dumpling of basic block information!')
         vm_extra_args = [f'-Dgraal.DumpPath={files.create_dump_dir()}', '-Dgraal.PrintBBInfo=true']
 
-    full_cmd = build_capture_command(files, options.command, extra_vm_args=vm_extra_args, options=options)
-    convert_cmd = PerfOutput.perf_convert_binary_command(files)
+    if is_native_image:
+        full_cmd = build_capture_args(files, options=options, is_native_image=True)[0] + options.command
+    else:
+        full_cmd = build_capture_command(files, options.command, extra_vm_args=vm_extra_args, options=options)
+    convert_cmd = PerfOutput.perf_convert_binary_command(files, is_native_image)
     if options.script:
         print(mx.list_to_cmd_line(full_cmd))
         print(f'{mx.list_to_cmd_line(convert_cmd)} > {files.get_perf_output_filename()}')
@@ -1577,6 +1608,8 @@ def profrecord(args):
             mx.run(convert_cmd, out=fp)
 
         if options.dump_hot:
+            if is_native_image:
+                mx.abort('The option "dump hot" is not available for native executables.')
             assembly = GeneratedAssembly(files)
             perf = PerfOutput(files)
             assembly.attribute_events(perf)
@@ -1636,8 +1669,7 @@ def profpackage(args):
             shutil.rmtree(experiment)
 
 
-def build_capture_args(files, extra_vm_args=None, options=None):
-    jvmti_asm_file = files.get_jvmti_asm_filename()
+def build_capture_args(files, extra_vm_args=None, options=None, is_native_image=False):
     perf_binary_file = files.get_perf_binary_filename()
     perf_cmd = ['perf', 'record']
     if not PerfOutput.is_supported() or PerfOutput.supports_dash_k_option():
@@ -1650,9 +1682,14 @@ def build_capture_args(files, extra_vm_args=None, options=None):
         event = 'cycles'
 
     perf_cmd += ['--freq', str(frequency), '--event', event, '--output', perf_binary_file]
-    vm_args = [f'-agentpath:{find_jvmti_asm_agent()}={jvmti_asm_file}', '-XX:+UnlockDiagnosticVMOptions',
-               '-XX:+DebugNonSafepoints', '-Dgraal.TrackNodeSourcePosition=true', '-XX:+LogCompilation',
-               f'-XX:LogFile={files.get_log_compilation_filename()}']
+    if is_native_image:
+        vm_args = ['-Dnative-image.benchmark.extra-image-build-argument=-H:-DeleteLocalSymbols',
+                   '-Dnative-image.benchmark.extra-image-build-argument=-H:+SourceLevelDebug']
+    else:
+        jvmti_asm_file = files.get_jvmti_asm_filename()
+        vm_args = [f'-agentpath:{find_jvmti_asm_agent()}={jvmti_asm_file}', '-XX:+UnlockDiagnosticVMOptions',
+                   '-XX:+DebugNonSafepoints', '-Dgraal.TrackNodeSourcePosition=true', '-XX:+LogCompilation',
+                   f'-XX:LogFile={files.get_log_compilation_filename()}']
     if extra_vm_args:
         vm_args += extra_vm_args
     return perf_cmd, vm_args
@@ -1909,9 +1946,7 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
         directory = os.path.join(dump_path, self.filename)
         files = FlatExperimentFiles.create(directory, overwrite=True)
         if self.vm.name() == 'native-image':
-            perf_cmd = ["perf", "record", "-F", "100", "--output", files.get_perf_binary_filename()]
-            vm_args = ["-Dnative-image.benchmark.extra-image-build-argument=-H:-DeleteLocalSymbols",
-                       "-Dnative-image.benchmark.extra-image-build-argument=-H:+SourceLevelDebug"]
+            perf_cmd, vm_args = build_capture_args(files, is_native_image=True)
         else:
             extra_vm_args = ["-Dgraal.PrintBBInfo=true",
                              f"-Dgraal.DumpPath={files.create_dump_dir()}"] if self.with_bb_info else None
