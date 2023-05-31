@@ -37,7 +37,7 @@ import zipfile
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
 from itertools import islice
-from typing import Optional, NamedTuple, Iterable
+from typing import Optional, NamedTuple, Iterable, List
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -918,11 +918,11 @@ class NativeImageBFDDemangler:
     """Maps encoded primitive types to their Java equivalents."""
 
     def __init__(self):
-        self._method_encoding: Optional[list[str]] = None
+        self._method_encoding: Optional[List[str]] = None
         """Parsed package, class, and method names."""
         self._return_type: Optional[str] = None
         """A parsed and formatted return type."""
-        self._parameter_encodings: Optional[list[str]] = None
+        self._parameter_encodings: Optional[List[str]] = None
         """Parsed and formatted parameter types."""
         self._rest: Optional[str] = None
         """The unparsed remainder of the mangled name."""
@@ -998,7 +998,7 @@ class NativeImageBFDDemangler:
             self._error(f"'{prefix}' expected next.")
         self._rest = self._rest[len(prefix):]
 
-    def _read_method_encoding(self, ) -> list[str]:
+    def _read_method_encoding(self, ) -> List[str]:
         """Reads a method encoding from the unparsed remainder of the mangled name, i.e., a package name,
         a class name, and a method name. """
         self._remove_prefix('N')
@@ -1056,7 +1056,7 @@ class NativeImageBFDDemangler:
                 number = 36 * number + ord(ch) - ord('A') + 10
         self._error('Invalid base 36 number.')
 
-    def _read_parameter_encodings(self) -> list[str]:
+    def _read_parameter_encodings(self) -> List[str]:
         """Reads and formats parameter encodings from the unparsed remainder of the mangled name."""
         parameters = []
         while self._rest:
