@@ -906,7 +906,7 @@ class NativeImageBFDDemangler:
     https://github.com/oracle/graal/blob/master/substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/image/NativeImageBFDNameProvider.java
     """
 
-    _primitive_encoding = {'b': 'bool',
+    _primitive_encoding = {'b': 'boolean',
                            'a': 'byte',
                            's': 'short',
                            't': 'char',
