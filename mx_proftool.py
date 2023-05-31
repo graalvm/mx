@@ -1683,8 +1683,7 @@ def build_capture_args(files, extra_vm_args=None, options=None, is_native_image=
 
     perf_cmd += ['--freq', str(frequency), '--event', event, '--output', perf_binary_file]
     if is_native_image:
-        vm_args = ['-Dnative-image.benchmark.extra-image-build-argument=-H:-DeleteLocalSymbols',
-                   '-Dnative-image.benchmark.extra-image-build-argument=-H:+SourceLevelDebug']
+        vm_args = ['-Dnative-image.benchmark.extra-image-build-argument=-H:-DeleteLocalSymbols']
     else:
         jvmti_asm_file = files.get_jvmti_asm_filename()
         vm_args = [f'-agentpath:{find_jvmti_asm_agent()}={jvmti_asm_file}', '-XX:+UnlockDiagnosticVMOptions',
