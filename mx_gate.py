@@ -71,6 +71,8 @@ class Task:
     startAtFilter = None
     filtersExclude = False
 
+    tasks = []
+
     tags = None
     tagsExclude = False
     # map from tag to a pair [from(inclusive), to(exclusive)]
@@ -466,6 +468,25 @@ def gate(args):
     try:
         mx._mx_commands.add_command_callback(mx_command_entered, mx_command_left)
         _run_gate(cleanArgs, args, tasks)
+        if mx.primary_suite().getMxCompatibility().gate_strict_tags_and_tasks():
+            if Task.tags is not None:
+                for tag in Task.tags:  # pylint: disable=not-an-iterable
+                    if not any((tag in task.tags for task in tasks)):
+                        mx.abort(f'Tag "{tag}" not part of any task.\n'
+                                 f'Run the following command to see all available tasks and their tags:\n'
+                                 f'  mx -v gate --dry-run')
+            elif len(Task.filters) > 0:
+                for f in Task.filters:
+                    if not any([f in t for task in tasks for t in [task.title] + task.legacyTitles]):
+                        mx.abort(f'Filter "{f}" does not match any task.\n'
+                                 f'Run the following command to see all available tasks and their tags:\n'
+                                 f'  mx -v gate --dry-run')
+            elif len(Task.strict_filters) > 0:
+                for f in Task.strict_filters:
+                    if not any([f == t for task in tasks for t in [task.title] + task.legacyTitles]):
+                        mx.abort(f'Strict filter "{f}" does not match any task.\n'
+                                 f'Run the following command to see all available tasks and their tags:\n'
+                                 f'  mx -v gate --dry-run')
     except KeyboardInterrupt:
         total.abort(1)
     except BaseException as e:
