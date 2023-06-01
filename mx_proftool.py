@@ -1796,6 +1796,10 @@ def profhot(args):
             print(f'\nDisplay annotated code by running:\n  {perf_report}', file=fp)
         else:
             print(f'\nPlease unzip the experiment display annotated code.', file=fp)
+        print('\nNote there may be [unknown] symbols from dynamically linked libraries or the\n'
+              'kernel. If there are no Java symbols at all, try building with debug info (-g).\n'
+              'It is possible that some non-Java methods are formatted as Java method names.\n'
+              'Read more in https://github.com/graalvm/mx/blob/master/README-proftool.md')
     else:
         check_capstone_import('profhot')
         assembly = GeneratedAssembly(files)
