@@ -128,7 +128,8 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "-p", "../graal/vm", "--env", "ni-ce", "benchmark", "renaissance-native-image:scrabble", "--tracker", "none", "--", "--jvm=native-image", "--jvm-config=default-ce", "--profiler", "proftool"],
             [mx, "profjson", "proftool_scrabble_*", "-o", "prof_scrabble.json"],
             [mx, "profhot", "proftool_scrabble_*"],
-            [mx, "profhot", "-s", "proftool_scrabble_*"]
+            [mx, "profrecord", "-E", "profrecord_scrabble", "../graal/vm/mxbuild/native-image-benchmarks/renaissance-*-scrabble-default-ce/renaissance-*-scrabble-default-ce", "scrabble"],
+            [mx, "profhot", "profrecord_scrabble"]
         ]
     },
 
@@ -237,7 +238,7 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.darwin_aarch64, self.primary_jdk_version).gate,
         with(common.linux_amd64, self.primary_jdk_version).bench_test,
         with(common.linux_amd64, self.primary_jdk_version).jmh_test,
-        with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").proftool_test,
+        with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").proftool_test,
         with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").build_truffleruby,
         with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").build_graalvm_ce,
         with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
