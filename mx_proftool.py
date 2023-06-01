@@ -893,9 +893,47 @@ class PerfMethod(NamedTuple):
         try:
             return NativeImageBFDDemangler().format_mangled_name(self.symbol, short_class_names)
         except ValueError:
-            out = mx.OutputCapture()
-            mx.run(['c++filt', '-n', self.symbol], out=out)
-            return repr(out).strip('\n')
+            if CppDemangler.is_supported():
+                return CppDemangler.demangle(self.symbol)
+            else:
+                return self.symbol
+
+
+def _which(executable):
+    for path in os.environ['PATH'].split(os.pathsep):
+        f = os.path.join(path.strip('"'), executable)
+        if os.path.isfile(f) and os.access(f, os.X_OK):
+            return f
+    return None
+
+
+class CppDemangler:
+    """An interface for the binutils c++filt demangler, which can demangle C++ symbols."""
+
+    CPPFILT = 'c++filt'
+    _cppfilt_available: Optional[bool] = None
+
+    @classmethod
+    def warn_if_unsupported(cls):
+        """Emits a warning if c++filt is not supported."""
+        if not cls.is_supported():
+            mx.warn(f'Some symbols may be mangled because {CppDemangler.CPPFILT} is not available. '
+                    'Please install binutils.')
+
+    @classmethod
+    def is_supported(cls) -> bool:
+        """Lazily checks whether c++filt is supported."""
+        if cls._cppfilt_available is None:
+            cls._cppfilt_available = _which(cls.CPPFILT) is not None
+        return cls._cppfilt_available
+
+    @classmethod
+    def demangle(cls, symbol: str) -> str:
+        """Demangles the given symbol using c++filt."""
+        assert cls.is_supported(), f'{cls.CPPFILT} must be supported'
+        out = mx.OutputCapture()
+        mx.run([cls.CPPFILT, '-n', symbol], out=out)
+        return repr(out).strip('\n')
 
 
 class NativeImageBFDDemangler:
@@ -1064,14 +1102,6 @@ class NativeImageBFDDemangler:
         if len(parameters) == 1 and parameters[0] == 'void':
             return []
         return parameters
-
-
-def _which(executable):
-    for path in os.environ['PATH'].split(os.pathsep):
-        f = os.path.join(path.strip('"'), executable)
-        if os.path.isfile(f) and os.access(f, os.X_OK):
-            return f
-    return None
 
 
 class PerfOutput:
@@ -1754,6 +1784,7 @@ def profhot(args):
     if options.output:
         fp = open(options.output, 'w')
     if files.is_native_image_experiment():
+        CppDemangler.warn_if_unsupported()
         print('Hot code:', file=fp)
         print('  Percent   Name', file=fp)
         perf_methods = sorted(perf_data.get_perf_methods(), key=lambda method: method.total_period, reverse=True)
@@ -1880,6 +1911,7 @@ def profjson(args):
     if options.output:
         fp = open(options.output, 'w')
     if files.is_native_image_experiment():
+        CppDemangler.warn_if_unsupported()
         perf_data.merge_perf_events()
         out = {
             'compilationKind': 'AOT',
