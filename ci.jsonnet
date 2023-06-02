@@ -126,8 +126,8 @@ local with(platform, java_release, timelimit="15:00") = {
         local base_dir = "./fetch-jdk-test-folder",
 
         run: [
-            [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-20", "--to", base_dir, "--alias", "jdk-20"],
-            [exe(base_dir + "/jdk-20/bin/java"), "-version"],
+            [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-%s" % java_release, "--to", base_dir, "--alias", "jdk-%s" % java_release],
+            [exe(base_dir + "/jdk-%s/bin/java" % java_release), "-version"],
         ],
         teardown: [
             ["rm", "-rf", "$base_dir"],
@@ -210,26 +210,28 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "65c7a38c72c8b8de196ec04c290f5ed209005542",
+    overlay: "e3eb8f2c55ae427171d4eead5df27bf140822acd",
 
     # For use by overlay
     versions:: versions,
     extra_catch_files:: extra_catch_files,
+    primary_jdk_version: 20,
+    secondary_jdk_version: 17,
 
     local builds = [
-        with(common.linux_amd64, 20).gate,
-        with(common.linux_amd64, 20).fetchjdk_test,
-        with(common.linux_amd64, 20).bisect_test,
-        with(common.windows_amd64, 20).gate,
-        with(common.darwin_amd64, 20, timelimit="25:00").gate,
-        with(common.linux_amd64, 20).bench_test,
-        with(common.linux_amd64, 20).jmh_test,
-        with(common.linux_amd64, 20, timelimit="20:00").proftool_test,
-        with(common.linux_amd64, 20, timelimit="20:00").build_truffleruby,
-        with(common.linux_amd64, 20, timelimit="20:00").build_graalvm_ce,
-        with(common.linux_amd64, 20).mx_unit_test,
-        with(common.linux_amd64, 20).version_update_check,
-        with(common.linux_amd64, 20).post_merge_tag_version,
+        with(common.linux_amd64, self.primary_jdk_version).gate,
+        with(common.linux_amd64, self.primary_jdk_version).fetchjdk_test,
+        with(common.linux_amd64, self.primary_jdk_version).bisect_test,
+        with(common.windows_amd64, self.primary_jdk_version).gate,
+        with(common.darwin_amd64, self.primary_jdk_version, timelimit="25:00").gate,
+        with(common.linux_amd64, self.primary_jdk_version).bench_test,
+        with(common.linux_amd64, self.primary_jdk_version).jmh_test,
+        with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").proftool_test,
+        with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").build_truffleruby,
+        with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").build_graalvm_ce,
+        with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
+        with(common.linux_amd64, self.primary_jdk_version).version_update_check,
+        with(common.linux_amd64, self.primary_jdk_version).post_merge_tag_version,
     ],
     builds: [remove_mx_from_packages(b) for b in builds],
 }
