@@ -15327,11 +15327,22 @@ class SafeFileCreation(object):
                 else:
                     # Correct the permissions on the temporary file which is created with restrictive permissions
                     os.chmod(tmpPath, 0o666 & ~currentUmask)
-                    # Atomic if self.path does not already exist.
-                    if is_windows() and exists(path):
-                        # Needed on Windows
-                        os.remove(path)
-                    os.rename(tmpPath, path)
+                    if is_windows():
+                        try:
+                            if exists(tmpPath):
+                                try:
+                                    os.remove(tmpPath)
+                                except FileNotFoundError:
+                                    # Another process removed it in the meantime
+                                    pass
+                            os.rename(tmpPath, path)
+                        except FileExistsError:
+                            # This is how atomic file rename is "supported" on Windows:
+                            # the process loosing a file rename race gets this error.
+                            os.remove(tmpPath)
+                    else:
+                        # Atomic if path does not already exist.
+                        os.rename(tmpPath, path)
         _handle_file(self.tmpPath, self.path)
         for companion_pattern in self.companion_patterns:
             _handle_file(companion_pattern.format(path=self.tmpPath), companion_pattern.format(path=self.path))
@@ -18446,7 +18457,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.23.8")  # GR-46197 - add remove_jdks.py
+version = VersionSpec("6.23.9")  # GR-46474 - SafeFileCreation causes FileExistsError on Windows
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
