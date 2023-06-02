@@ -38,6 +38,7 @@ from argparse import ArgumentParser
 from datetime import datetime, timezone, timedelta
 
 import mx
+import mx_util
 import mx_javacompliance
 import sys
 from mx_urlrewrites import rewriteurl
@@ -525,11 +526,22 @@ def _collect_tasks(cleanArgs, args):
         Task.log = prevLog
     return tasks
 
+
 def _run_mx_suite_tests():
     """
     Mx suite specific tests.
     """
     mx_javacompliance._test()
+
+    # Ensure mx_util.py only imports from the Python standard library
+    mx_util_py = join(dirname(__file__), 'mx_util.py')
+    with open(mx_util_py) as fp:
+        content = fp.read()
+        matches = list(re.finditer(r'(import +mx_|from +mx_)', content))
+        if matches:
+            nl = '\n'
+            violations = nl.join([f'line {content[0:m.start()].count(nl) + 1}: {m.group()}' for m in matches])
+            assert False, f'{mx_util_py} must only import from the Python standard library:{nl}{violations}'
 
     from tests import os_arch_tests
     os_arch_tests.tests()
@@ -553,6 +565,24 @@ def _run_mx_suite_tests():
         javaPreviewNeeded = JavaCompliance(k[2]) if k[2] else None
         actual = mx.JavacLikeCompiler.get_release_args(jdk_compliance, project_compliance, javaPreviewNeeded)
         assert actual == expect, f'{k}: {actual} != {expect}'
+
+
+    with tempfile.TemporaryDirectory(prefix="SafeFileCreation_test") as tmp_dir:
+        from multiprocessing import Process
+        cpus = mx.cpu_count()
+        processes = []
+        print(f'SafeFileCreation_test: starting {cpus} processes')
+        for _ in range(cpus):
+            p = Process(target=mx_util._create_tmp_files, args=(tmp_dir, 1000,))
+            p.start()
+            processes.append(p)
+        print(f'SafeFileCreation_test: joining {cpus} processes')
+        errors = 0
+        for p in processes:
+            p.join()
+            if p.exitcode != 0:
+                errors += 1
+        assert errors == 0, f'{errors} SafeFileCreation_test subprocesses exited with an error'
 
     if mx.is_windows():
         def win(s, min_length=0):
