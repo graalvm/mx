@@ -8121,6 +8121,7 @@ class CompilerDaemon(Daemon):
                 time.sleep(0.1)
 
         self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.closed = False
         try:
             self.connection.connect(('127.0.0.1', self.port))
             logv('[Started ' + str(self) + ']')
@@ -8162,12 +8163,14 @@ class CompilerDaemon(Daemon):
         return retcode
 
     def shutdown(self):
-        try:
-            self.connection.send('\n'.encode('utf8'))
-            self.connection.close()
-            logv('[Stopped ' + str(self) + ']')
-        except socket.error as e:
-            logv('Error stopping ' + str(self) + ': ' + str(e))
+        if not self.closed:
+            try:
+                self.connection.send('\n'.encode('utf8'))
+                self.connection.close()
+                self.closed = True
+                logv('[Stopped ' + str(self) + ']')
+            except socket.error as e:
+                logv('Error stopping ' + str(self) + ': ' + str(e))
 
     def __str__(self):
         return self.name() + ' on port ' + str(self.port) + ' for ' + str(self.jdk)
@@ -14816,9 +14819,14 @@ def build(cmd_args, parser=None):
                 t._d = None
             return sorted(tasks, key=remainingDepsDepth)
 
+        # Returns whether any task still requires the compiler daemon
+        def anyJavaTask(tasks):
+            return any(isinstance(task, (JavaBuildTask, JARArchiveTask)) for task in tasks)
+
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
+        remaining_java_tasks = True
         def _activeCpus(_active):
             cpus = 0
             for t in _active:
@@ -14851,6 +14859,14 @@ def build(cmd_args, parser=None):
                     if d.proc is None or not d._finished:
                         return False
                 return True
+
+            if remaining_java_tasks:
+                remaining_java_tasks = anyJavaTask(active) or anyJavaTask(worklist)
+                if not remaining_java_tasks:
+                    logv("Terminating java daemons to free memory")
+                    for daemon in daemons.values():
+                        logv(f"Terminating java daemon {daemon}")
+                        daemon.shutdown()
 
             added_new_tasks = False
             worklist.sort(key=lambda task: task.build_time, reverse=True)
@@ -18337,7 +18353,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.24.0")  # strict mx gate --tags check
+version = VersionSpec("6.25.0")  # Shutdown the compile servers as soon as they are no longer needed
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
