@@ -18337,7 +18337,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.23.9")  # GR-46474 - SafeFileCreation causes FileExistsError on Windows
+version = VersionSpec("6.24.0")  # strict mx gate --tags check
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

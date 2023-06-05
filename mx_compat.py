@@ -288,6 +288,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def gate_strict_tags_and_tasks(self):
+        """
+        True if mx gate --tags and --task should fail if they do not match any task.
+        """
+        return False
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -707,6 +713,15 @@ class MxCompatibility6190(MxCompatibility6170):
         return mx.VersionSpec("6.19.0")
 
     def gate_spotbugs_strict_mode(self):
+        return True
+
+
+class MxCompatibility6240(MxCompatibility6190):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.24.0")
+
+    def gate_strict_tags_and_tasks(self):
         return True
 
 
