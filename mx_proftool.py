@@ -157,9 +157,10 @@ class ExperimentFiles(object, metaclass=ABCMeta):
     def open_block_info(self, compilation_id):
         raise NotImplementedError()
 
-    def is_native_image_experiment(self) -> bool:
-        """Infers and returns whether the experiment was executed using Native Image."""
-        return not self.has_log_compilation() and not self.has_assembly()
+    @abstractmethod
+    def has_native_image_tag(self):
+        """Returns whether the experiment has the tag indicating this is a Native Image experiment."""
+        raise NotImplementedError()
 
 
 def find_basic_block_info_filename(compilation_id, files, block_extension='blocks'):
@@ -180,6 +181,11 @@ def has_basic_block_info_file(files, block_extension='blocks'):
             return True
     return False
 
+
+NATIVE_IMAGE_TAG = 'native_image_tag'
+"""The name of tag file marking a Native Image experiment."""
+
+
 class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
 
@@ -193,6 +199,7 @@ class FlatExperimentFiles(ExperimentFiles):
         self.perf_binary_filename = os.path.join(self.directory, perf_binary_name)
         self.perf_output_filename = os.path.join(self.directory, perf_output_name)
         self.log_compilation_filename = os.path.join(self.directory, log_compilation_name)
+        self.native_image_tag_filename = os.path.join(self.directory, NATIVE_IMAGE_TAG)
 
         self.dump_path = None
         path = os.path.join(self.directory, 'graal_dump')
@@ -260,7 +267,7 @@ class FlatExperimentFiles(ExperimentFiles):
                 mx.abort('perf output parsing must be done on a system which supports the perf command')
             if not self.has_perf_binary():
                 mx.abort(f'perf data file \'{self.perf_binary_filename}\' is missing')
-            convert_cmd = PerfOutput.perf_convert_binary_command(self, self.is_native_image_experiment())
+            convert_cmd = PerfOutput.perf_convert_binary_command(self, self.has_native_image_tag())
             # convert the perf binary data into text format
             with self.open_perf_output_file(mode='w') as fp:
                 mx.run(convert_cmd, out=fp)
@@ -301,6 +308,15 @@ class FlatExperimentFiles(ExperimentFiles):
         filename = os.path.join(self.dump_path, filename)
         return open(filename, mode='r')
 
+    def has_native_image_tag(self):
+        return os.path.exists(self.native_image_tag_filename)
+
+    def create_native_image_tag(self):
+        """Creates the tag file indicating this is a Native Image experiment."""
+        with open(self.native_image_tag_filename, 'w'):
+            pass
+
+
 class ZipExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
 
@@ -311,6 +327,7 @@ class ZipExperimentFiles(ExperimentFiles):
         self.perf_output_filename = self.find_file('perf_output_file')
         self.log_compilation_filename = self.find_file('log_compilation', error=False)
         self.dump_path = self.find_file('graal_dump' + os.sep, error=False)
+        self.native_image_tag_file = self.find_file(NATIVE_IMAGE_TAG, error=False)
 
     def find_file(self, name, error=True):
         for f in self.experiment_file.namelist():
@@ -368,6 +385,10 @@ class ZipExperimentFiles(ExperimentFiles):
         assert self.has_block_info(compilation_id), f"Must have block information for compilation id {compilation_id}"
         filename = find_basic_block_info_filename(compilation_id, self.experiment_file.namelist())
         return io.TextIOWrapper(self.experiment_file.open(filename, 'r'), encoding='utf-8')
+
+    def has_native_image_tag(self):
+        return self.native_image_tag_file is not None
+
 
 class Instruction:
     """A simple wrapper around a CapStone instruction to support data instructions."""
@@ -1785,7 +1806,7 @@ def profhot(args):
     fp = sys.stdout
     if options.output:
         fp = open(options.output, 'w')
-    if files.is_native_image_experiment():
+    if files.has_native_image_tag():
         CppDemangler.warn_if_unsupported()
         print('Hot code:', file=fp)
         print('  Percent   Name', file=fp)
@@ -1922,7 +1943,7 @@ def profjson(args):
     fp = sys.stdout
     if options.output:
         fp = open(options.output, 'w')
-    if files.is_native_image_experiment():
+    if files.has_native_image_tag():
         CppDemangler.warn_if_unsupported()
         perf_data.merge_perf_events()
         out = {
@@ -1989,6 +2010,7 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
         directory = os.path.join(dump_path, self.filename)
         files = FlatExperimentFiles.create(directory, overwrite=True)
         if self.vm.name() == 'native-image':
+            files.create_native_image_tag()
             perf_cmd, vm_args = build_capture_args(files, is_native_image=True)
         else:
             extra_vm_args = ["-Dgraal.PrintBBInfo=true",
