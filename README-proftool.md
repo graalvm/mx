@@ -172,9 +172,9 @@ Proftool displays only one section where symbols might come from different execu
 native image may statically link non-Java code, and proftool cannot distinguish Java symbols from foreign symbols.  As
 another consequence, non-Java method names might be formatted as if they were Java names.
 
-An `[unknown]` name might come from a dynamic library or the kernel if perf cannot resolve the symbols.  If there are
-no Java symbols at all, try building the executable with `-g` so that debug info is generated.
-[Read the manual](https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/DebugInfo.md#special-considerations-for-using-perf-and-valgrind)
+An `[unknown]` name might come from a dynamic library or the kernel if perf cannot resolve the symbols.  Run with
+`--dso` to display the name of the library.  If there are no Java symbols at all, try building the executable with `-g`
+so that debug info is generated.  [Read the manual](https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/DebugInfo.md#special-considerations-for-using-perf-and-valgrind)
 to learn more about debugging native images.
 
 Proftool provides limited extra support for Truffle programs at the moment.  The only extra information printed is the Truffle

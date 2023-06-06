@@ -1769,6 +1769,8 @@ def profhot(args):
                         action='store_true')
     parser.add_argument('-H', '--hide-perf', help='Don\'t display perf information in the output.\n'
                         'This can be useful when comparing the assembly from different runs.')
+    parser.add_argument('-d', '--dso', help='Display the dso alongside each non-JIT symbol',
+                        action='store_true')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-E', '--experiment',
                        help='The directory containing the data files from the experiment',
@@ -1791,15 +1793,19 @@ def profhot(args):
         for code in islice(perf_methods, options.limit):
             print(f'   {100 * (float(code.total_period) / perf_data.total_period):5.2f}%   {code.demangled_name(options.short_class_names)}',
                   file=fp)
+            if options.dso:
+                print(f'            {code.dso}', file=fp)
         if isinstance(files, FlatExperimentFiles):
             perf_report = f'perf report -Mintel --sort symbol -i {files.perf_binary_filename}'
             print(f'\nDisplay annotated code by running:\n  {perf_report}', file=fp)
         else:
             print(f'\nPlease unzip the experiment display annotated code.', file=fp)
-        print('\nNote there may be [unknown] symbols from dynamically linked libraries or the\n'
-              'kernel. If there are no Java symbols at all, try building with debug info (-g).\n'
-              'It is possible that some non-Java methods are formatted as Java method names.\n'
-              'Read more in https://github.com/graalvm/mx/blob/master/README-proftool.md')
+        print('\nNote there may be [unknown] symbols from dynamically linked libraries or the kernel. Run with --dso '
+              'to display the name\n'
+              'of the library. If there are no Java symbols at all, try building with debug info (-g). It is possible '
+              'that some non-Java\n'
+              'methods are formatted as Java method names. Read more in '
+              'https://github.com/graalvm/mx/blob/master/README-proftool.md')
     else:
         check_capstone_import('profhot')
         assembly = GeneratedAssembly(files)
@@ -1808,8 +1814,10 @@ def profhot(args):
         non_jit_entries = [(s, d, c) for s, d, c in entries if d not in ('[JIT]', '[Generated]')]
         print('Hot C functions:', file=fp)
         print('  Percent   Name', file=fp)
-        for symbol, _, count in non_jit_entries[:options.limit]:
+        for symbol, dso, count in non_jit_entries[:options.limit]:
             print(f'   {100 * (float(count) / perf_data.total_period):5.2f}%   {symbol}', file=fp)
+            if options.dso:
+                print(f'            {dso}', file=fp)
         print('', file=fp)
 
         hot = assembly.top_methods(lambda x: x.total_period > 0)
