@@ -4417,7 +4417,8 @@ def clean(args, parser=None):
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not clean native projects')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
     parser.add_argument('--dependencies', '--projects', action='store',
-                        help='comma separated projects to clean (omit to clean all projects)')
+                        help='comma separated projects to clean (omit to clean all projects)',
+                        default=get_env('BUILD_WITH_DEPENDENCIES'))
     parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
     parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
     parser.add_argument('--aggressive', action='store_true', help='clear all suite output')
@@ -14632,8 +14633,8 @@ def build(cmd_args, parser=None):
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
     dependencies_group = parser.add_mutually_exclusive_group()
-    dependencies_group.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>')
-    dependencies_group.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
+    dependencies_group.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>', default=get_env('BUILD_WITH_DEPENDENCIES'))
+    dependencies_group.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)', default=get_env('BUILD_ONLY'))
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
     parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="does nothing as cross compilation is no longer supported (preserved for compatibility)")
