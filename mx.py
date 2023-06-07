@@ -17576,7 +17576,7 @@ optional arguments:
     parser.add_argument('--output', action='store_true', help='Show output location rather than archivable result (only for distributions).')
     parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
-    spec = args.spec
+    spec = mx_subst.string_substitutions.substitute(args.spec)
     spec_dict = LayoutDistribution._as_source_dict('dependency:' + spec, 'NO_DIST', 'NO_DEST')
     d = dependency(spec_dict['dependency'])
     if args.download:
