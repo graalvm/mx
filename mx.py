@@ -18377,7 +18377,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.2")  # GR-44866 - Add proftool support for Native Image
+version = VersionSpec("6.27.3")  # env files can specify build --dependencies
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
