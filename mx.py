@@ -4440,7 +4440,7 @@ def clean(args, parser=None):
         return _dependencies_opt_limit_to_suites(res)
 
     if args.dependencies is not None:
-        deps = [dependency(name) for name in args.dependencies.split(',')]
+        deps = [dependency(mx_subst.string_substitutions.substitute(name)) for name in args.dependencies.split(',')]
     else:
         deps = _collect_clean_dependencies()
 
@@ -14691,12 +14691,12 @@ def build(cmd_args, parser=None):
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
-        roots = [dependency(name) for name in onlyDeps]
+        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in onlyDeps]
     elif args.dependencies is not None:
         if len(args.dependencies) == 0:
             abort('The value of the --dependencies argument cannot be the empty string')
         names = args.dependencies.split(',')
-        roots = [dependency(name) for name in names]
+        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in names]
     else:
         def _describe_jdk_path(p):
             if not isabs(p):
