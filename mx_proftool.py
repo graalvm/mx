@@ -1647,9 +1647,13 @@ def profrecord(args):
         full_cmd = build_capture_command(files, options.command, extra_vm_args=vm_extra_args, options=options)
     convert_cmd = PerfOutput.perf_convert_binary_command(files, is_native_image)
     if options.script:
+        if is_native_image:
+            print(mx.list_to_cmd_line(['touch', files.native_image_tag_filename]))
         print(mx.list_to_cmd_line(full_cmd))
         print(f'{mx.list_to_cmd_line(convert_cmd)} > {files.get_perf_output_filename()}')
     else:
+        if is_native_image:
+            files.create_native_image_tag()
         mx.run(full_cmd, nonZeroIsFatal=False)
         if not files.has_perf_binary():
             mx.abort('No perf binary file found')
