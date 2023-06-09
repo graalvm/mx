@@ -18372,7 +18372,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.26.1")  # mx build should print resolved java homes
+version = VersionSpec("6.26.2")  # GR-46518 defaultDereference attribute
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
