@@ -18363,7 +18363,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.25.0")  # Shutdown the compile servers as soon as they are no longer needed
+version = VersionSpec("6.26.0")  # --java-home should look into the fetchjdk downlaod directory
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
