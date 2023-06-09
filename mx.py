@@ -7688,14 +7688,10 @@ class JavaBuildTask(ProjectBuildTask):
             for f in os.listdir(genDir):
                 rmtree(join(genDir, f))
 
-        if self.subject.suite._output_root_includes_config():
-            linkedGenDir = self.subject.latest_output_dir()
-            if exists(linkedGenDir):
-                logv(f'Cleaning {linkedGenDir}...')
-                if islink(linkedGenDir):
-                    os.unlink(linkedGenDir)
-                elif isdir(linkedGenDir):
-                    rmtree(linkedGenDir)
+        linkedGenDir = self.subject.latest_output_dir()
+        if linkedGenDir != self.subject.get_output_root() and exists(linkedGenDir):
+            logv(f'Cleaning {linkedGenDir}...')
+            rmtree(linkedGenDir)
 
         outputDir = self.subject.output_dir()
         if exists(outputDir):
