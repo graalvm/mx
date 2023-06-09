@@ -13115,7 +13115,17 @@ def _probe_JDK(home):
         try:
             res = JDKConfig(home)
         except JDKConfigException as e:
-            res = e
+            jdks_dir = join(dot_mx_dir(), 'jdks')
+            jdks_dir_home = join(jdks_dir, home)
+            logv(f'JDK "{home}" not found in the current directory')
+            logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
+            if not isabs(home) and exists(jdks_dir_home):
+                try:
+                    res = JDKConfig(jdks_dir_home)
+                except JDKConfigException as e:
+                    res = e
+            else:
+                res = e
         _probed_JDKs[home] = res
     return res
 
@@ -18353,7 +18363,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.25.0")  # Shutdown the compile servers as soon as they are no longer needed
+version = VersionSpec("6.26.0")  # --java-home should look into the fetchjdk downlaod directory
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
