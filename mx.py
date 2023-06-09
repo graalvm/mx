@@ -5922,7 +5922,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, defaultDereference=None, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -5942,6 +5942,12 @@ class LayoutDistribution(AbstractDistribution):
         self.compress = compress
         self._removed_deps = set()
         self.fileListPurpose = fileListPurpose
+        if defaultDereference is None:
+            self.defaultDereference = "root"
+        elif defaultDereference not in ("root", "never", "always"):
+            raise abort(f"Unsupported defaultDereference mode: '{self.defaultDereference}' in '{name}'", context=suite)
+        else:
+            self.defaultDereference = defaultDereference
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
@@ -5999,8 +6005,6 @@ class LayoutDistribution(AbstractDistribution):
                     source_dict["dependency"], source_dict["path"] = source_spec.split('/', 1)
                 else:
                     source_dict["dependency"], source_dict["path"] = source_spec, None
-                if source_type == 'extracted-dependency':
-                    source_dict["dereference"] = "root"
                 source_dict["optional"] = False
             elif source_type == 'file':
                 source_dict["path"] = source_spec
@@ -6017,9 +6021,7 @@ class LayoutDistribution(AbstractDistribution):
             if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
                 if source_type == 'extracted-dependency':
-                    if 'dereference' not in source_dict:
-                        source_dict["dereference"] = "root"
-                    elif source_dict["dereference"] not in ("root", "never", "always"):
+                    if 'dereference' in source_dict and source_dict["dereference"] not in ("root", "never", "always"):
                         raise abort(f"Unsupported dereference mode: '{source_dict['dereference']}' in '{destination}'", context=context)
                 if source_dict['path']:
                     source_dict['_str_'] += f"/{source_dict['path']}"
@@ -6203,7 +6205,7 @@ class LayoutDistribution(AbstractDistribution):
                           " - or '{source_type}:{d}/path/to/file/in/archive' as a source (i.e., extracting /path/to/file/in/archive from '{d}' to '{destination}')",
                         context=self)
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
-            dereference = source.get("dereference", "root")
+            dereference = source.get("dereference", self.defaultDereference)
             ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
             output_done = False

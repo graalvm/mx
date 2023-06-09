@@ -92,6 +92,8 @@ For `extracted-dependency`, the `dereference` property can set to:
 * `"root"` (default) to only de-reference the root matches of the recursive copy (like `cp -H`)
 * `"always"` always follow symlinks in the source before copying (like `cp -L`)
 
+The default of the `dereference` property can be overridden for all sources with the `defaultDereference` property on the layout distribution.
+
 ## Archive types
 
 By default, the distribution containing the `layout` will be a JAR. If it has `native` attribute set to `True`, it will be a TAR.
