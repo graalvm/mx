@@ -536,8 +536,7 @@ class NinjaManifestGenerator(object):
         self.variables(ninja_required_version='1.3')
 
         self.comment('Directories')
-        # must be relativ, otherwise doesn't compose with -fdebug-prefix-map=
-        self.variables(project=os.path.relpath(self.project.dir, start=self.output_dir))
+        self.variables(project=self.project.dir)
 
         self._generate_mx_interface()
 
