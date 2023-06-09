@@ -653,6 +653,7 @@ class DefaultNativeProject(NinjaProject):
                 return f'-fdebug-prefix-map={quote(prefix_dir)}={quote(mx.basename(prefix_dir))}'
 
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
+            default_cflags += [add_debug_prefix(self.suite.get_output_root())]
             default_cflags += [add_debug_prefix(_get_target_jdk().home)]
             default_cflags += ['-gno-record-gcc-switches']
 
