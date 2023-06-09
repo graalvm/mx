@@ -13117,8 +13117,8 @@ def _probe_JDK(home):
         except JDKConfigException as e:
             jdks_dir = join(dot_mx_dir(), 'jdks')
             jdks_dir_home = join(jdks_dir, home)
-            warn(f'JDK "{home}" not found in the current directory')
-            warn(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
+            logv(f'JDK "{home}" not found in the current directory')
+            logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
             if not isabs(home) and exists(jdks_dir_home):
                 try:
                     res = JDKConfig(jdks_dir_home)
