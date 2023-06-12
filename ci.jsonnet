@@ -42,11 +42,6 @@ local with(platform, java_release, timelimit="15:00") = {
         name: "%s-jdk%s-%s-%s" % [self.prefix, java_release, os, arch],
         targets: ["gate"],
         catch_files+: extra_catch_files,
-        environment: {
-            # Required to keep pylint happy on Darwin
-            # https://coderwall.com/p/-k_93g/mac-os-x-valueerror-unknown-locale-utf-8-in-python
-            LC_ALL: "en_US.UTF-8",
-        },
         timelimit: timelimit,
         setup: [
             # Copy mx to a directory with a space in its name to ensure
