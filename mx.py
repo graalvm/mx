@@ -18379,7 +18379,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.26.3")  # GR-46576 Release artifacts contain an extra id
+version = VersionSpec("6.26.4")  # GR-44634: Do not format field annotations in the Eclipse code formatter config.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
