@@ -137,6 +137,7 @@ org.eclipse.jdt.core.compiler.taskPriorities=NORMAL,HIGH,NORMAL
 org.eclipse.jdt.core.compiler.taskTags=TODO,FIXME,XXX
 org.eclipse.jdt.core.formatter.align_type_members_on_columns=false
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_allocation_expression=16
+org.eclipse.jdt.core.formatter.alignment_for_annotations_on_field=0
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_annotation=0
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_enum_constant=48
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_explicit_constructor_call=16
