@@ -48,7 +48,7 @@ local with(platform, java_release, timelimit="15:00") = {
             # mx can work in that context.
             copydir("$PWD", mx_copy_dir),
             ["cd", mx_copy_dir],
-        ] + if os == "darwin" then [
+        ] + if os == "darwin" && eclipse_dep != {} then [
             # Need to remove the com.apple.quarantine attribute from Eclipse otherwise
             # it will fail to start on later macOS versions.
             ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
