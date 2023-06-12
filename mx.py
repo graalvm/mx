@@ -14691,16 +14691,23 @@ def build(cmd_args, parser=None):
         names = args.dependencies.split(',')
         roots = [dependency(name) for name in names]
     else:
+        def _describe_jdk_path(p):
+            if not isabs(p):
+                jdk = _probe_JDK(p)
+                if not isinstance(jdk, JDKConfigException):
+                    return f'{p} ({jdk.home})'
+            return p
+
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
-        log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
+        log('JAVA_HOME: ' + _describe_jdk_path(get_env('JAVA_HOME', '')))
         if _opts.java_home and _opts.java_home != get_env('JAVA_HOME', ''):
-            log('--java-home: ' + _opts.java_home)
+            log('--java-home: ' + _describe_jdk_path(_opts.java_home))
 
         if get_env('EXTRA_JAVA_HOMES') or _opts.extra_java_homes:
-            log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
+            log('EXTRA_JAVA_HOMES: ' + '\n                  '.join([_describe_jdk_path(x) for x in get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)]))
             if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
-                log('--extra-java-homes: ' + '\n                  '.join(_opts.extra_java_homes.split(os.pathsep)))
+                log('--extra-java-homes: ' + '\n                  '.join([_describe_jdk_path(x) for x in _opts.extra_java_homes.split(os.pathsep)]))
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
