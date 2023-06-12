@@ -74,7 +74,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     gate:: self.with_name("gate") + {
         environment+: {
-            MX_ALT_OUTPUT_ROOT: path("${PWD}/../alt_output_root"),
+            MX_ALT_OUTPUT_ROOT: path("$BUILD_DIR/alt_output_root"),
             JDT: "builtin",
         },
         run: self.java_home_in_env(".", "mx") + [
