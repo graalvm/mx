@@ -112,6 +112,11 @@ suite = {
       "digest": "sha512:fcece0ecbc5301b5d101668b997beda59f4590f01010a6d195e4212ba989150a85760c25bd252966cde82844a43f4992d32bf6fc175ad01d0a578ca573e22c2e",
     },
 
+    "SPOTBUGS_4.7.3_JDK21_BACKPORT" : {
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/spotbugs-4.7.3-jdk21-backport.zip"],
+      "digest": "sha512:c8f7ba8154ec40d33d2864b4fdd0c5763a1d6d8f64bb5e2d3204d841e28189d8ef6fe4a6866a72465df607318e3ad9c5d18db7f96cccc502957fd6e2dd6f0537",
+    },
+
     "SIGTEST_1_2" : {
       "maven": {
         "groupId": "org.netbeans.tools",
