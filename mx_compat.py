@@ -725,6 +725,22 @@ class MxCompatibility6240(MxCompatibility6190):
         return True
 
 
+class MxCompatibility6270(MxCompatibility6240):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.27.0")
+
+    def proguard_supported_jdk_version(self):
+        return 21
+
+    def proguard_libs(self):
+        return {
+            'CORE': '9_0_8_JDK21_BACKPORT',
+            'BASE': '7_3_2_JDK21_BACKPORT',
+            'RETRACE': '7_3_2',
+        }
+
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]
