@@ -11446,12 +11446,19 @@ def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisio
     suite_revision_file = dump_metadata_json(suite_revisions, "suiteRevisions")
     extra_metadata_file = dump_metadata_json(extra_metadata, "extraMetadata")
 
+    if dist.suite.is_release():
+        lifecycle = "release"
+        snapshot_id = ""
+    else:
+        lifecycle = "snapshot"
+        snapshot_id = f"-{snapshot_id}"
+
     cmd = [uploader, "--version", version, "--revision", primary_revision,
            "--suite-revisions", suite_revision_file,
            "--extra-metadata", extra_metadata_file,
-           "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
+           "--lifecycle", lifecycle,
            path,
-           f"{project}/{maven_artifact_id}-{version}-{snapshot_id}.{dist.remoteExtension()}",
+           f"{project}/{maven_artifact_id}-{version}{snapshot_id}.{dist.remoteExtension()}",
            project]
     if edition:
         cmd.extend(["--edition", edition])
@@ -18372,7 +18379,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.26.2")  # GR-46518 defaultDereference attribute
+version = VersionSpec("6.26.3")  # GR-46576 Release artifacts contain an extra id
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
