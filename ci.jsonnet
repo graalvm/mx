@@ -78,7 +78,9 @@ local with(platform, java_release, timelimit="15:00") = {
             JDT: "builtin",
         },
         run: self.java_home_in_env(".", "mx") + [
-            [mx, "--strict-compliance", "gate", "--strict-mode"] + if os == "windows" then ["--tags", "fullbuild"] else [],
+            [mx, "--strict-compliance", "gate"]
+            + (if eclipse_dep != {} then ["--strict-mode"] else [])
+            + (if os == "windows" then ["--tags", "fullbuild"] else []),
         ],
     },
 
