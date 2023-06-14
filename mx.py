@@ -7689,12 +7689,9 @@ class JavaBuildTask(ProjectBuildTask):
                 rmtree(join(genDir, f))
 
         linkedGenDir = self.subject.latest_output_dir()
-        if exists(linkedGenDir):
+        if linkedGenDir != self.subject.get_output_root() and exists(linkedGenDir):
             logv(f'Cleaning {linkedGenDir}...')
-            if islink(linkedGenDir):
-                os.unlink(linkedGenDir)
-            elif isdir(linkedGenDir):
-                rmtree(linkedGenDir)
+            rmtree(linkedGenDir)
 
         outputDir = self.subject.output_dir()
         if exists(outputDir):
@@ -18379,7 +18376,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.26.4")  # GR-44634: Do not format field annotations in the Eclipse code formatter config.
+version = VersionSpec("6.26.5")  # GR-41455 - fix MX_ALT_OUTPUT_ROOT support
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

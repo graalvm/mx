@@ -29,25 +29,26 @@ local with(platform, java_release, timelimit="15:00") = {
     local mx_copy_dir = path("${PWD}/../path with a space"),
     local mx = path("./mx"),
     local jdk = common.jdks["labsjdk-ee-%s" % java_release],
+    local eclipse_dep = if arch == "amd64" then common.deps.eclipse + {
+        environment+: {
+            ECLIPSE_EXE: if os == "darwin" then "$ECLIPSE/Contents/MacOS/eclipse" else exe("$ECLIPSE/eclipse")
+        }
+    } else {
+        # No CI Eclipse packages available on AArch64
+    },
 
-    local base = platform + jdk + common.deps.eclipse + common.deps.pylint + common.deps.sulong + common.deps.svm + {
+    local base = platform + jdk + eclipse_dep + common.deps.pylint + common.deps.sulong + common.deps.svm + {
         # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then Java version followed by OS and arch
         name: "%s-jdk%s-%s-%s" % [self.prefix, java_release, os, arch],
         targets: ["gate"],
         catch_files+: extra_catch_files,
-        environment: {
-            ECLIPSE_EXE: if os == "darwin" then "$ECLIPSE/Contents/MacOS/eclipse" else exe("$ECLIPSE/eclipse"),
-            # Required to keep pylint happy on Darwin
-            # https://coderwall.com/p/-k_93g/mac-os-x-valueerror-unknown-locale-utf-8-in-python
-            LC_ALL: "en_US.UTF-8",
-        },
         timelimit: timelimit,
         setup: [
             # Copy mx to a directory with a space in its name to ensure
             # mx can work in that context.
             copydir("$PWD", mx_copy_dir),
             ["cd", mx_copy_dir],
-        ] + if os == "darwin" then [
+        ] + if os == "darwin" && eclipse_dep != {} then [
             # Need to remove the com.apple.quarantine attribute from Eclipse otherwise
             # it will fail to start on later macOS versions.
             ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
@@ -73,10 +74,13 @@ local with(platform, java_release, timelimit="15:00") = {
 
     gate:: self.with_name("gate") + {
         environment+: {
+            MX_ALT_OUTPUT_ROOT: path("$BUILD_DIR/alt_output_root"),
             JDT: "builtin",
         },
         run: self.java_home_in_env(".", "mx") + [
-            [mx, "--strict-compliance", "gate", "--strict-mode"] + if os == "windows" then ["--tags", "fullbuild"] else [],
+            [mx, "--strict-compliance", "gate"]
+            + (if eclipse_dep != {} then ["--strict-mode"] else [])
+            + (if os == "windows" then ["--tags", "fullbuild"] else []),
         ],
     },
 
@@ -210,13 +214,13 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "64bd82d99c14ba9ac685cdf62df157e3579d7450",
+    overlay: "d280a58c1a1ad015c7873c19818aae0910a64996",
 
     # For use by overlay
     versions:: versions,
     extra_catch_files:: extra_catch_files,
-    primary_jdk_version: 20,
-    secondary_jdk_version: 17,
+    primary_jdk_version:: 20,
+    secondary_jdk_version:: 17,
 
     local builds = [
         with(common.linux_amd64, self.primary_jdk_version).gate,
@@ -224,6 +228,7 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.linux_amd64, self.primary_jdk_version).bisect_test,
         with(common.windows_amd64, self.primary_jdk_version).gate,
         with(common.darwin_amd64, self.primary_jdk_version, timelimit="25:00").gate,
+        with(common.darwin_aarch64, self.primary_jdk_version).gate,
         with(common.linux_amd64, self.primary_jdk_version).bench_test,
         with(common.linux_amd64, self.primary_jdk_version).jmh_test,
         with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").proftool_test,
