@@ -643,6 +643,28 @@ suite = {
       "dependencies" : ["PROGUARD_BASE_7_3_2"],
     },
 
+    "PROGUARD_BASE_7_3_2_JDK21_BACKPORT" : {
+      # Identical to PROGUARD_RETRACE_7_3_2 besides the dependency on PROGUARD_CORE_9_0_8_JDK21_BACKPORT
+      "digest": "sha512:1d5c988372930ed5d4b441d9ff3102e278173b01f2552779261d6f76da6cbeebf26c7d5cf53d860112cbf645f9c59b35b122782d5d60c4386c873ff1691a624f",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.3.2",
+      },
+      "dependencies" : [
+        "PROGUARD_CORE_9_0_8_JDK21_BACKPORT",
+        "LOG4J_CORE_2_19_0",
+        "LOG4J_API_2_19_0",
+        "ORG_JSON_20211205"
+      ],
+    },
+
+    "PROGUARD_CORE_9_0_8_JDK21_BACKPORT" : {
+      # Built from https://github.com/graalvm/proguard-core/tree/da/jdk21
+      "digest": "sha512:4605e7374736faebd71a4c49eb05cbd6da7894630fb037936335767d3b094201638b1ca7052db040b3dd804cf4eff5861d79c130ce8cec4ebf96c1ad42790283",
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/proguard-core-9.0.8-jdk21-backport.jar"],
+    },
+
     "NINJA" : {
       "packedResource" : True,
       "version" : "1.10.2",
