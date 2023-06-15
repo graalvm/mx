@@ -741,6 +741,15 @@ class MxCompatibility6270(MxCompatibility6240):
         }
 
 
+class MxCompatibility6271(MxCompatibility6270):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("6.27.1")
+
+    def spotbugs_version(self):
+        return "4.7.3_JDK21_BACKPORT"
+
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]
