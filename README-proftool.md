@@ -9,21 +9,23 @@ aid with JIT performance analysis.  It currently consists of three primary compo
 * a parser for HotSpot LogCompilation information
 
 By combining these components into a single command line, the perf
-profile information can be attributed to the JIT code.  Profile collection currently only supports Linux perf though
-once the data is captured then the profile can be viewed anywhere.  
+profile information can be attributed to the JIT code.  Proftool can also capture and examine profiles of standalone
+executables built with Native Image.  Profile collection currently only supports Linux perf though once the data is
+captured then the profile can be viewed anywhere.
 
 This suite must be built first to create the JVMTI agent library and the suite is normally dynamically
 imported to make the commands available through mx.
 
 ### Recording a profile
 
-There are currently 2 ways to capture profiles.  The direct way is to use the `profrecord` command
-which takes either a full Java command line or a Truffle language launcher command line as arguments
-and launches it with extra arguments to collect the data.
+There are currently 2 ways to capture profiles.  The direct way is to use the `profrecord` command which accepts either
+a full Java command line, an executable compiled by Native Image, or a Truffle language launcher command line.
+`profrecord` launches the command line with extra arguments to collect the data.
 
 ```
 $ mx profrecord -E fop /home/graal/oraclejdk1.8.0_291-jvmci-21.1-b03/bin/java -jar dacapo.jar fop -n 56
 $ mx profrecord -E myprofile /.../graalvm/bin/js ...
+$ mx profrecord -E image_profile ./my_native_image ...
 ```
 
 The required argument `-E <name>` specifies the directory that will contain the output the files.  It's an error if it
@@ -39,6 +41,12 @@ $ mx benchmark dacapo:fop --tracker none -- --profiler proftool
 
 produces a uniquely named directory like `proftool_fop_2021-07-11_181530` which contains a profile of the full
 benchmark run.  Note that the `--tracker` and `--profiler` arguments are on different sides of the `--` separator.
+The same process applies to Native Image benchmarks, e.g.:
+
+```
+$ mx --env ni-ce benchmark dacapo-native-image:fop --tracker none -- --jvm=native-image --jvm-config=default-ce \
+    --profiler proftool
+```
 
 After capturing the profile, the perf binary output needs to be converted to text
 using the `profpackage` command because the current benchmark profiler infrastructure can't do that automatically.
@@ -55,10 +63,10 @@ simplify capturing the profile on a Linux machine then moving it to another mach
 
 Not all benchmark suites actually support the `--profiler` option even though it's broadly advertised in the
 help output.  At the current time, only the `dacapo`, `scala-dacapo`, `renaissance` and `renaissance-legacy`
-suites fully support the `--profiler` option.  The `JMH` benchmarks only correctly support it when the
-the JMH option `-f 0` is used to suppress forking by the harness.  Note that this changes the way the benchmark
-is run and might not produce the same results.  With `JMH` you can always fall back to the `JMH` `perfasm`
-profiler which is sufficient for most uses.
+suites fully support the `--profiler` option.  Their Native Image counterparts (e.g., `dacapo-native-image`) are also
+supported.  The `JMH` benchmarks only correctly support it when the JMH option `-f 0` is used to suppress forking by the
+harness.  Note that this changes the way the benchmark is run and might not produce the same results.  With `JMH` you
+can always fall back to the `JMH` `perfasm` profiler which is sufficient for most uses.
 
 For other benchmarks, you can always use `mx profrecord` directly by capturing the command
 line used to launch the benchmark with `mx -v benchmark ...` and then passing that to `mx profrecord`.  For example,
@@ -137,6 +145,37 @@ Hot region 1
 
 Every piece of generated code is disassembled and broken into hot regions where ticks are clustered.  This gives a general
 overview of the hot parts of the execution.
+
+`mx profhot` can also summarize profiles of native images, but the output is slightly different.  To view the annotated
+code, it is necessary to run the perf command given by `profhot`.  For example:
+
+```
+$ mx profhot proftool_*
+Hot code:
+  Percent   Name
+   10.40%   com.oracle.svm.core.genscavenge.GreyObjectsWalker.walkGreyObjects()
+    4.06%   [unknown]
+    3.26%   java.util.HashMap.computeIfAbsent(Object, Function)
+    2.54%   java.util.stream.AbstractPipeline.copyInto(Sink, Spliterator)
+    2.29%   java.util.stream.AbstractPipeline.evaluate(TerminalOp)
+    2.12%   java.util.HashMap$EntrySpliterator.forEachRemaining(Consumer)
+    2.06%   java.util.regex.Pattern$CharPropertyGreedy.match(Matcher, int, CharSequence)
+    1.92%   java.util.stream.Collectors.lambda$groupingBy$53(Function, Supplier, BiConsumer, Map, Object)
+    1.88%   java.util.stream.ReferencePipeline.collect(Collector)
+    1.87%   java.lang.StringLatin1.toUpperCase(String, byte[], Locale)
+
+Display annotated code by running:
+  perf report -Mintel --sort symbol -i /path/to/perf_binary_file
+```
+
+Proftool displays only one section where symbols might come from different executables or libraries.  This is because a
+native image may statically link non-Java code, and proftool cannot distinguish Java symbols from foreign symbols.  As
+another consequence, non-Java method names might be formatted as if they were Java names.
+
+An `[unknown]` name might come from a dynamic library or the kernel if perf cannot resolve the symbols.  Run with
+`--dso` to display the name of the library.  If there are no Java symbols at all, try building the executable with `-g`
+so that debug info is generated.  [Read the manual](https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/DebugInfo.md#special-considerations-for-using-perf-and-valgrind)
+to learn more about debugging native images.
 
 Proftool provides limited extra support for Truffle programs at the moment.  The only extra information printed is the Truffle
 provided name of the generated nmethod when printing the nmethod names.  This results in summary output like this for
