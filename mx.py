@@ -4416,8 +4416,9 @@ def clean(args, parser=None):
     parser = parser if suppliedParser else ArgumentParser(prog='mx clean')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not clean native projects')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
-    parser.add_argument('--dependencies', '--projects', action='store',
-                        help='comma separated projects to clean (omit to clean all projects)')
+    parser.add_argument('--dependencies', '--projects', '--targets', action='store',
+                        help='comma separated projects to clean (omit to clean all projects)',
+                        default=get_env('BUILD_TARGETS'))
     parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
     parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
     parser.add_argument('--aggressive', action='store_true', help='clear all suite output')
@@ -4439,7 +4440,7 @@ def clean(args, parser=None):
         return _dependencies_opt_limit_to_suites(res)
 
     if args.dependencies is not None:
-        deps = [dependency(name) for name in args.dependencies.split(',')]
+        deps = [dependency(mx_subst.string_substitutions.substitute(name)) for name in args.dependencies.split(',')]
     else:
         deps = _collect_clean_dependencies()
 
@@ -14632,8 +14633,8 @@ def build(cmd_args, parser=None):
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
     dependencies_group = parser.add_mutually_exclusive_group()
-    dependencies_group.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>')
-    dependencies_group.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
+    dependencies_group.add_argument('--dependencies', '--projects', '--targets', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>', default=get_env('BUILD_TARGETS'))
+    dependencies_group.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)', default=get_env('BUILD_ONLY'))
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
     parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="does nothing as cross compilation is no longer supported (preserved for compatibility)")
@@ -14690,12 +14691,12 @@ def build(cmd_args, parser=None):
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
-        roots = [dependency(name) for name in onlyDeps]
+        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in onlyDeps]
     elif args.dependencies is not None:
         if len(args.dependencies) == 0:
             abort('The value of the --dependencies argument cannot be the empty string')
         names = args.dependencies.split(',')
-        roots = [dependency(name) for name in names]
+        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in names]
     else:
         def _describe_jdk_path(p):
             if not isabs(p):
@@ -17575,7 +17576,7 @@ optional arguments:
     parser.add_argument('--output', action='store_true', help='Show output location rather than archivable result (only for distributions).')
     parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
-    spec = args.spec
+    spec = mx_subst.string_substitutions.substitute(args.spec)
     spec_dict = LayoutDistribution._as_source_dict('dependency:' + spec, 'NO_DIST', 'NO_DEST')
     d = dependency(spec_dict['dependency'])
     if args.download:
@@ -18376,7 +18377,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.2")  # GR-44866 - Add proftool support for Native Image
+version = VersionSpec("6.27.3")  # env files can specify build --dependencies
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
