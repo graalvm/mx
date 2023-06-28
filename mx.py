@@ -14185,7 +14185,7 @@ class JDKConfig(Comparable):
             exports = {}
             provides = {}
             uses = set()
-            opens = {}
+            opens = set()
             packages = set()
             boot = None
 
@@ -14200,7 +14200,7 @@ class JDKConfig(Comparable):
                     requires = {}
                     exports = {}
                     provides = {}
-                    opens = {}
+                    opens = set()
                     uses = set()
                     packages = set()
                     boot = None
@@ -14224,7 +14224,8 @@ class JDKConfig(Comparable):
                     elif a == 'uses':
                         uses.update(parts[1:])
                     elif a == 'opens':
-                        opens.update(parts[1:])
+                        spec = " ".join(parts[1:])
+                        opens.add(spec)
                     elif a == 'package':
                         packages.update(parts[1:])
                     elif a == 'provides':
@@ -18377,7 +18378,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.3")  # env files can specify build --dependencies
+version = VersionSpec("6.27.4")  # parse opens .. to .. directives in library modules
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

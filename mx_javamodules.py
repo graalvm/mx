@@ -69,7 +69,7 @@ class JavaModuleDescriptor(mx.Comparable):
         self.requires = requires
         self.concealedRequires = concealedRequires if concealedRequires else {}
         self.uses = frozenset(uses)
-        self.opens = opens if opens else {}
+        self.opens = frozenset(opens if opens else [])
         self.provides = provides
         exportedPackages = frozenset(exports.keys())
         self.packages = exportedPackages if packages is None else frozenset(packages)
@@ -441,14 +441,14 @@ def get_library_as_module(dep, jdk):
     requires = {}
     exports = {}
     provides = {}
-    opens = {}
+    opens = set()
     uses = set()
     packages = set()
 
     for line in lines[1:]:
         parts = line.strip().split()
         assert len(parts) >= 2, '>>>'+line+'<<<'
-        if parts[0:2] == ['qualified', 'exports']:
+        if parts[0:2] == ['qualified', 'exports'] or parts[0:2] == ['qualified', 'opens']:
             parts = parts[1:]
         a = parts[0]
         if a == 'requires':
@@ -466,7 +466,8 @@ def get_library_as_module(dep, jdk):
         elif a == 'uses':
             uses.update(parts[1:])
         elif a == 'opens':
-            opens.update(parts[1:])
+            spec = " ".join(parts[1:])
+            opens.add(spec)
         elif a == 'contains':
             packages.update(parts[1:])
         elif a == 'provides':
