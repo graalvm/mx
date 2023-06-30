@@ -699,7 +699,7 @@ class DefaultNativeProject(NinjaProject):
             if self._kind != self._kinds['static_lib']:
                 gen.variables(
                     ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags],
-                    ldlibs=self.ldlibs,
+                    ldlibs=[mx_subst.path_substitutions.substitute(ldlib) for ldlib in self.ldlibs],
                 )
             gen.include_dirs(collections.OrderedDict.fromkeys(
                 # remove the duplicates while maintaining the ordering

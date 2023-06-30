@@ -18378,7 +18378,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.4")  # parse opens .. to .. directives in library modules
+version = VersionSpec("6.27.5")  # Use substitutions for ldlibs of DefaultNativeProject
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
