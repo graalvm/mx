@@ -143,6 +143,7 @@ org.eclipse.jdt.core.formatter.alignment_for_arguments_in_enum_constant=48
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_explicit_constructor_call=16
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_method_invocation=16
 org.eclipse.jdt.core.formatter.alignment_for_arguments_in_qualified_allocation_expression=16
+org.eclipse.jdt.core.formatter.alignment_for_assertion_message=0
 org.eclipse.jdt.core.formatter.alignment_for_assignment=0
 org.eclipse.jdt.core.formatter.alignment_for_binary_expression=16
 org.eclipse.jdt.core.formatter.alignment_for_compact_if=16
