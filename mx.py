@@ -5393,7 +5393,8 @@ class Distribution(Dependency):
         Gets the projects and libraries whose artifacts are the contents of the archive
         created by `make_archive`.
 
-        Direct distribution dependencies are considered as _distDependencies_.
+        Direct distribution dependencies are considered as _distDependencies_ unless they
+        are LayoutJARDistribution.
         Anything contained in the _distDependencies_ will not be included in the result.
         Libraries listed in `excludedLibs` will also be excluded.
         Otherwise, the result will contain everything this distribution depends on (including
@@ -5408,7 +5409,7 @@ class Distribution(Dependency):
                         for o in dep.overlapped_distributions():
                             excluded.add(o)
                     excluded.update(dep.archived_deps())
-            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
+            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution() and not dst.isLayoutJARDistribution())
 
             def _list_excluded(dst, edge):
                 if not edge:
@@ -18380,7 +18381,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.7")  # Fix CompilerDaemon log message
+version = VersionSpec("6.28.0")  # LayoutDirDistribution
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
