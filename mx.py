@@ -8140,7 +8140,7 @@ class CompilerDaemon(Daemon):
     def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('127.0.0.1', self.port))
-        logv(self.jdk.javac + ' ' + ' '.join(compilerArgs))
+        logv(f'Compile with {self.name()}: ' + ' '.join(compilerArgs))
         commandLine = u'\x00'.join(compilerArgs)
         s.send((commandLine + '\n').encode('utf-8'))
         f = s.makefile()
@@ -8155,7 +8155,7 @@ class CompilerDaemon(Daemon):
         if retcode:
             if _opts.verbose:
                 if _opts.very_verbose:
-                    retcode = str(subprocess.CalledProcessError(retcode, self.jdk.javac + ' ' + ' '.join(compilerArgs)))
+                    retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))
                 else:
                     log('[exit code: ' + str(retcode) + ']')
             abort(retcode)
@@ -14645,7 +14645,9 @@ def build(cmd_args, parser=None):
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
-    parser.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
+    daemon_group = parser.add_mutually_exclusive_group()
+    daemon_group.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
+    daemon_group.add_argument('--force-daemon', action='store_true', dest='force_daemon', help='force the use of daemon Java compiler (if available)')
     parser.add_argument('--all', action='store_true', help='build all dependencies (not just default targets)')
     parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
@@ -14787,7 +14789,7 @@ def build(cmd_args, parser=None):
                 log(str(task))
         log("-- Serialized build plan --")
 
-    if len(sortedTasks) == 1:
+    if not args.force_daemon and len(sortedTasks) == 1:
         # Spinning up a daemon for a single task doesn't make sense
         if not args.no_daemon:
             logv('[Disabling use of compile daemon for single build task]')
@@ -18378,7 +18380,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.6")  # Do not format assert message.
+version = VersionSpec("6.27.7")  # Fix CompilerDaemon log message
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
