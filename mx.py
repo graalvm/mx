@@ -2360,6 +2360,8 @@ class Suite(object):
                 layout_class = LayoutJARDistribution
             elif layout_type == 'zip':
                 layout_class = LayoutZIPDistribution
+            elif layout_type == 'dir':
+                layout_class = LayoutDirDistribution
             else:
                 raise abort(f"Unknown layout distribution type: {layout_type}", context=context)
             return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, fileListPurpose=fileListPurpose, **attrs)
@@ -5662,9 +5664,14 @@ class AbstractDistribution(Distribution):
         yield self.path, self.default_filename()
 
     def needsUpdate(self, newestInput):
-        path_up = _needsUpdate(newestInput, self.path)
-        if path_up:
-            return path_up
+        if self.archive_factory != NullArchiver:
+            path_up = _needsUpdate(newestInput, self.path)
+            if path_up:
+                return path_up
+        else:
+            # When the distribution is not archived we cannot rely only on the archive file.
+            # Therefore, we can only compare the contents of the output directory.
+            assert not exists(self.path), "Distribution '{}' has NullArchiver as archive_factory but '{}' exists. If it is a stale file, delete it.".format(self.name, self.path)
         if self.output:
             output_up = _needsUpdate(newestInput, self.get_output())
             if output_up:
@@ -6598,6 +6605,23 @@ Common causes:
             else:
                 abort("find_source_location: source type not supported: " + source)
         return self._source_location_cache[source]
+
+
+class LayoutDirDistribution(LayoutDistribution):
+    # A layout distribution that is not archived, useful to define the contents of a directory.
+    # When added as a dependency of a JarDistribution, it is included in the jar. It is not appended to the classpath.
+    def __init__(self, *args, **kw_args):
+        # we have *args here because some subclasses in suites have been written passing positional args to
+        # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
+        # than breaking compatibility with the mis-behaving suites
+        kw_args['archive_factory'] = NullArchiver
+        super(LayoutDirDistribution, self).__init__(*args, **kw_args)
+
+    def remoteExtension(self):
+        return 'does_not_exist'
+
+    def localExtension(self):
+        return 'does_not_exist'
 
 
 class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
