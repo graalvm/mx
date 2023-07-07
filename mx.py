@@ -1455,6 +1455,9 @@ class Dependency(SuiteConstituent):
     def isLayoutJARDistribution(self):
         return isinstance(self, LayoutJARDistribution)
 
+    def isLayoutDirDistribution(self):
+        return isinstance(self, LayoutDirDistribution)
+
     def isClasspathDependency(self):
         return isinstance(self, ClasspathDependency)
 
@@ -5396,7 +5399,7 @@ class Distribution(Dependency):
         created by `make_archive`.
 
         Direct distribution dependencies are considered as _distDependencies_ unless they
-        are LayoutJARDistribution.
+        are LayoutDirDistribution, which are not archived.
         Anything contained in the _distDependencies_ will not be included in the result.
         Libraries listed in `excludedLibs` will also be excluded.
         Otherwise, the result will contain everything this distribution depends on (including
@@ -5411,7 +5414,7 @@ class Distribution(Dependency):
                         for o in dep.overlapped_distributions():
                             excluded.add(o)
                     excluded.update(dep.archived_deps())
-            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution() and not dst.isLayoutJARDistribution())
+            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution() and not dst.isLayoutDirDistribution())
 
             def _list_excluded(dst, edge):
                 if not edge:
