@@ -5667,7 +5667,7 @@ class AbstractDistribution(Distribution):
         yield self.path, self.default_filename()
 
     def needsUpdate(self, newestInput):
-        if self.archive_factory != NullArchiver:
+        if getattr(self, 'archive_factory', None) != NullArchiver:
             path_up = _needsUpdate(newestInput, self.path)
             if path_up:
                 return path_up
