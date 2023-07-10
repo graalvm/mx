@@ -5667,14 +5667,9 @@ class AbstractDistribution(Distribution):
         yield self.path, self.default_filename()
 
     def needsUpdate(self, newestInput):
-        if getattr(self, 'archive_factory', None) != NullArchiver:
-            path_up = _needsUpdate(newestInput, self.path)
-            if path_up:
-                return path_up
-        else:
-            # When the distribution is not archived we cannot rely only on the archive file.
-            # Therefore, we can only compare the contents of the output directory.
-            assert not exists(self.path), "Distribution '{}' has NullArchiver as archive_factory but '{}' exists. If it is a stale file, delete it.".format(self.name, self.path)
+        path_up = _needsUpdate(newestInput, self.path)
+        if path_up:
+            return path_up
         if self.output:
             output_up = _needsUpdate(newestInput, self.get_output())
             if output_up:
@@ -6433,9 +6428,15 @@ Common causes:
 
 
     def needsUpdate(self, newestInput):
-        sup = super(LayoutDistribution, self).needsUpdate(newestInput)
-        if sup:
-            return sup
+        if self.archive_factory != NullArchiver:
+            sup = super(LayoutDistribution, self).needsUpdate(newestInput)
+            if sup:
+                return sup
+        else:
+            if self.output:
+                output_up = _needsUpdate(newestInput, self.get_output())
+                if output_up:
+                    return output_up
         for destination, source in self._walk_layout():
             source_type = source['source_type']
             if source_type == 'file':
