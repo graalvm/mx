@@ -6611,15 +6611,19 @@ Common causes:
         return self._source_location_cache[source]
 
 
-class LayoutDirDistribution(LayoutDistribution):
+class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
     # A layout distribution that is not archived, useful to define the contents of a directory.
-    # When added as a dependency of a JarDistribution, it is included in the jar. It is not appended to the classpath.
+    # When added as a dependency of a JarDistribution, it is included in the jar. It is not appended to the classpath
+    # unless `classpath_entries` is called with `preferProjects=True`.
     def __init__(self, *args, **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
         # than breaking compatibility with the mis-behaving suites
         kw_args['archive_factory'] = NullArchiver
         super(LayoutDirDistribution, self).__init__(*args, **kw_args)
+
+    def classpath_repr(self, resolve=True):
+        return None
 
     def remoteExtension(self):
         return 'does_not_exist'
