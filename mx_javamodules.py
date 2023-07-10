@@ -698,7 +698,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 parts = entry.split()
                 qualifiers = parts[0:-1]
                 name = parts[-1]
-                requires.setdefault(name, set()).update(qualifiers)
+                # override automatic qualifiers like transitive if they are explicitly specified in the module info
+                # this allows to customize the default behavior.
+                requires[name] = qualifiers
             base_uses.update(module_info.get('uses', []))
             _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
 
