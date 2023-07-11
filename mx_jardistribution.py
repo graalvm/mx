@@ -1029,7 +1029,7 @@ class _ArchiveStager(object):
         elif dep.isLayoutDirDistribution():
             mx.logv('[' + original_path + ': adding contents of layout dir distribution ' + dep.name + ']')
             output = realpath(dep.get_output())
-            for p, _ in dep._walk_layout():
+            for _, p in dep.getArchivableResults():
                 self.add_file(dep, output, p, '')
         elif dep.isClasspathDependency():
             mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
