@@ -1026,15 +1026,15 @@ class _ArchiveStager(object):
             for f in dep.getResults():
                 relpath = dep.get_relpath(f, outputDir)
                 self.add_file(dep, outputDir, relpath, archivePrefix)
-        elif dep.isClasspathDependency():
-            mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
-            jarPath = dep.classpath_repr(resolve=True)
-            self.add_jar(dep, jarPath)
         elif dep.isLayoutDirDistribution():
             mx.logv('[' + original_path + ': adding contents of layout dir distribution ' + dep.name + ']')
             output = realpath(dep.get_output())
             for p, _ in dep._walk_layout():
                 self.add_file(dep, output, p, '')
+        elif dep.isClasspathDependency():
+            mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
+            jarPath = dep.classpath_repr(resolve=True)
+            self.add_jar(dep, jarPath)
         else:
             mx.abort(f'Dependency not supported: {dep.name} ({dep.__class__.__name__})')
 
