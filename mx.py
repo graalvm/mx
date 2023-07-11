@@ -6623,7 +6623,7 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
         super(LayoutDirDistribution, self).__init__(*args, **kw_args)
 
     def classpath_repr(self, resolve=True):
-        return None
+        return self.get_output()
 
     def remoteExtension(self):
         return 'does_not_exist'
