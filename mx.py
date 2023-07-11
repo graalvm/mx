@@ -6630,8 +6630,10 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
             raise ValueError("{} only produces multiple output".format(self))
         for destination, _ in self._walk_layout():
             # paths in layout distributions typically start with `./`
-            output_file = realpath(join(self.get_output(), destination))
-            yield output_file, basename(output_file)
+            output_dir = self.get_output()
+            file_path = realpath(join(output_dir, destination))
+            archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
+            yield file_path, archive_path
 
     def remoteExtension(self):
         return 'does_not_exist'
