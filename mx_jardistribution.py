@@ -1029,10 +1029,8 @@ class _ArchiveStager(object):
         elif dep.isLayoutDirDistribution():
             mx.logv('[' + original_path + ': adding contents of layout dir distribution ' + dep.name + ']')
             output = realpath(dep.get_output())
-            for dirpath, _, filenames in os.walk(output):
-                for filename in filenames:
-                    relative_path = os.path.relpath(os.path.join(dirpath, filename), output)
-                    self.add_file(dep, output, relative_path, '')
+            for _, p in dep.getArchivableResults():
+                self.add_file(dep, output, p, '')
         elif dep.isClasspathDependency():
             mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
             jarPath = dep.classpath_repr(resolve=True)

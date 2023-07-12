@@ -6628,12 +6628,12 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
     def getArchivableResults(self, use_relpath=True, single=False):
         if single:
             raise ValueError("{} only produces multiple output".format(self))
-        for destination, _ in self._walk_layout():
-            # paths in layout distributions typically start with `./`
-            output_dir = self.get_output()
-            file_path = realpath(join(output_dir, destination))
-            archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
-            yield file_path, archive_path
+        output_dir = self.get_output()
+        for dirpath, _, filenames in os.walk(output_dir):
+            for filename in filenames:
+                file_path = join(dirpath, filename)
+                archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
+                yield file_path, archive_path
 
     def remoteExtension(self):
         return 'does_not_exist'
