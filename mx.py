@@ -1455,6 +1455,9 @@ class Dependency(SuiteConstituent):
     def isLayoutJARDistribution(self):
         return isinstance(self, LayoutJARDistribution)
 
+    def isLayoutDirDistribution(self):
+        return isinstance(self, LayoutDirDistribution)
+
     def isClasspathDependency(self):
         return isinstance(self, ClasspathDependency)
 
@@ -2360,6 +2363,8 @@ class Suite(object):
                 layout_class = LayoutJARDistribution
             elif layout_type == 'zip':
                 layout_class = LayoutZIPDistribution
+            elif layout_type == 'dir':
+                layout_class = LayoutDirDistribution
             else:
                 raise abort(f"Unknown layout distribution type: {layout_type}", context=context)
             return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, fileListPurpose=fileListPurpose, **attrs)
@@ -5393,7 +5398,8 @@ class Distribution(Dependency):
         Gets the projects and libraries whose artifacts are the contents of the archive
         created by `make_archive`.
 
-        Direct distribution dependencies are considered as _distDependencies_.
+        Direct distribution dependencies are considered as _distDependencies_ unless they
+        are LayoutDirDistribution, which are not archived.
         Anything contained in the _distDependencies_ will not be included in the result.
         Libraries listed in `excludedLibs` will also be excluded.
         Otherwise, the result will contain everything this distribution depends on (including
@@ -5408,7 +5414,7 @@ class Distribution(Dependency):
                         for o in dep.overlapped_distributions():
                             excluded.add(o)
                     excluded.update(dep.archived_deps())
-            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
+            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution() and not dst.isLayoutDirDistribution())
 
             def _list_excluded(dst, edge):
                 if not edge:
@@ -6422,9 +6428,15 @@ Common causes:
 
 
     def needsUpdate(self, newestInput):
-        sup = super(LayoutDistribution, self).needsUpdate(newestInput)
-        if sup:
-            return sup
+        if self.archive_factory != NullArchiver:
+            sup = super(LayoutDistribution, self).needsUpdate(newestInput)
+            if sup:
+                return sup
+        else:
+            if self.output:
+                output_up = _needsUpdate(newestInput, self.get_output())
+                if output_up:
+                    return output_up
         for destination, source in self._walk_layout():
             source_type = source['source_type']
             if source_type == 'file':
@@ -6597,6 +6609,37 @@ Common causes:
             else:
                 abort("find_source_location: source type not supported: " + source)
         return self._source_location_cache[source]
+
+
+class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
+    # A layout distribution that is not archived, useful to define the contents of a directory.
+    # When added as a dependency of a JarDistribution, it is included in the jar. It is not appended to the classpath
+    # unless `classpath_entries` is called with `preferProjects=True`.
+    def __init__(self, *args, **kw_args):
+        # we have *args here because some subclasses in suites have been written passing positional args to
+        # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
+        # than breaking compatibility with the mis-behaving suites
+        kw_args['archive_factory'] = NullArchiver
+        super(LayoutDirDistribution, self).__init__(*args, **kw_args)
+
+    def classpath_repr(self, resolve=True):
+        return self.get_output()
+
+    def getArchivableResults(self, use_relpath=True, single=False):
+        if single:
+            raise ValueError("{} only produces multiple output".format(self))
+        output_dir = self.get_output()
+        for dirpath, _, filenames in os.walk(output_dir):
+            for filename in filenames:
+                file_path = join(dirpath, filename)
+                archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
+                yield file_path, archive_path
+
+    def remoteExtension(self):
+        return 'does_not_exist'
+
+    def localExtension(self):
+        return 'does_not_exist'
 
 
 class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
@@ -18380,7 +18423,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.27.7")  # Fix CompilerDaemon log message
+version = VersionSpec("6.28.0")  # LayoutDirDistribution
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
