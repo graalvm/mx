@@ -325,6 +325,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
             if jmd:
                 setattr(self, '.javaModule', jmd)
+                mi_file = self._module_info_save_file()
+                with mx.open(mi_file, 'w') as fp:
+                    fp.write(self._module_info_as_json())
                 dependency_file = self._jmod_build_jdk_dependency_file()
                 with mx.open(dependency_file, 'w') as fp:
                     fp.write(jdk.home)
@@ -562,6 +565,20 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         """
         return self.original_path() + '.jdk'
 
+    def _module_info_save_file(self):
+        """
+        Gets the path to the file saving `_module_info_as_json()`.
+        """
+        return self.original_path() + '.module-info'
+
+    def _module_info_as_json(self):
+        """
+        Gets the moduleInfo attribute(s) as sorted json.
+        """
+        import json
+        module_infos = {name:getattr(self, name) for name in dir(self) if name == 'moduleInfo' or name.startswith('moduleInfo:')}
+        return json.dumps(module_infos, sort_keys=True, indent=2)
+
     def needsUpdate(self, newestInput):
         res = mx._needsUpdate(newestInput, self.path)
         if res:
@@ -590,8 +607,20 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 res = mx._needsUpdate(self.original_path(), pickle_path)
                 if res:
                     return res
-                # Rebuild the jmod file if different JDK used previously
                 jdk = mx.get_jdk(compliance)
+
+                # Rebuild if module info changed
+                mi_file = self._module_info_save_file()
+                if exists(mi_file):
+                    module_info = self._module_info_as_json()
+                    with mx.open(mi_file) as fp:
+                        saved_module_info = fp.read()
+                    if module_info != saved_module_info:
+                        import difflib
+                        mx.log(f'{self} module info changed:' + os.linesep + ''.join(difflib.unified_diff(saved_module_info.splitlines(1), module_info.splitlines(1))))
+                        return 'module-info changed'
+
+                # Rebuild the jmod file if different JDK used previously
                 dependency_file = self._jmod_build_jdk_dependency_file()
                 if exists(dependency_file):
                     with mx.open(dependency_file) as fp:
