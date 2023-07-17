@@ -12951,7 +12951,7 @@ _jdks_cache = {}
 _canceled_jdk_requests = set()
 
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, abortCallback=abort, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
 
@@ -13024,7 +13024,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
             msg += f"\nOr run `{dirname(__file__)}/select_jdk.py -p {dirname(p)}` to set and persist these variables in {join(p, 'env')}."
         else:
             msg += f'\nOr run `{dirname(__file__)}/select_jdk.py` to set these variables.'
-        abort(msg)
+        abortCallback(msg)
 
     if defaultJdk:
         if not _default_java_home:
@@ -18423,7 +18423,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.28.1")  # GR-47129: rebuild modules when module-info changes
+version = VersionSpec("6.29.0")  # Run SpotBugs and ProGuard on compatible JDK versions
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

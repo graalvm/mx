@@ -181,13 +181,17 @@ def _spotbugs(all_args, fbArgs, suite, projectsToTest, spotbugsVersion):
 
     outputDirs = [mx._cygpathU2W(p.output_dir()) for p in projectsToTest]
     javaCompliance = max([p.javaCompliance for p in projectsToTest])
-    jdk = mx.get_jdk(javaCompliance)
     max_jdk_version = _max_jdk_version_supported(spotbugsVersion)
-    if max_jdk_version < jdk.javaCompliance.value:
+    if max_jdk_version < javaCompliance.value:
         _warn_or_abort(
-            f'Spotbugs {spotbugsVersion} only runs on JDK {max_jdk_version} or lower, not {jdk}. Skipping {projectsToTest}',
+            f'Spotbugs {spotbugsVersion} only runs on JDK {max_jdk_version} or lower, not {javaCompliance}. Skipping {projectsToTest}',
             parsed_args.strict_mode)
         return 0
+    def _abort(msg):
+        mx.log_error(f'No JDK compatible with Spotbugs found')
+        mx.abort(msg)
+    _range = f'{javaCompliance.value}..{max_jdk_version}' if javaCompliance.value < max_jdk_version else str(max_jdk_version)
+    jdk = mx.get_jdk(_range, abortCallback=_abort)
 
     spotbugsResults = join(suite.dir, 'spotbugs.results')
 
