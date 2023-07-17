@@ -5929,7 +5929,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, defaultDereference=None, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, defaultDereference=None, fileListEntry=None, hashEntry=None, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -5937,6 +5937,10 @@ class LayoutDistribution(AbstractDistribution):
         :type string_substitutions: mx_subst.SubstitutionEngine
         :type fileListPurpose: str
         :param fileListPurpose: if specified, a file '<path>.filelist' will be created next to this distribution's archive. The file will contain a list of all the files from this distribution
+        :type fileListEntry: str
+        :param fileListEntry: if specified, a layout entry with given path will be added in the distribution. The entry will contain a list of all the files from this distribution
+        :type hashEntry: str
+        :param hashEntry: if specified, a layout entry with given path will be added in the distribution. The entry will contain hash code of layout entries
         """
         super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
         self.buildDependencies += LayoutDistribution._extract_deps(layout, suite, name)
@@ -5949,6 +5953,8 @@ class LayoutDistribution(AbstractDistribution):
         self.compress = compress
         self._removed_deps = set()
         self.fileListPurpose = fileListPurpose
+        self.fileListEntry = fileListEntry
+        self.hashEntry = hashEntry
         if defaultDereference is None:
             self.defaultDereference = "root"
         elif defaultDereference not in ("root", "never", "always"):
@@ -6414,7 +6420,8 @@ Common causes:
                                         context=self,
                                         reset_user_group=getattr(self, 'reset_user_group', False),
                                         compress=self.compress)
-        with FileListArchiver(self.path, archiver) if self.fileListPurpose else archiver as arc:
+        fileListPath = self.path if self.fileListPurpose else None
+        with FileListArchiver(fileListPath, self.fileListEntry, self.hashEntry, archiver) if fileListPath or self.fileListEntry or self.hashEntry else archiver as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
@@ -15515,32 +15522,63 @@ class NullArchiver(Archiver):
         pass
 
 class FileListArchiver:
-    def __init__(self, path, delegate):
+    def __init__(self, path, file_list_entry, hash_entry, delegate):
         self.path = path
-        self.filelist = []
+        self.file_list_entry = file_list_entry
+        self.hash_entry = hash_entry
+        self.filelist = [] if path or file_list_entry else None
+        self.sha256 = hashlib.sha256() if hash_entry else None
         self.delegate = delegate
 
     def __enter__(self):
         self.delegate = self.delegate.__enter__()
         return self
 
+    def _file_hash(self, filename):
+        with open(filename, "rb") as f:
+            for block in iter(lambda: f.read(8192), b""):
+                self.sha256.update(block)
+
     def add(self, filename, archive_name, provenance):
-        self.filelist.append(archive_name)
+        if self.filelist is not None:
+            self.filelist.append(archive_name)
+        if self.sha256:
+            self._file_hash(filename)            
         self.delegate.add(filename, archive_name, provenance)
 
     def add_str(self, data, archive_name, provenance):
-        self.filelist.append(archive_name)
+        if self.filelist is not None:
+            self.filelist.append(archive_name)
+        if self.sha256:
+            self.sha256.update(data.encode('utf-8'))
         self.delegate.add_str(data, archive_name, provenance)
 
     def add_link(self, target, archive_name, provenance):
-        self.filelist.append(archive_name)
+        if self.filelist is not None:
+            self.filelist.append(archive_name)
+        if self.sha256:
+            self.sha256.update(target.encode('utf-8'))
         self.delegate.add_link(target, archive_name, provenance)
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        _filelist_str = os.linesep.join(self.filelist)
+    def _add_entry(self, entry, data):
+        dist = self.delegate.context
+        target = mx_subst.as_engine(dist.path_substitutions).substitute(entry, distribution=dist)
+        with SafeFileCreation(os.path.join(dist.get_output(), target)) as sfc, io_open(sfc.tmpFd, mode='w', closefd=False, encoding='utf-8') as f:
+            f.write(data)
+        self.delegate.add_str(data, target, None)
 
-        with SafeFileCreation(self.path + ".filelist") as sfc, io_open(sfc.tmpFd, mode='w', closefd=False, encoding='utf-8') as f:
-            f.write(_filelist_str)
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.sha256:
+            assert self.hash_entry, "Hash entry path must be given"
+            self._add_entry(self.hash_entry, self.sha256.hexdigest())
+
+        if self.filelist is not None:
+            _filelist_str = os.linesep.join(self.filelist)
+            if self.file_list_entry:
+                self._add_entry(self.file_list_entry, _filelist_str)
+            if self.path:
+                with SafeFileCreation(self.path + ".filelist") as sfc, io_open(sfc.tmpFd, mode='w', closefd=False, encoding='utf-8') as f:
+                    f.write(_filelist_str)
 
         self.delegate.__exit__(exc_type, exc_value, traceback)
 
@@ -18423,7 +18461,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.30.0")  # Support explicit requires in suite module infos.
+version = VersionSpec("6.31.0")  # Added a possibility to add hash and filelist into the layout distribution.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
