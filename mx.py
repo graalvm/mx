@@ -4976,8 +4976,8 @@ class ClasspathDependency(Dependency):
     """
     A dependency that can be put on the classpath of a Java commandline.
     """
-    def __init__(self, **kwArgs):  # pylint: disable=super-init-not-called
-        pass
+    def __init__(self, use_module_path=False, **kwArgs):  # pylint: disable=super-init-not-called
+        self._use_module_path = use_module_path
 
     def classpath_repr(self, resolve=True):
         """
@@ -5004,6 +5004,9 @@ class ClasspathDependency(Dependency):
             for key, value in self.javaProperties.items():
                 ret[key] = replaceVar.substitute(value, dependency=self)
         return ret
+
+    def use_module_path(self):
+        return self._use_module_path
 
     def get_declaring_module_name(self):
         """
@@ -12597,20 +12600,43 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
     can be used to transitively exclude dependencies from the final classpath result.
     """
-    cpEntries = classpath_entries(names=names)
+    entries = classpath_entries(names=names)
     if exclude_names:
         for excludeEntry in classpath_entries(names=exclude_names):
-            if excludeEntry in cpEntries:
-                cpEntries.remove(excludeEntry)
+            if excludeEntry in entries:
+                entries.remove(excludeEntry)
 
-    ret = ["-cp", _separatedCygpathU2W(_entries_to_classpath(cpEntries, cp_prefix=cp_prefix, cp_suffix=cp_suffix, jdk=jdk))]
+    mp_entries = set()
+    for entry in entries:
+        if entry.isClasspathDependency() and entry.use_module_path():
+            if entry.get_declaring_module_name():
+                mp_entries.add(entry)
+                # if a distribution is a module put all dependencies
+                # on the module path as well.
+                for mpEntry in classpath_entries(names=[entry]):
+                    mp_entries.add(mpEntry)
+
+    if mp_entries:
+        cp_entries = set()
+        for entry in entries:
+            if entry not in mp_entries:
+                cp_entries.add(entry)
+    else:
+        cp_entries = entries
+
+    vm_args = []
+    if cp_entries:
+        vm_args += ["-cp", _separatedCygpathU2W(_entries_to_classpath(cp_entries, cp_prefix=cp_prefix, cp_suffix=cp_suffix, jdk=jdk))]
+
+    if mp_entries:
+        vm_args += ["-p", _separatedCygpathU2W(_entries_to_classpath(mp_entries, cp_prefix=None, cp_suffix=None, jdk=jdk))]
 
     def add_props(d):
         if hasattr(d, "getJavaProperties"):
             for key, value in sorted(d.getJavaProperties().items()):
-                ret.append("-D" + key + "=" + value)
+                vm_args.append("-D" + key + "=" + value)
 
-    for dep in cpEntries:
+    for dep in entries:
         add_props(dep)
 
         # also look through the individual projects inside all distributions on the classpath
@@ -12618,7 +12644,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
             for project in dep.archived_deps():
                 add_props(project)
 
-    return ret
+    return vm_args
 
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
@@ -18461,7 +18487,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.31.0")  # Added a possibility to add hash and filelist into the layout distribution.
+version = VersionSpec("6.32.0")  # Support useModulePath property with jar distributions.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

@@ -68,14 +68,15 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
            or only API documentation. Accepted values are "implementation" and "API".
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
     :param bool maven:
+    :param bool useModulePath: put this distribution and all its dependencies on the module-path whenever possible.
     :param dict[str, str] | None manifestEntries: Entries for the `META-INF/MANIFEST.MF` file.
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
-                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None,
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, useModulePath=False, stripConfigFileNames=None,
                  stripMappingFileNames=None, manifestEntries=None, alwaysStrip=None, **kwArgs):
         assert manifestEntries is None or isinstance(manifestEntries, dict)
         mx.Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
-        mx.ClasspathDependency.__init__(self, **kwArgs)
+        mx.ClasspathDependency.__init__(self, use_module_path=useModulePath, **kwArgs)
         self.subDir = subDir
         if path:
             path = mx_subst.path_substitutions.substitute(path)
