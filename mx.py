@@ -15543,7 +15543,7 @@ class FileListArchiver:
         if self.filelist is not None:
             self.filelist.append(archive_name)
         if self.sha256:
-            self._file_hash(filename)            
+            self._file_hash(filename)
         self.delegate.add(filename, archive_name, provenance)
 
     def add_str(self, data, archive_name, provenance):
