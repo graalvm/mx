@@ -18423,7 +18423,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.29.0")  # Run SpotBugs and ProGuard on compatible JDK versions
+version = VersionSpec("6.30.0")  # Support explicit requires in suite module infos.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
