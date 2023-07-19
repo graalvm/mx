@@ -4975,6 +4975,7 @@ mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path, keyw
 class ClasspathDependency(Dependency):
     """
     A dependency that can be put on the classpath of a Java commandline.
+    :param bool use_module_path: put this distribution and all its dependencies on the module-path.
     """
     def __init__(self, use_module_path=False, **kwArgs):  # pylint: disable=super-init-not-called
         self._use_module_path = use_module_path
@@ -5006,6 +5007,11 @@ class ClasspathDependency(Dependency):
         return ret
 
     def use_module_path(self):
+        """
+        Returns True if this dependency should be used on the module-path instead of the class-path, else False.
+
+        :rtype: bool
+        """
         return self._use_module_path
 
     def get_declaring_module_name(self):
@@ -12617,10 +12623,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
                     mp_entries.add(mpEntry)
 
     if mp_entries:
-        cp_entries = set()
-        for entry in entries:
-            if entry not in mp_entries:
-                cp_entries.add(entry)
+        cp_entries = frozenset(entries) - mp_entries
     else:
         cp_entries = entries
 

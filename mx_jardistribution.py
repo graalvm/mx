@@ -68,7 +68,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
            or only API documentation. Accepted values are "implementation" and "API".
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
     :param bool maven:
-    :param bool useModulePath: put this distribution and all its dependencies on the module-path whenever possible.
+    :param bool useModulePath: put this distribution and all its dependencies on the module-path.
     :param dict[str, str] | None manifestEntries: Entries for the `META-INF/MANIFEST.MF` file.
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
@@ -120,6 +120,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
             self.buildDependencies.extend((l.suite.name + ':' + l.name for l in mx.classpath_entries('PROGUARD_BASE_' + self.suite.getMxCompatibility().proguard_libs()['BASE'])))
+        if useModulePath and self.get_declaring_module_name() is None:
+            mx.abort('The property useModulePath is set to True but the distribution does not contain a module specification. Add a "moduleInfo" attribute with a name to resolve this.', context=self)
 
     def post_init(self):
         # paths are initialized late to be able to figure out the max jdk
