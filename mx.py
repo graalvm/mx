@@ -9127,6 +9127,8 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
                         self._defined_java_packages.add(posixpath.dirname(zi.filename).replace('/', '.'))
         return self._defined_java_packages
 
+    def get_declaring_module_name(self):
+        return get_module_name(self)
 
 class LibraryDownloadTask(BuildTask):
     def __init__(self, args, lib):
@@ -12619,8 +12621,9 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
                 mp_entries.add(entry)
                 # if a distribution is a module put all dependencies
                 # on the module path as well.
-                for mpEntry in classpath_entries(names=[entry]):
-                    mp_entries.add(mpEntry)
+                for mp_entry in classpath_entries(names=[entry]):
+                    if mp_entry in entries:
+                        mp_entries.add(mp_entry)
 
     if mp_entries:
         cp_entries = frozenset(entries) - mp_entries
