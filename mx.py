@@ -12634,11 +12634,16 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
     if mp_entries:
         vm_args += ["-p", _separatedCygpathU2W(_entries_to_classpath(mp_entries, cp_prefix=None, cp_suffix=None, jdk=jdk))]
 
-    for mp_entry in mp_entries:
-        if mp_entry.isClasspathDependency():
-            module_name = mp_entry.get_declaring_module_name()
-            if module_name:
-                vm_args += ['--add-modules', module_name]
+    # if there are class-path entries that depend on module-path entries then class-path
+    # entries might not see the modules in the boot module graph, unless --add-modules is specified.
+    # --add-modules is not always necessary, but it is hard to know whether it is
+    # so we always add it if there is a class-path in use.
+    if cp_entries:
+        for mp_entry in mp_entries:
+            if mp_entry.isClasspathDependency():
+                module_name = mp_entry.get_declaring_module_name()
+                if module_name:
+                    vm_args += ['--add-modules', module_name]
 
     def add_props(d):
         if hasattr(d, "getJavaProperties"):
