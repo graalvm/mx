@@ -12634,6 +12634,12 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
     if mp_entries:
         vm_args += ["-p", _separatedCygpathU2W(_entries_to_classpath(mp_entries, cp_prefix=None, cp_suffix=None, jdk=jdk))]
 
+    for mp_entry in mp_entries:
+        if mp_entry.isClasspathDependency():
+            module_name = mp_entry.get_declaring_module_name()
+            if module_name:
+                vm_args += ['--add-modules', module_name]
+
     def add_props(d):
         if hasattr(d, "getJavaProperties"):
             for key, value in sorted(d.getJavaProperties().items()):
@@ -12648,7 +12654,6 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
                 add_props(project)
 
     return vm_args
-
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
