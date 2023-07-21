@@ -227,7 +227,7 @@ local with(platform, java_release, timelimit="15:00") = {
     versions:: versions,
     extra_catch_files:: extra_catch_files,
     primary_jdk_version:: 21,
-    secondary_jdk_version:: 21,
+    secondary_jdk_version:: 20,
 
     local builds = [
         with(common.linux_amd64, self.primary_jdk_version).gate,
