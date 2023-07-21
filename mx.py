@@ -12630,8 +12630,9 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
     else:
         cp_entries = entries
 
+    has_cp_entries = cp_entries or cp_prefix or cp_suffix
     vm_args = []
-    if cp_entries:
+    if has_cp_entries:
         vm_args += ["-cp", _separatedCygpathU2W(_entries_to_classpath(cp_entries, cp_prefix=cp_prefix, cp_suffix=cp_suffix, jdk=jdk))]
 
     if mp_entries:
@@ -12641,7 +12642,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
     # entries might not see the modules in the boot module graph, unless --add-modules is specified.
     # --add-modules is not always necessary, but it is hard to know whether it is
     # so we always add it if there is a class-path in use.
-    if cp_entries:
+    if has_cp_entries:
         for mp_entry in mp_entries:
             if mp_entry.isClasspathDependency():
                 module_name = mp_entry.get_declaring_module_name()
