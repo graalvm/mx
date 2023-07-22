@@ -15569,7 +15569,7 @@ class FileListArchiver:
         self.path = path
         self.file_list_entry = file_list_entry
         self.hash_entry = hash_entry
-        self.filelist = [] if path or file_list_entry else None
+        self.filelist = OrderedDict() if path or file_list_entry else None
         self.sha256 = hashlib.sha256() if hash_entry else None
         self.delegate = delegate
 
@@ -15584,21 +15584,24 @@ class FileListArchiver:
 
     def add(self, filename, archive_name, provenance):
         if self.filelist is not None:
-            self.filelist.append(archive_name)
+            perms = (os.lstat(filename).st_mode & 0o777) if self.file_list_entry else None
+            self.filelist[archive_name] = perms
         if self.sha256:
             self._file_hash(filename)
         self.delegate.add(filename, archive_name, provenance)
 
     def add_str(self, data, archive_name, provenance):
         if self.filelist is not None:
-            self.filelist.append(archive_name)
+            perms = 0o664 if self.file_list_entry else None
+            self.filelist[archive_name] = perms
         if self.sha256:
             self.sha256.update(data.encode('utf-8'))
         self.delegate.add_str(data, archive_name, provenance)
 
     def add_link(self, target, archive_name, provenance):
         if self.filelist is not None:
-            self.filelist.append(archive_name)
+            perms = 0o777 if self.file_list_entry else None
+            self.filelist[archive_name] = perms
         if self.sha256:
             self.sha256.update(target.encode('utf-8'))
         self.delegate.add_link(target, archive_name, provenance)
@@ -15610,16 +15613,27 @@ class FileListArchiver:
             f.write(data)
         self.delegate.add_str(data, target, None)
 
+    @staticmethod
+    def _perm_str(perms):
+        str = ''
+        bit_index = 8
+        while bit_index >= 0:
+            for letter in ['r', 'w', 'x']:
+                str += letter if perms & (1 << bit_index) else '-'
+                bit_index -= 1
+        return str
+
     def __exit__(self, exc_type, exc_value, traceback):
         if self.sha256:
             assert self.hash_entry, "Hash entry path must be given"
             self._add_entry(self.hash_entry, self.sha256.hexdigest())
 
         if self.filelist is not None:
-            _filelist_str = os.linesep.join(self.filelist)
             if self.file_list_entry:
+                _filelist_str = os.linesep.join([k + ' = ' + self._perm_str(v) for k, v in self.filelist.items()])
                 self._add_entry(self.file_list_entry, _filelist_str)
             if self.path:
+                _filelist_str = os.linesep.join(self.filelist.keys())
                 with SafeFileCreation(self.path + ".filelist") as sfc, io_open(sfc.tmpFd, mode='w', closefd=False, encoding='utf-8') as f:
                     f.write(_filelist_str)
 
@@ -18504,7 +18518,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.32.0")  # Support useModulePath property with jar distributions.
+version = VersionSpec("6.33.0")  # Extend layout distribution file list entry by POSIX permissions.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
