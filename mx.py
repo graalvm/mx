@@ -11313,6 +11313,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         for dep in directDistDeps:
             if dep.isLayoutDirDistribution():
                 # LayoutDirDistribution is always embedded in the dependent distribution.
+                logv(f"_genPom({dist}): ignoring layout dir dependency {dep} because it's embedded")
                 continue
             if dep.suite.internal:
                 warn(f"_genPom({dist}): ignoring internal dependency {dep}")
