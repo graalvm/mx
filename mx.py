@@ -11311,6 +11311,9 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     if directDistDeps or directLibDeps:
         pom.open('dependencies')
         for dep in directDistDeps:
+            if dep.isLayoutDirDistribution():
+                # LayoutDirDistribution is always embedded in the dependent distribution.
+                continue
             if dep.suite.internal:
                 warn(f"_genPom({dist}): ignoring internal dependency {dep}")
                 continue
@@ -18521,7 +18524,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.33.0")  # Extend layout distribution file list entry by POSIX permissions.
+version = VersionSpec("6.34.0")  # Excluded LayoutDirDistribution from a maven deployment as it's always embedded
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
