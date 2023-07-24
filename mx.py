@@ -15584,6 +15584,7 @@ class FileListArchiver:
 
     def add(self, filename, archive_name, provenance):
         if self.filelist is not None:
+            # We only need the 9 lowest bits of the st_mode, which encode the POSIX permissions.
             perms = (os.lstat(filename).st_mode & 0o777) if self.file_list_entry else None
             self.filelist[archive_name] = perms
         if self.sha256:
@@ -15592,6 +15593,7 @@ class FileListArchiver:
 
     def add_str(self, data, archive_name, provenance):
         if self.filelist is not None:
+            # The default permissions for add_str are rw-rw-rw-.
             perms = 0o664 if self.file_list_entry else None
             self.filelist[archive_name] = perms
         if self.sha256:
@@ -15600,6 +15602,7 @@ class FileListArchiver:
 
     def add_link(self, target, archive_name, provenance):
         if self.filelist is not None:
+            # The default permissions for add_link are rwxrwxrwx.
             perms = 0o777 if self.file_list_entry else None
             self.filelist[archive_name] = perms
         if self.sha256:
@@ -15615,13 +15618,13 @@ class FileListArchiver:
 
     @staticmethod
     def _perm_str(perms):
-        str = ''
+        perm_str = ''
         bit_index = 8
         while bit_index >= 0:
             for letter in ['r', 'w', 'x']:
-                str += letter if perms & (1 << bit_index) else '-'
+                perm_str += letter if perms & (1 << bit_index) else '-'
                 bit_index -= 1
-        return str
+        return perm_str
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.sha256:
