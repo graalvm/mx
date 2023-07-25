@@ -6637,6 +6637,8 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
         # than breaking compatibility with the mis-behaving suites
         kw_args['archive_factory'] = NullArchiver
         super(LayoutDirDistribution, self).__init__(*args, **kw_args)
+        if getattr(self, 'maven', False):
+            self.abort("LayoutDirDistribution must not be a maven distribution.")
 
     def classpath_repr(self, resolve=True):
         return self.get_output()
@@ -11306,15 +11308,11 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         if dist.suite.getMxCompatibility().supportsLicenses() or validateMetadata == 'full':
             dist.abort("Distribution is missing 'license' attribute")
         dist.warn("Distribution's suite version is too old to have the 'license' attribute")
-    directDistDeps = [d for d in dist.deps if d.isDistribution()]
+    directDistDeps = [d for d in dist.deps if d.isDistribution() and not d.isLayoutDirDistribution()]
     directLibDeps = dist.excludedLibs
     if directDistDeps or directLibDeps:
         pom.open('dependencies')
         for dep in directDistDeps:
-            if dep.isLayoutDirDistribution():
-                # LayoutDirDistribution is always embedded in the dependent distribution.
-                logv(f"_genPom({dist}): ignoring layout dir dependency {dep} because it's embedded")
-                continue
             if dep.suite.internal:
                 warn(f"_genPom({dist}): ignoring internal dependency {dep}")
                 continue
@@ -18525,7 +18523,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.34.0")  # Excluded LayoutDirDistribution from a maven deployment as it's always embedded
+version = VersionSpec("6.35.0")  # LayoutDirDistribution forbids maven deployment.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
