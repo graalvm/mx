@@ -12616,19 +12616,21 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
             if excludeEntry in entries:
                 entries.remove(excludeEntry)
 
-    mp_entries = set()
+    mp_entries_set = set()
+    mp_entries = []
     for entry in entries:
         if entry.isClasspathDependency() and entry.use_module_path():
-            if entry.get_declaring_module_name():
-                mp_entries.add(entry)
+            if entry.get_declaring_module_name() and entry not in mp_entries_set:
+                mp_entries.append(entry)
+                mp_entries_set.add(entry)
                 # if a distribution is a module put all dependencies
                 # on the module path as well.
                 for mp_entry in classpath_entries(names=[entry]):
-                    if mp_entry in entries:
-                        mp_entries.add(mp_entry)
-
+                    if mp_entry in entries and mp_entry not in mp_entries_set:
+                        mp_entries.append(mp_entry)
+                        mp_entries_set.add(mp_entry)
     if mp_entries:
-        cp_entries = frozenset(entries) - mp_entries
+        cp_entries = [e for e in entries if e not in mp_entries_set]
     else:
         cp_entries = entries
 
@@ -18523,7 +18525,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.35.0")  # LayoutDirDistribution forbids maven deployment.
+version = VersionSpec("6.35.1")  # Fix makde module path determinstic
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
