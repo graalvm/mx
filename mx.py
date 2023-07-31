@@ -18525,7 +18525,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.35.1")  # Fix makde module path determinstic
+version = VersionSpec("6.35.1")  # Make module path determinstic if UseModulePath=True is in use.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
