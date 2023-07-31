@@ -1464,6 +1464,9 @@ class Dependency(SuiteConstituent):
     def isJARDistribution(self):
         return isinstance(self, JARDistribution)
 
+    def isPOMDistribution(self):
+        return isinstance(self, POMDistribution)
+
     def isLayoutJARDistribution(self):
         return isinstance(self, LayoutJARDistribution)
 
@@ -2406,6 +2409,10 @@ class Suite(object):
                 d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         elif layout is not None:
             d = create_layout('jar')
+        elif attrs.pop('type', None) == 'pom':
+            distDeps = Suite._pop_list(attrs, 'distDependencies', context)
+            runtimeDeps = Suite._pop_list(attrs, 'runtimeDependencies', context)
+            d = POMDistribution(self, name, distDeps, runtimeDeps, theLicense, **attrs)
         else:
             subDir = attrs.pop('subDir', None)
             sourcesPath = attrs.pop('sourcesPath', None)
@@ -5566,6 +5573,7 @@ class Distribution(Dependency):
         return None
 
 from mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build, _stage_file_impl
+from mx_pomdistribution import POMDistribution
 
 class JMHArchiveParticipant(object):
     """ Archive participant for building JMH benchmarking jars. """
@@ -11344,6 +11352,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 pom.element('version', data=dep_version)
                 if dep.remoteExtension() != 'jar':
                     pom.element('type', data=dep.remoteExtension())
+                if dist.isPOMDistribution() and dist.is_runtime_dependency(dep):
+                    pom.element('scope', data='runtime')
                 pom.close('dependency')
         for l in directLibDeps:
             if (l.isJdkLibrary() or l.isJreLibrary()) and l.is_provided_by(get_jdk()) and l.is_provided_by(get_jdk(dist.maxJavaCompliance())):
@@ -11822,6 +11832,17 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                          pomFile=pomFile,
                                          gpg=gpg, keyid=keyid,
                                          extraFiles=extraFiles)
+                elif dist.isPOMDistribution():
+                    extraFiles = []
+                    if repo_metadata_name:
+                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pomFile, versionGetter(dist.suite), repo,
+                                         settingsXml=settingsXml,
+                                         extension=dist.remoteExtension(),
+                                         dryRun=dryRun,
+                                         pomFile=pomFile,
+                                         gpg=gpg, keyid=keyid,
+                                         extraFiles=extraFiles)
                 else:
                     abort_or_warn('Unsupported distribution: ' + dist.name, dist.suite.getMxCompatibility().maven_deploy_unsupported_is_error())
                 os.unlink(pomFile)
@@ -11868,7 +11889,7 @@ def _dist_matcher(dist, tags, all_distributions, only, skip, all_distribution_ty
         return False
     if all_distributions:
         return True
-    if not dist.isJARDistribution() and not all_distribution_types:
+    if not (dist.isJARDistribution() or dist.isPOMDistribution()) and not all_distribution_types:
         return False
     if only is not None:
         return _file_name_match(dist, only)
@@ -18538,7 +18559,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.36.1")  # JAVA_HOME/EXTRA_JAVA_HOMES should be absolute valid paths
+version = VersionSpec("6.37.0")  # Add meta-POM distribution for artefacts with pom packaging.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
