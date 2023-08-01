@@ -17043,11 +17043,11 @@ def sbookmarkimports(args):
         primary_suite().visit_imports(_sbookmark_visitor)
 
 
-def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitted, warn_only):
+def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitted, warn_only, update_suite):
     """scheckimports visitor for Suite.visit_imports"""
-    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports, ignore_uncommitted, warn_only)
+    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports, ignore_uncommitted, warn_only, update_suite)
 
-def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports, ignore_uncommitted, warn_only):
+def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports, ignore_uncommitted, warn_only, update_suite):
     importedVersion = imported_suite.version()
     if imported_suite.vc and imported_suite.isDirty() and not ignore_uncommitted:
         msg = f'uncommitted changes in {imported_suite.name}, please commit them and re-run scheckimports'
@@ -17060,7 +17060,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
             warn(mismatch)
         else:
             print(mismatch)
-            if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
+            if exists(importing_suite.suite_py()) and update_suite or ask_yes_no('Update ' + importing_suite.suite_py()):
                 with open(importing_suite.suite_py()) as fp:
                     contents = fp.read()
                 if contents.count(str(suite_import.version)) >= 1:
@@ -17088,10 +17088,11 @@ def scheckimports(args):
     parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
     parser.add_argument('-i', '--ignore-uncommitted', action='store_true', help="Ignore uncommitted changes in the suite")
     parser.add_argument('-w', '--warn-only', action='store_true', help="Only warn imports not matching the checked out revision (no modification)")
+    parser.add_argument('-u', '--update-suite', action='store_true', help="Update suite without user interaction, useful for scripts")
     parsed_args = parser.parse_args(args)
     # check imports of all suites
     for s in suites():
-        s.visit_imports(_scheck_imports_visitor, bookmark_imports=parsed_args.bookmark_imports, ignore_uncommitted=parsed_args.ignore_uncommitted, warn_only=parsed_args.warn_only)
+        s.visit_imports(_scheck_imports_visitor, bookmark_imports=parsed_args.bookmark_imports, ignore_uncommitted=parsed_args.ignore_uncommitted, warn_only=parsed_args.warn_only, update_suite=parsed_args.update_suite)
     _suitemodel.verify_imports(suites(), args)
 
 
