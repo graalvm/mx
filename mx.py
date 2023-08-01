@@ -694,10 +694,20 @@ environment variables:
             if opts.primary and primary_suite():
                 opts.specific_suites.append(primary_suite().name)
 
+            # opts.java_home and opts.extra_java_homes can be just JDK names in ~/.mx/jdks
+            # and not absolute paths. Therefore, opts.java_home and opts.extra_java_homes
+            # should only be accessed here, everything else should use JAVA_HOME/EXTRA_JAVA_HOMES,
+            # which contain the resolved and absolute java homes.
             if opts.java_home is not None:
                 os.environ['JAVA_HOME'] = opts.java_home
+            if os.environ.get('JAVA_HOME'):
+                os.environ['JAVA_HOME'] = _resolve_java_home(os.environ.get('JAVA_HOME'))
+
             if opts.extra_java_homes is not None:
                 os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
+            if os.environ.get('EXTRA_JAVA_HOMES'):
+                os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join([_resolve_java_home(p) for p in os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)])
+
             os.environ['HOME'] = opts.user_home
 
             global _primary_suite_path
@@ -13131,28 +13141,20 @@ def _find_jdk(versionCheck=None, versionDescription=None):
 
     candidateJdks = []
     source = ''
-    if _opts and _opts.java_home:
-        candidateJdks.append(_opts.java_home)
-        source = '--java-home'
-    elif os.environ.get('JAVA_HOME'):
+    if os.environ.get('JAVA_HOME'):
         candidateJdks.append(os.environ.get('JAVA_HOME'))
-        source = 'JAVA_HOME'
+        source = '--java-home' if _opts.java_home else 'JAVA_HOME'
 
     if candidateJdks:
         result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=True, source=source)
         if result:
-            if source == '--java-home' and os.environ.get('JAVA_HOME'):
-                os.environ['JAVA_HOME'] = _opts.java_home
             return result[0]
 
     javaHomeCandidateJdks = candidateJdks
     candidateJdks = []
-    if _opts.extra_java_homes:
-        candidateJdks += _opts.extra_java_homes.split(os.pathsep)
-        source = '--extra-java-homes'
-    elif os.environ.get('EXTRA_JAVA_HOMES'):
+    if os.environ.get('EXTRA_JAVA_HOMES'):
         candidateJdks += os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)
-        source = 'EXTRA_JAVA_HOMES'
+        source = '--extra-java-homes' if _opts.extra_java_homes else 'EXTRA_JAVA_HOMES'
 
     if candidateJdks:
         if _use_exploded_build():
@@ -13172,16 +13174,14 @@ _all_jdks = None
 def _get_all_jdks():
     global _all_jdks
     if _all_jdks is None:
-        if _opts and _opts.java_home:
-            jdks = _filtered_jdk_configs([_opts.java_home], versionCheck=None, missingIsError=True, source='--java-home')
-        elif os.environ.get('JAVA_HOME'):
-            jdks = _filtered_jdk_configs([os.environ.get('JAVA_HOME')], versionCheck=None, missingIsError=True, source='JAVA_HOME')
+        if os.environ.get('JAVA_HOME'):
+            source = '--java-home' if _opts.java_home else 'JAVA_HOME'
+            jdks = _filtered_jdk_configs([os.environ.get('JAVA_HOME')], versionCheck=None, missingIsError=True, source=source)
         else:
             jdks = []
-        if _opts.extra_java_homes:
-            jdks.extend(_filtered_jdk_configs(_opts.extra_java_homes.split(os.pathsep), versionCheck=None, missingIsError=False, source='--extra-java-homes'))
-        elif os.environ.get('EXTRA_JAVA_HOMES'):
-            jdks.extend(_filtered_jdk_configs(os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep), versionCheck=None, missingIsError=False, source='EXTRA_JAVA_HOMES'))
+        if os.environ.get('EXTRA_JAVA_HOMES'):
+            source = '--extra-java-homes' if _opts.extra_java_homes else 'EXTRA_JAVA_HOMES'
+            jdks.extend(_filtered_jdk_configs(os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep), versionCheck=None, missingIsError=False, source=source))
         _all_jdks = jdks
     return _all_jdks
 
@@ -13213,23 +13213,25 @@ _probed_JDKs = {}
 def is_quiet():
     return _opts.quiet
 
+def _resolve_java_home(home):
+    if isabs(home):
+        return home
+    elif not isdir(home):
+        jdks_dir = join(dot_mx_dir(), 'jdks')
+        jdks_dir_home = join(jdks_dir, home)
+        logv(f'JDK "{home}" not found in the current directory')
+        logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
+        if isdir(jdks_dir_home):
+            return jdks_dir_home
+    return os.path.abspath(home)
+
 def _probe_JDK(home):
     res = _probed_JDKs.get(home)
     if not res:
         try:
             res = JDKConfig(home)
         except JDKConfigException as e:
-            jdks_dir = join(dot_mx_dir(), 'jdks')
-            jdks_dir_home = join(jdks_dir, home)
-            logv(f'JDK "{home}" not found in the current directory')
-            logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
-            if not isabs(home) and exists(jdks_dir_home):
-                try:
-                    res = JDKConfig(jdks_dir_home)
-                except JDKConfigException as e:
-                    res = e
-            else:
-                res = e
+            res = e
         _probed_JDKs[home] = res
     return res
 
@@ -14798,23 +14800,12 @@ def build(cmd_args, parser=None):
         names = args.dependencies.split(',')
         roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in names]
     else:
-        def _describe_jdk_path(p):
-            if not isabs(p):
-                jdk = _probe_JDK(p)
-                if not isinstance(jdk, JDKConfigException):
-                    return f'{p} ({jdk.home})'
-            return p
-
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
-        log('JAVA_HOME: ' + _describe_jdk_path(get_env('JAVA_HOME', '')))
-        if _opts.java_home and _opts.java_home != get_env('JAVA_HOME', ''):
-            log('--java-home: ' + _describe_jdk_path(_opts.java_home))
+        log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
 
-        if get_env('EXTRA_JAVA_HOMES') or _opts.extra_java_homes:
-            log('EXTRA_JAVA_HOMES: ' + '\n                  '.join([_describe_jdk_path(x) for x in get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)]))
-            if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
-                log('--extra-java-homes: ' + '\n                  '.join([_describe_jdk_path(x) for x in _opts.extra_java_homes.split(os.pathsep)]))
+        if get_env('EXTRA_JAVA_HOMES'):
+            log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
@@ -18454,10 +18445,6 @@ def main():
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
-    if _opts.java_home:
-        logv(f"Setting environment variable {'JAVA_HOME'}={_opts.java_home} from --java-home")
-        os.environ['JAVA_HOME'] = _opts.java_home
-
     if _opts.mx_tests:
         MXTestsSuite()
 
@@ -18549,7 +18536,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.36.0")  # Fixed file list encoding
+version = VersionSpec("6.36.1")  # JAVA_HOME/EXTRA_JAVA_HOMES should be absolute valid paths
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
