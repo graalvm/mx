@@ -15569,6 +15569,9 @@ class NullArchiver(Archiver):
         pass
 
 class FileListArchiver:
+
+    encoding_error_handler_registered = False
+
     def __init__(self, path, file_list_entry, hash_entry, delegate):
         self.path = path
         self.file_list_entry = file_list_entry
@@ -15630,6 +15633,27 @@ class FileListArchiver:
                 bit_index -= 1
         return perm_str
 
+    @staticmethod
+    def _java_properties_escape(s):
+        _replacements = {
+            '\\': '\\\\',
+            '\n': '\\n',
+            '\t': '\\t',
+            ':': '\\:',
+            '=': '\\=',
+            '#': '\\#',
+            '!': '\\!',
+            ' ': '\\ '
+        }
+        for _old_char, _new_char in _replacements.items():
+            s = s.replace(_old_char, _new_char)
+        if not FileListArchiver.encoding_error_handler_registered:
+            import codecs
+            codecs.register_error('_java_properties_escape', lambda e: (rf"\u{ord(e.object[e.start]):04x}", e.start + 1))
+            FileListArchiver.encoding_error_handler_registered = True
+        return s.encode('ascii', errors='_java_properties_escape').decode("ascii")
+
+
     def __exit__(self, exc_type, exc_value, traceback):
         if self.sha256:
             assert self.hash_entry, "Hash entry path must be given"
@@ -15637,7 +15661,7 @@ class FileListArchiver:
 
         if self.filelist is not None:
             if self.file_list_entry:
-                _filelist_str = os.linesep.join([k + ' = ' + self._perm_str(v) for k, v in self.filelist.items()])
+                _filelist_str = os.linesep.join([self._java_properties_escape(k.replace(os.path.sep, '/')) + ' = ' + self._perm_str(v) for k, v in self.filelist.items()])
                 self._add_entry(self.file_list_entry, _filelist_str)
             if self.path:
                 _filelist_str = os.linesep.join(self.filelist.keys())
@@ -18525,7 +18549,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.35.1")  # Make module path determinstic if UseModulePath=True is in use.
+version = VersionSpec("6.36.0")  # Fixed file list encoding
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
