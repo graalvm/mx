@@ -690,6 +690,8 @@ environment variables:
 
             if opts.user_home is None or opts.user_home == '':
                 abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
+            if not isabs(opts.user_home):
+                abort('--user-home must be an absolute path')
 
             if opts.primary and primary_suite():
                 opts.specific_suites.append(primary_suite().name)
