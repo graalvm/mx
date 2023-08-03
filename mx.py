@@ -5408,7 +5408,11 @@ class Distribution(Dependency):
         self.resolved_overlaps = overlaps
         self.overlaps = original_overlaps
         for l in self.excludedLibs:
-            if not l.isBaseLibrary():
+            if l.isJARDistribution():
+                warn('"exclude" attribute contains a jar distribution: ' + l.name +
+                     '. Adding it to dependencies. Please move the distribution from "exclude" to "distDependencies".', context=self)
+                self.deps += [l]
+            elif not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense # pylint: disable=access-member-before-definition
         if licenseId:
@@ -18559,7 +18563,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.38.0")  # Allow loading extra modules in unit tests
+version = VersionSpec("6.39.0")  # Allow jar distributions in the exclude set (with a warning)
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
