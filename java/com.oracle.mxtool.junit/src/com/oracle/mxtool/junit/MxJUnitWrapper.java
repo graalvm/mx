@@ -27,10 +27,9 @@ package com.oracle.mxtool.junit;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.util.zip.GZIPOutputStream;
-import java.io.OutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,6 +38,7 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.zip.GZIPOutputStream;
 
 import org.junit.internal.JUnitSystem;
 import org.junit.internal.RealSystem;
@@ -213,6 +213,7 @@ public class MxJUnitWrapper {
             }
         }
 
+        moduleSupport.processAddModulesAnnotations(builder.getClasses());
         MxJUnitRequest request = builder.build();
         moduleSupport.processAddExportsAnnotations(request.classes, opened, exported);
 

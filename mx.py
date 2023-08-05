@@ -18559,7 +18559,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.37.0")  # Add meta-POM distribution for artefacts with pom packaging.
+version = VersionSpec("6.38.0")  # Allow loading extra modules in unit tests
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
