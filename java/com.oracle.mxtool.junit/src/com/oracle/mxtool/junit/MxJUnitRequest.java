@@ -163,5 +163,9 @@ public final class MxJUnitRequest {
             }
             return new MxJUnitRequest(request, classes, methodName, missingClasses);
         }
+
+        protected Set<Class<?>> getClasses() {
+            return classes;
+        }
     }
 }

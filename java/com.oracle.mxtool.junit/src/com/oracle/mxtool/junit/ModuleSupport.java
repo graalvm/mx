@@ -70,4 +70,14 @@ class ModuleSupport {
     void processAddExportsAnnotations(Set<Class<?>> classes, Set<String> opened, Set<String> exported) {
         // Nop on JDK 8
     }
+
+    /**
+     * Loads modules specified in {@code AddModules} annotations on {@code classes}.
+     *
+     * @param classes the list of classes whose annotations are to be processed
+     */
+    @SuppressWarnings("unused")
+    public void processAddModulesAnnotations(Set<Class<?>> classes) {
+        // Nop on JDK 8
+    }
 }

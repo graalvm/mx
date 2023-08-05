@@ -68,6 +68,29 @@ class ModuleSupport {
         }
     }
 
+    void processAddModulesAnnotations(Set<Class<?>> classes) {
+        Set<Class<?>> types = new HashSet<>();
+        for (Class<?> cls : classes) {
+            gatherSupertypes(cls, types);
+        }
+        for (Class<?> cls : types) {
+            Annotation[] annos = cls.getAnnotations();
+            for (Annotation a : annos) {
+                Class<? extends Annotation> annotationType = a.annotationType();
+                if (annotationType.getSimpleName().equals("AddModules")) {
+                    Optional<String[]> value = getElement("value", String[].class, a);
+                    if (value.isPresent()) {
+                        for (String spec : value.get()) {
+                            Modules.loadModule(spec);
+                        }
+                    } else {
+                        out.printf("%s: Ignoring \"AddModules\" annotation without `String value` element: %s%n", cls.getName(), a);
+                    }
+                }
+            }
+        }
+    }
+
     public static List<Module> findModules(String spec) {
         ModuleLayer bootLayer = ModuleLayer.boot();
         Set<Module> modules = bootLayer.modules();
