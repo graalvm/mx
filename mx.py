@@ -5407,13 +5407,17 @@ class Distribution(Dependency):
         self._resolveDepsHelper(overlaps)
         self.resolved_overlaps = overlaps
         self.overlaps = original_overlaps
+        to_remove = []
         for l in self.excludedLibs:
             if l.isJARDistribution():
                 warn('"exclude" attribute contains a jar distribution: ' + l.name +
                      '. Adding it to dependencies. Please move the distribution from "exclude" to "distDependencies".', context=self)
                 self.deps += [l]
+                to_remove += [l]
             elif not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
+        for l in to_remove:
+            self.excludedLibs.remove(l)
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense # pylint: disable=access-member-before-definition
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
