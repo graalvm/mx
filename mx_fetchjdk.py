@@ -349,7 +349,10 @@ def _parse_args(args):
     if jdk_id is not None:
         settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, jdk_id)
     else:
-        settings["jdk-binary"] = _choose_jdk_binary(jdk_binaries, is_quiet())
+        if is_quiet():
+            parser.print_usage()
+            mx.abort('A <jdk-id> must be provided in quiet mode.')
+        settings["jdk-binary"] = _choose_jdk_binary(jdk_binaries)
 
     if args.alias is not None:
         if args.alias == "-":
@@ -469,20 +472,11 @@ def _get_extracted_jdk_archive_root_folder(extracted_archive_path):
     return root_folders[0]
 
 
-def _choose_jdk_binary(jdk_binaries, quiet=False):
-    if quiet:
-        return _get_jdk_binary_or_abort(jdk_binaries, _DEFAULT_JDK_ID)
-
+def _choose_jdk_binary(jdk_binaries):
     index = 1
-    default_choice = 1
     choices = sorted(jdk_binaries.items())
     for jdk_id, jdk_binary in choices:
-        if jdk_id == _DEFAULT_JDK_ID:
-            default_choice = index
-            default = "*"
-        else:
-            default = " "
-        prefix = f'[{index}]{default}'
+        prefix = f'[{index}]'
 
         print(f"{prefix:5} {jdk_id.ljust(25)} | {jdk_binary.selector()}")
         index += 1
@@ -495,9 +489,11 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
                 choice = ""
 
             if choice == "":
-                index = default_choice - 1
-            else:
+                raise IndexError('<empty>')
+            try:
                 index = int(choice) - 1
+            except ValueError:
+                raise IndexError(choice)
 
             if index < 0:
                 raise IndexError(choice)
@@ -514,9 +510,8 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
             return choices[index][1]
         except (NameError, IndexError) as e:
             mx.warn(f"Invalid selection: {e}")
-
-
-_DEFAULT_JDK_ID = "labsjdk-ce-20"
+        except EOFError:
+            mx.abort(1)
 
 
 class _JdkBinary(object):

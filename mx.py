@@ -18590,7 +18590,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.39.2")  # LayoutDirDistribution does proper needsRebuild check
+version = VersionSpec("6.40.0")  # not more default choice for mx fetch-jdk
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
