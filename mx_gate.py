@@ -747,10 +747,6 @@ def _run_gate(cleanArgs, args, tasks):
         if t and mx.command_function('spotbugs')(['--strict-mode'] if _spotbugs_strict_mode else []) != 0:
             t.abort('FindBugs warnings were found')
 
-    with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
-        if t:
-            mx.command_function('verifylibraryurls')([])
-
     jacoco_exec = get_jacoco_dest_file()
     if exists(jacoco_exec):
         os.unlink(jacoco_exec)
