@@ -6656,7 +6656,9 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
 
     def make_archive(self):
         super().make_archive()
-        with open(self._default_path(), 'w'):
+        sentinel = self._default_path()
+        os.makedirs(os.path.abspath(os.path.dirname(sentinel)), exist_ok=True)
+        with open(sentinel, 'w'):
             pass
 
     def getArchivableResults(self, use_relpath=True, single=False):
