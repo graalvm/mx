@@ -6462,11 +6462,6 @@ Common causes:
             sup = super(LayoutDistribution, self).needsUpdate(newestInput)
             if sup:
                 return sup
-        else:
-            if self.output:
-                output_up = _needsUpdate(newestInput, self.get_output())
-                if output_up:
-                    return output_up
         for destination, source in self._walk_layout():
             source_type = source['source_type']
             if source_type == 'file':
@@ -6645,6 +6640,8 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
     # A layout distribution that is not archived, useful to define the contents of a directory.
     # When added as a dependency of a JarDistribution, it is included in the jar. It is not appended to the classpath
     # unless `classpath_entries` is called with `preferProjects=True`.
+    # We use a dummy sentinel file as the "archive" such that the LayoutDistribution machinery including
+    # rebuild detection works as expected
     def __init__(self, *args, **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
@@ -6657,6 +6654,11 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
     def classpath_repr(self, resolve=True):
         return self.get_output()
 
+    def make_archive(self):
+        super().make_archive()
+        with open(self._default_path(), 'w'):
+            pass
+
     def getArchivableResults(self, use_relpath=True, single=False):
         if single:
             raise ValueError("{} only produces multiple output".format(self))
@@ -6668,10 +6670,10 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
                 yield file_path, archive_path
 
     def remoteExtension(self):
-        return 'does_not_exist'
+        return 'sentinel'
 
     def localExtension(self):
-        return 'does_not_exist'
+        return 'sentinel'
 
 
 class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
@@ -18586,7 +18588,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.39.1")  # Compute java homes lazily to respect env files priority
+version = VersionSpec("6.39.2")  # LayoutDirDistribution does proper needsRebuild check
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
