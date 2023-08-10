@@ -6462,6 +6462,11 @@ Common causes:
             sup = super(LayoutDistribution, self).needsUpdate(newestInput)
             if sup:
                 return sup
+        else:
+            if self.output:
+                output_up = _needsUpdate(newestInput, self.get_output())
+                if output_up:
+                    return output_up
         for destination, source in self._walk_layout():
             source_type = source['source_type']
             if source_type == 'file':
@@ -18590,7 +18595,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.40.0")  # not more default choice for mx fetch-jdk
+version = VersionSpec("6.40.1")  # Fix LayoutDirDistribution rebuild check
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
