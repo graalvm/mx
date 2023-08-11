@@ -65,7 +65,7 @@ from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
-from io import BytesIO, open as io_open
+from io import BytesIO, StringIO, open as io_open
 import fnmatch
 import operator
 import calendar
@@ -11808,7 +11808,20 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                 jar_to_deploy = alt_jmd.jarpath
 
                     pushed_file = dist.prePush(jar_to_deploy)
-                    pushed_src_file = dist.prePush(dist.sourcesPath)
+                    if getattr(dist, "noMavenSources", False):
+                        tmpSourcesJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+                        tmpSourcesJar.close()
+                        pushed_src_file = tmpSourcesJar.name
+                        with zipfile.ZipFile(pushed_src_file, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                            with StringIO() as license_file_content:
+                                license_ids = dist.theLicense
+                                if not license_ids:
+                                    license_ids = dist.suite.defaultLicense
+                                for resolved_license in get_license(license_ids):
+                                    print(f'{resolved_license.name}    {resolved_license.url}\n', file=license_file_content)
+                                arc.writestr("LICENSE", license_file_content.getvalue())
+                    else:
+                        pushed_src_file = dist.prePush(dist.sourcesPath)
                     _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo,
                                          srcPath=pushed_src_file,
                                          settingsXml=settingsXml,
@@ -11879,10 +11892,16 @@ def _deploy_dists(uploader, dists, version_getter, snapshot_id, primary_revision
 
 def _match_tags(dist, tags):
     maven = getattr(dist, 'maven', False)
-    maven_tag = 'default'
+    maven_tag = {'default'}
     if isinstance(maven, dict) and 'tag' in maven:
         maven_tag = maven['tag']
-    return maven_tag in tags
+        if isinstance(maven_tag, str):
+            maven_tag = {maven_tag}
+        elif isinstance(maven_tag, list):
+            maven_tag = set(maven_tag)
+        else:
+            abort('Maven tag must be str or list[str]', context=dist)
+    return any(tag in maven_tag for tag in tags)
 
 def _file_name_match(dist, names):
     return any(fnmatch.fnmatch(dist.name, n) or fnmatch.fnmatch(dist.qualifiedName(), n) for n in names)
@@ -18595,7 +18614,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.40.2")  # GR-47853 - remove URL verification from gate
+version = VersionSpec("6.41.0")  # Added noMavenSources, forbidding uploading source code to the maven repository.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
