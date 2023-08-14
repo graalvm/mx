@@ -221,7 +221,7 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "025dc1bfebd740acab8dad8803fbbfaa1944bfdf",
+    overlay: "ac39d70172b1327e73fde446dad6341727340376",
 
     # For use by overlay
     versions:: versions,
