@@ -132,7 +132,12 @@ def intellij_read_sdks():
     xmlSdks.sort(key=verSort, reverse=True)
 
     sdk_version_regexes = {
-        intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|^(Oracle OpenJDK )?version\s+(.+)$|^([\d._]+)$'),
+        # Examples:
+        #   java version "21"
+        #   GraalVM version 21 (vendor name may change)
+        intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|'
+                                           r'^(?:.+ )?version\s+(.+)$|'
+                                           r'^([\d._]+)$'),
         intellij_python_sdk_type: re.compile(r'^Python\s+(.+)$'),
 
         # Examples:
@@ -170,7 +175,7 @@ def intellij_read_sdks():
             sdk_version = sdk.find("version").get("value")
             match = version_re.match(sdk_version)
             if match:
-                version = match.group(1)
+                version = next(filter(None, match.groups()), None)
                 lang = sdk_languages[kind]
                 if kind == intellij_python_sdk_type:
                     import mx_enter
