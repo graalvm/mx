@@ -348,7 +348,8 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             prefixArgs.append('-XX:-DisableExplicitGC')
 
         jdk = vmLauncher.jdk()
-        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk)
+        force_cp = '-JUnitForceClassPath' in junit_args
+        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk, force_cp=force_cp)
 
         # suppress menubar and dock when running on Mac
         vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs
@@ -531,6 +532,7 @@ def unittest(args, test_report_tags=None):
     parser.add_argument('--blacklist', help='run all testcases not specified in <file>', metavar='<file>')
     parser.add_argument('--whitelist', help='run testcases specified in <file> only', metavar='<file>')
     parser.add_argument('--verbose', help='enable verbose JUnit output', dest='JUnitVerbose', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--force-classpath', help='forces all jars on the classpath', dest='JUnitForceClassPath', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--max-class-failures', help='stop after N test classes that have a failure (default is no limit)', type=is_strictly_positive, metavar='<N>', dest='JUnitMaxClassFailures', action=MxJUnitWrapperArg)
     parser.add_argument('--fail-fast', help='alias for --max-class-failures=1', dest='JUnitFailFast', action=MxJUnitWrapperBoolArg)

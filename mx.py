@@ -12659,7 +12659,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
-def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None):
+def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
@@ -12673,17 +12673,18 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
 
     mp_entries_set = set()
     mp_entries = []
-    for entry in entries:
-        if entry.isClasspathDependency() and entry.use_module_path():
-            if entry.get_declaring_module_name() and entry not in mp_entries_set:
-                mp_entries.append(entry)
-                mp_entries_set.add(entry)
-                # if a distribution is a module put all dependencies
-                # on the module path as well.
-                for mp_entry in classpath_entries(names=[entry]):
-                    if mp_entry in entries and mp_entry not in mp_entries_set:
-                        mp_entries.append(mp_entry)
-                        mp_entries_set.add(mp_entry)
+    if not force_cp:
+        for entry in entries:
+            if entry.isClasspathDependency() and entry.use_module_path():
+                if entry.get_declaring_module_name() and entry not in mp_entries_set:
+                    mp_entries.append(entry)
+                    mp_entries_set.add(entry)
+                    # if a distribution is a module put all dependencies
+                    # on the module path as well.
+                    for mp_entry in classpath_entries(names=[entry]):
+                        if mp_entry in entries and mp_entry not in mp_entries_set:
+                            mp_entries.append(mp_entry)
+                            mp_entries_set.add(mp_entry)
     if mp_entries:
         cp_entries = [e for e in entries if e not in mp_entries_set]
     else:
@@ -18614,7 +18615,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.41.0")  # Added noMavenSources, forbidding uploading source code to the maven repository.
+version = VersionSpec("6.42.0")  # Added support for mx unittest --force-classpath
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
