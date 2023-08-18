@@ -69,11 +69,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
     :param bool maven:
     :param bool useModulePath: put this distribution and all its dependencies on the module-path.
+    :param bool compress: compress jar entries of the main jar with deflate. The source zip is always compressed.
     :param dict[str, str] | None manifestEntries: Entries for the `META-INF/MANIFEST.MF` file.
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
                  javadocType="implementation", allowsJavadocWarnings=False, maven=True, useModulePath=False, stripConfigFileNames=None,
-                 stripMappingFileNames=None, manifestEntries=None, alwaysStrip=None, **kwArgs):
+                 stripMappingFileNames=None, manifestEntries=None, alwaysStrip=None, compress=False, **kwArgs):
         assert manifestEntries is None or isinstance(manifestEntries, dict)
         mx.Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         mx.ClasspathDependency.__init__(self, use_module_path=useModulePath, **kwArgs)
@@ -99,6 +100,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
+        self.compress = compress
         self.manifestEntries = dict([]) if manifestEntries is None else manifestEntries
         if stripConfigFileNames and alwaysStrip:
             mx.abort('At most one of the "strip" and "alwaysStrip" properties can be used on a distribution', context=self)
@@ -309,8 +311,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         unified = self.original_path() == self.sourcesPath
         exploded = self._is_exploded()
 
-        bin_archive = _Archive(self, self.original_path(), exploded)
-        src_archive = _Archive(self, self.sourcesPath, exploded) if not unified else bin_archive
+        bin_archive = _Archive(self, self.original_path(), exploded, zipfile.ZIP_DEFLATED if self.compress else zipfile.ZIP_STORED)
+        src_archive = _Archive(self, self.sourcesPath, exploded, zipfile.ZIP_DEFLATED) if not unified else bin_archive
 
         bin_archive.clean()
         src_archive.clean()
@@ -782,9 +784,9 @@ class _ArchiveStager(object):
             else:
                 self.add_service_providers(service_or_version, providers)
 
-        self.bin_archive.finalize_archive_or_directory(self.manifest, zipfile.ZIP_STORED)
+        self.bin_archive.finalize_archive_or_directory(self.manifest)
         if self.bin_archive is not self.src_archive:
-            self.src_archive.finalize_archive_or_directory(None, zipfile.ZIP_DEFLATED)
+            self.src_archive.finalize_archive_or_directory(None)
 
     def close_archiveparticipant(self, a):
         """
@@ -1139,12 +1141,13 @@ class _Archive(object):
     The path to a distribution's archive and its staging directory as well as the metadata for
     entries in the staging directory.
     """
-    def __init__(self, dist, path, exploded):
+    def __init__(self, dist, path, exploded, compression):
         self.dist = dist
         self.path = path
         self.exploded = exploded
         self.staging_dir = path if exploded else mx.ensure_dir_exists(path + _staging_dir_suffix)
         self.entries = {} # Map from archive entry names to _ArchiveEntry objects
+        self.compression = compression
 
     def clean(self):
         path = self.path
@@ -1172,7 +1175,7 @@ class _Archive(object):
                 # Remove jar file
                 os.remove(path)
 
-    def finalize_archive_or_directory(self, manifest, compression):
+    def finalize_archive_or_directory(self, manifest):
         """
         Creates the archive in `self.path` from the files in `self.staging_dir` or, if `exploded` is True,
         make `self.path` be equivalent to `self.staging_dir` either by symlinking or copying it.
@@ -1194,7 +1197,7 @@ class _Archive(object):
                 with open(os.path.join(metainf, 'MANIFEST.MF'), 'w') as f:
                     f.write(manifest_contents)
         else:
-            with zipfile.ZipFile(self.path, 'w', compression=compression) as zf:
+            with zipfile.ZipFile(self.path, 'w', compression=self.compression) as zf:
                 if manifest_contents:
                     zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
 
@@ -1219,7 +1222,7 @@ class _Archive(object):
                         with open(filepath, 'rb') as fp:
                             contents = fp.read()
                         info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(filepath))[:6])
-                        info.compress_type = compression
+                        info.compress_type = self.compression
                         info.external_attr = S_IMODE(os.stat(filepath).st_mode) << 16
                         zf.writestr(info, contents)
 
