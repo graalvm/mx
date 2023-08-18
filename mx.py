@@ -18615,7 +18615,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.43.0")  # Support for non-global unittest configs.
+version = VersionSpec("6.44.0")  # Compressed jar
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
