@@ -338,6 +338,9 @@ def register_unittest_config(cfg):
     assert not name in _unittest_configs, 'duplicate unittest config'
     _unittest_configs[name] = cfg
 
+# noop config that can be used just to disable unittest config participants
+register_unittest_config(MxUnittestConfig(name="none"))
+
 
 def get_config_participants_copy():
     """
