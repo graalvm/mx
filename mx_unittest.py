@@ -311,9 +311,8 @@ def add_config_participant(p):
 
 
 class MxUnittestConfig:
-    def __init__(self, name, force_cp=False):
+    def __init__(self, name):
         self.name = name
-        self.force_cp = force_cp
 
     def apply(self, config):
         return config
@@ -379,23 +378,26 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         if '-JUnitGCAfterTest' in junit_args:
             prefixArgs.append('-XX:-DisableExplicitGC')
 
-        unittestConfig = None
+        unittestConfigSet = set()
         for d in unittestDeps:
             if hasattr(d, 'unittestConfig'):
-                cfg = d.unittestConfig
-                if unittestConfig is None:
-                    unittestConfig = cfg
-                elif unittestConfig != cfg:
-                    mx.abort("conflicting unittest configs " + unittestConfig + " and " + cfg)
-        if unittestConfig is None:
-            unittestConfig = DefaultMxUnittestConfig()
-        else:
-            unittestConfig = _unittest_configs[unittestConfig]
+                name = d.unittestConfig
+                if name not in _unittest_configs:
+                    mx.abort(f"Unknown unittest config {name} in dependency {d}!")
+                unittestConfigSet.add(name)
 
-        unittestConfig.processDeps(unittestDeps)
+        unittestConfigs = []
+        for name in unittestConfigSet:
+            unittestConfigs.append(_unittest_configs[name])
+
+        if len(unittestConfigs) == 0:
+            unittestConfigs.append(DefaultMxUnittestConfig())
+
+        for cfg in unittestConfigs:
+            cfg.processDeps(unittestDeps)
 
         jdk = vmLauncher.jdk()
-        force_cp = unittestConfig.force_cp or '-JUnitForceClassPath' in junit_args
+        force_cp = '-JUnitForceClassPath' in junit_args
         vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk, force_cp=force_cp)
 
         # suppress menubar and dock when running on Mac
@@ -421,7 +423,8 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             mainClassArgs = junit_args + ['@' + mx._cygpathU2W(testfile)]
 
         config = (vmArgs, mainClass, mainClassArgs)
-        config = unittestConfig.apply(config)
+        for cfg in unittestConfigs:
+            config = cfg.apply(config)
         vmLauncher.launcher(*config)
 
     vmLauncher = _vm_launcher
