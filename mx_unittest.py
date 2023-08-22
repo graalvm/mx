@@ -387,7 +387,7 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
                 unittestConfigSet.add(name)
 
         unittestConfigs = []
-        for name in unittestConfigSet:
+        for name in sorted(unittestConfigSet):
             unittestConfigs.append(_unittest_configs[name])
 
         if len(unittestConfigs) == 0:
