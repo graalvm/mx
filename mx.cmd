@@ -13,4 +13,4 @@ if defined MX_PYTHON (
 set "PYTHONPATH=%~dp0/src;%~dp0/oldnames"
 
 :: local variables can be used after endlocal if on the same line
-endlocal & "%python_exe%" -u "%~dp0mx_enter.py" %*
+endlocal & "%python_exe%" -u -m mx %*
