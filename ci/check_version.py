@@ -38,6 +38,10 @@ import re
 import os
 from os.path import realpath, dirname, join
 
+# TODO: GR-42789 reenable once the PR moving the mx.py file is merged
+import sys
+sys.exit(0)
+
 mx_home = realpath(join(dirname(__file__), '..'))
 
 def _check_output_str(*args, **kwargs):
