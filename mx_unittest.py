@@ -310,6 +310,37 @@ def add_config_participant(p):
     _config_participants.append(p)
 
 
+class MxUnittestConfig:
+    def __init__(self, name):
+        self.name = name
+
+    def apply(self, config):
+        return config
+
+    def processDeps(self, deps):
+        pass
+
+# the default config that applies unittest participants
+class DefaultMxUnittestConfig(MxUnittestConfig):
+    def __init__(self):
+        super(DefaultMxUnittestConfig, self).__init__("default")
+
+    def apply(self, config):
+        for p in _config_participants:
+            config = p(config)
+        return config
+
+
+_unittest_configs = dict()
+def register_unittest_config(cfg):
+    name = cfg.name
+    assert not name in _unittest_configs, 'duplicate unittest config'
+    _unittest_configs[name] = cfg
+
+# noop config that can be used just to disable unittest config participants
+register_unittest_config(MxUnittestConfig(name="none"))
+
+
 def get_config_participants_copy():
     """
     Returns a copy of the currently registered config participants. A config participant is a
@@ -347,6 +378,24 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         if '-JUnitGCAfterTest' in junit_args:
             prefixArgs.append('-XX:-DisableExplicitGC')
 
+        unittestConfigSet = set()
+        for d in unittestDeps:
+            if hasattr(d, 'unittestConfig'):
+                name = d.unittestConfig
+                if name not in _unittest_configs:
+                    mx.abort(f"Unknown unittest config {name} in dependency {d}!")
+                unittestConfigSet.add(name)
+
+        unittestConfigs = []
+        for name in sorted(unittestConfigSet):
+            unittestConfigs.append(_unittest_configs[name])
+
+        if len(unittestConfigs) == 0:
+            unittestConfigs.append(DefaultMxUnittestConfig())
+
+        for cfg in unittestConfigs:
+            cfg.processDeps(unittestDeps)
+
         jdk = vmLauncher.jdk()
         force_cp = '-JUnitForceClassPath' in junit_args
         vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk, force_cp=force_cp)
@@ -374,8 +423,8 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             mainClassArgs = junit_args + ['@' + mx._cygpathU2W(testfile)]
 
         config = (vmArgs, mainClass, mainClassArgs)
-        for p in _config_participants:
-            config = p(config)
+        for cfg in unittestConfigs:
+            config = cfg.apply(config)
         vmLauncher.launcher(*config)
 
     vmLauncher = _vm_launcher
