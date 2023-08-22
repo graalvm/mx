@@ -1084,20 +1084,9 @@ def _genEclipseBuilder(eclipseConfigRoot, dotProjectDoc, p, name, mxCommand, ref
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.debug.ui.ATTR_CAPTURE_IN_FILE', 'value': logFile})
         launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.ui.ATTR_APPEND_TO_FILE', 'value': 'true' if appendToLogFile else 'false'})
 
-    # expect to find the OS command to invoke mx in the same directory
-    baseDir = dirname(os.path.abspath(__file__))
-
-    cmd = 'mx'
-    if mx.is_windows():
-        cmd = 'mx.cmd'
-    cmdPath = join(baseDir, cmd)
+    cmdPath = mx.get_mx_path()
     if not os.path.exists(cmdPath):
-        # backwards compatibility for when the commands lived in parent of mxtool
-        if cmd == 'mx':
-            cmd = 'mx.sh'
-        cmdPath = join(dirname(baseDir), cmd)
-        if not os.path.exists(cmdPath):
-            mx.abort('cannot locate ' + cmd)
+        mx.abort('cannot locate ' + cmdPath)
 
     launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_LOCATION', 'value':  cmdPath})
     launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_RUN_BUILD_KINDS', 'value': 'auto,full,incremental'})
