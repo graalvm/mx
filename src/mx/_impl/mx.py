@@ -15547,19 +15547,19 @@ def autopep8(args):
 
 pylint_ver_map = {
     (1, 1): {
-        'rcfile': '.pylintrc11',
+        'rcfile': _mx_home + '/.pylintrc11',
         'additional_options': []
     },
     (1, 9): {
-        'rcfile': '.pylintrc19',
+        'rcfile': _mx_home + '/.pylintrc19',
         'additional_options': ['--score=n']
     },
     (2, 2): {
-        'rcfile': '.pylintrc22',
+        'rcfile': _mx_home + '/.pylintrc22',
         'additional_options': ['--score=n']
     },
     (2, 4): {
-        'rcfile': '.pylintrc24',
+        'rcfile': _mx_home + '/.pylintrc24',
         'additional_options': ['--score=n']
     }
 }
