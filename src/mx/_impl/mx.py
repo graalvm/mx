@@ -13781,9 +13781,10 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     :param suite: the primary suite or primary suite directory to use
     :param str mxpy: path the mx module to run (None to use the current mx module)
     """
-    if mxpy is None:
-        mxpy = join(_mx_home, 'mx.py')
-    commands = [sys.executable, '-u', mxpy, '--java-home=' + get_jdk().home]
+    if mxpy is not None:
+        # TODO GR-42789 Figure out how to deal with this argument
+        mx.abort("mx.run_mx currently does not support custom mxpy")
+    commands = [get_mx_path(), '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
         if isinstance(suite, str):
