@@ -42,7 +42,7 @@ from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
 
-import mx
+from . import mx
 
 _bm_suites = {}
 _benchmark_executor = None

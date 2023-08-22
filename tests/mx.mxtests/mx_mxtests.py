@@ -3,6 +3,7 @@
 
 from argparse import ArgumentParser
 import os
+
 import mx
 
 from html.parser import HTMLParser

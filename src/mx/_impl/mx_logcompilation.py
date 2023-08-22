@@ -65,7 +65,7 @@ class HotSpotNMethod:
         # decode any unicode escapes
         name = str(bytes(name, encoding='utf-8'), encoding='unicode_escape')
         parts = name.split(' ')
-        from mx_proftool import Method
+        from .mx_proftool import Method
         return Method('L' + parts[0] + ';', parts[1], parts[2], None, None)
 
 
@@ -102,7 +102,7 @@ def open_log_compilation(filename):
     Open a proftool experiment containing a LogCompilation file or
     open the file directly.
     """
-    from mx_proftool import ExperimentFiles
+    from .mx_proftool import ExperimentFiles
     experiment = ExperimentFiles.open_experiment(filename)
     if experiment:
         if experiment.has_log_compilation():

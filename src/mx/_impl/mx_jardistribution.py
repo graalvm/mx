@@ -434,7 +434,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             for info in in_zf.infolist():
                 if info.filename.startswith('META-INF/versions/'):
                     if jdk9_or_later:
-                        import mx_javamodules
+                        from . import mx_javamodules
                         m = mx_javamodules._versioned_re.match(info.filename)
                         if m:
                             version = int(m.group(1))

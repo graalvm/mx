@@ -26,7 +26,7 @@
 #
 from argparse import ArgumentParser
 
-import mx
+from . import mx
 import os
 import tempfile
 import zipfile

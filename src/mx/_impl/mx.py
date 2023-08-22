@@ -5468,7 +5468,7 @@ class Distribution(Dependency):
                             abort(f'When MX_BUILD_EXPLODED=true, distribution {dep} depended on by {self} must be in the "distDependencies" attribute', context=self)
 
                         # A distribution that defines a module cannot include another distribution's contents
-                        import mx_javamodules
+                        from . import mx_javamodules
                         module_name = mx_javamodules.get_module_name(self)
                         if module_name is not None:
                             abort(f'Distribution {dep} depended on by {self} (which defines module {module_name}) must be in the "distDependencies" attribute', context=self)

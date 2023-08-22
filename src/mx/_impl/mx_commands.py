@@ -85,7 +85,7 @@ class MxCommands(object):
             return self._commands[name]
         else:
             if fatal_if_missing:
-                import mx
+                from . import mx
                 mx.abort('command ' + name + ' does not exist')
             else:
                 return None

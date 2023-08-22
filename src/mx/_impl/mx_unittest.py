@@ -651,7 +651,7 @@ def unittest(args, test_report_tags=None):
     try:
         _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
         if make_test_report:
-            import mx_gate
+            from . import mx_gate
             assert 'task' in test_report_tags, 'Task tag is mandatory'
             task = test_report_tags['task']
             test_report_tags.pop('task')

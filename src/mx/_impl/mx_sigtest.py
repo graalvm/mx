@@ -25,7 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-import mx
+from . import mx
 import os
 from os.path import exists
 from argparse import ArgumentParser

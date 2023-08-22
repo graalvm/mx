@@ -1,5 +1,5 @@
 import mx
-from ..mx import Suite
+from mx import Suite
 
 def test_os_arch():
     config = {

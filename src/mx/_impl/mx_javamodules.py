@@ -535,7 +535,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
     if info is None:
         return None
 
-    from mx_jardistribution import _FileContentsSupplier, _Archive, _staging_dir_suffix
+    from .mx_jardistribution import _FileContentsSupplier, _Archive, _staging_dir_suffix
 
     times = []
     with mx.Timer('total', times):

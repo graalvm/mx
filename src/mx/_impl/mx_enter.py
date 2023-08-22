@@ -40,5 +40,5 @@ if sys.version_info < _min_required_version:
     raise SystemExit(msg)
 
 if __name__ == '__main__':
-    import mx
+    from . import mx
     mx._main_wrapper()
