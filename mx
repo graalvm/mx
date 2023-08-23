@@ -76,11 +76,4 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Include the parent directory of this script in the python path variable, then
-# allow loading of the mx module
-export PYTHONPATH="$dir/src:$PYTHONPATH"
-
-# The following allows the use of existing module names
-export PYTHONPATH="$dir/oldnames:$PYTHONPATH"
-
-exec $python_exe -u -m mx "$@"
+exec $python_exe -u "$dir/mx.py" "$@"
