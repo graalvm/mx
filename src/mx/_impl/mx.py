@@ -13783,7 +13783,7 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     """
     if mxpy is not None:
         # TODO GR-42789 Figure out how to deal with this argument
-        mx.abort("mx.run_mx currently does not support custom mxpy")
+        abort(f"mx.run_mx currently does not support custom mxpy {mxpy}")
     commands = [get_mx_path(), '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
