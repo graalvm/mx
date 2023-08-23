@@ -1,4 +1,5 @@
-from ._impl.mx import *
+# mx exports its own open symbol which redefines a builtin
+from ._impl.mx import *  # pylint: disable=redefined-builtin
 
 # For some reason these private symbols are used externally
 from ._impl.mx import (
