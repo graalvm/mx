@@ -6449,6 +6449,7 @@ Common causes:
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
         self._persist_linky_state()
+        self._persist_resource_entries_state()
 
     def getArchivableResults(self, use_relpath=True, single=False):
         for (p, n) in super(LayoutDistribution, self).getArchivableResults(use_relpath, single):
@@ -6502,6 +6503,8 @@ Common causes:
             return "LINKY_LAYOUT has changed"
         if not self._check_resources_file_list():
             return "fileListPurpose has changed"
+        if not self._check_resource_entries():
+            return "hashEntry or fileListEntry has changed"
         return None
 
     def _persist_layout(self):
@@ -6560,6 +6563,37 @@ Common causes:
         with open(linky_state_file) as fp:
             saved_pattern = fp.read()
         return saved_pattern == LayoutDistribution._linky.pattern
+
+    def _resource_entries_state_file(self):
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'resource_entries', self.name)
+
+    def _resource_entries_state(self):
+        if self.hashEntry is None and self.fileListEntry is None:
+            return None
+        return f"{self.hashEntry}\n{self.fileListEntry}"
+
+    def _persist_resource_entries_state(self):
+        state_file = self._resource_entries_state_file()
+        current_state = self._resource_entries_state()
+        if current_state is None:
+            if exists(state_file):
+                os.unlink(state_file)
+            return
+        ensure_dir_exists(dirname(state_file))
+        with open(state_file, 'w') as fp:
+            fp.write(current_state)
+
+    def _check_resource_entries(self):
+        state_file = self._resource_entries_state_file()
+        current_state = self._resource_entries_state()
+        if not exists(state_file):
+            return current_state is None
+        if current_state is None:
+            return False
+        with open(state_file) as fp:
+            saved_state = fp.read()
+        return saved_state == current_state
+
 
     def find_single_source_location(self, source, fatal_if_missing=True, abort_on_multiple=False):
         locations = self.find_source_location(source, fatal_if_missing=fatal_if_missing)
