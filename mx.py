@@ -6540,7 +6540,7 @@ Common causes:
         return False
 
     def _linky_state_file(self):
-        return join(self.suite.get_mx_output_dir(), 'linkyState', self.name)
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'linkyState', self.name)
 
     def _persist_linky_state(self):
         linky_state_file = self._linky_state_file()
