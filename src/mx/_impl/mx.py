@@ -13256,7 +13256,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
             msg += ' ' + versionDescription
         if purpose:
             msg += ' for ' + purpose
-        import select_jdk
+        from . import select_jdk
         available = _filtered_jdk_configs(select_jdk.find_system_jdks(), versionCheck)
         if available:
             msg += '\nThe following JDKs are available:\n  ' + '\n  '.join(sorted([jdk.home for jdk in available]))
