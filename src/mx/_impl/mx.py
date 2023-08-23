@@ -15548,19 +15548,19 @@ def autopep8(args):
 
 pylint_ver_map = {
     (1, 1): {
-        'rcfile': _mx_home + '/.pylintrc11',
+        'rcfile': '.pylintrc11',
         'additional_options': []
     },
     (1, 9): {
-        'rcfile': _mx_home + '/.pylintrc19',
+        'rcfile': '.pylintrc19',
         'additional_options': ['--score=n']
     },
     (2, 2): {
-        'rcfile': _mx_home + '/.pylintrc22',
+        'rcfile': '.pylintrc22',
         'additional_options': ['--score=n']
     },
     (2, 4): {
-        'rcfile': _mx_home + '/.pylintrc24',
+        'rcfile': '.pylintrc24',
         'additional_options': ['--score=n']
     }
 }
@@ -15602,7 +15602,7 @@ def pylint(args):
         log_error(f'pylint version must be one of {list(pylint_ver_map.keys())} (got {major}.{minor}.{micro})')
         return -1
 
-    rcfile = join(dirname(__file__), pylint_ver_map[ver]['rcfile'])
+    rcfile = join(_mx_home, pylint_ver_map[ver]['rcfile'])
     if not exists(rcfile):
         log_error('pylint configuration file does not exist: ' + rcfile)
         return -1
