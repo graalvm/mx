@@ -99,6 +99,7 @@ local with(platform, java_release, timelimit="15:00") = {
         ],
         run: [
             [mx, "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
+            ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
             ["python3", path("tests/jmh_filtering_tests.py")],
         ]
     },
