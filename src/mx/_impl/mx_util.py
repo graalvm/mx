@@ -37,6 +37,9 @@ import sys
 import tempfile
 from os.path import dirname, exists, join, isdir, basename
 
+min_required_python_version = (3, 8)
+min_required_python_version_str = f'{".".join((str(d) for d in min_required_python_version))}'
+
 _tar_compressed_extensions = {'bz2', 'gz', 'lz', 'lzma', 'xz', 'Z'}
 _known_zip_pre_extensions = {'src'}
 

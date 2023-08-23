@@ -28,20 +28,22 @@
 Entry point for mx shell launchers that will test Python version requirements before
 calling mx.py. The latter assumes a compatible python interpreter is being used.
 """
-import sys, os
+import sys
+import os
 
-_min_required_version = (3, 8)
-_min_required_version_str = f'{".".join((str(d) for d in _min_required_version))}'
-if sys.version_info < _min_required_version:
+from ._impl.mx import _main_wrapper
+from ._impl import mx_util
+
+if sys.version_info < mx_util.min_required_python_version:
     major, minor, micro, _, _ = sys.version_info
-    msg = f"mx requires python {_min_required_version_str}+, not {major}.{minor}.{micro} ({sys.executable})"
+    msg = (
+        f"mx requires python {mx_util.min_required_python_version_str}+, not {major}.{minor}.{micro} ({sys.executable})"
+    )
     env_exe = os.environ.get("MX_PYTHON", None)
     if env_exe != sys.executable:
         msg += (
             os.linesep + "The path to the Python interpreter can be specified with the MX_PYTHON environment variable."
         )
     raise SystemExit(msg)
-
-from ._impl.mx import _main_wrapper
 
 _main_wrapper()

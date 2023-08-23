@@ -185,8 +185,8 @@ def intellij_read_sdks():
                 version = next(filter(None, match.groups()), None)
                 lang = sdk_languages[kind]
                 if kind == intellij_python_sdk_type:
-                    from . import mx_enter
-                    if mx.VersionSpec(version) < mx.VersionSpec(mx_enter._min_required_version_str):
+                    from .mx_util import min_required_python_version_str
+                    if mx.VersionSpec(version) < mx.VersionSpec(min_required_python_version_str):
                         # Ignore Python SDKs whose version is less than that required by mx
                         continue
                 sdks[home] = {'name': name, 'type': kind, 'version': version}
