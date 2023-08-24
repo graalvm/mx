@@ -18615,7 +18615,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.44.0")  # Compressed jar
+version = VersionSpec("6.44.1")  # [GR-47931] Disable fatalOptionalError ECJ setting
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

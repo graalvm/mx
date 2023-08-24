@@ -46,7 +46,11 @@ org.eclipse.jdt.core.compiler.problem.emptyStatement=warning
 org.eclipse.jdt.core.compiler.problem.enumIdentifier=error
 org.eclipse.jdt.core.compiler.problem.explicitlyClosedAutoCloseable=ignore
 org.eclipse.jdt.core.compiler.problem.fallthroughCase=ignore
-org.eclipse.jdt.core.compiler.problem.fatalOptionalError=enabled
+# Enabling this setting causes problems with @SuppressWarnings annotation at
+# the statement level.
+# See GR-47931
+# See https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1282
+org.eclipse.jdt.core.compiler.problem.fatalOptionalError=disabled
 org.eclipse.jdt.core.compiler.problem.fieldHiding=ignore
 org.eclipse.jdt.core.compiler.problem.finalParameterBound=warning
 org.eclipse.jdt.core.compiler.problem.finallyBlockNotCompletingNormally=ignore
