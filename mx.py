@@ -11944,7 +11944,9 @@ def maven_deploy(args):
     parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
     parser.add_argument('--all-distribution-types', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
     parser.add_argument('--all-distributions', help='Include all distributions, regardless of the maven flags.', action='store_true')
-    parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
+    version_parser = parser.add_mutually_exclusive_group()
+    version_parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
+    version_parser.add_argument('--version-suite', action='store', help='The name of a vm suite that provides the version string for deployment')
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
     parser.add_argument('--gpg-keyid', help='GPG keyid to use when signing files (implies --gpg)', default=None)
@@ -11959,10 +11961,11 @@ def maven_deploy(args):
         logv('Implicitly setting gpg to true since a keyid was specified')
 
     _mvn.check()
-    def versionGetter(suite):
+    def versionGetter(_suite):
         if args.version_string:
             return args.version_string
-        return suite.release_version(snapshotSuffix='SNAPSHOT')
+        s = suite(args.version_suite) if args.version_suite is not None else _suite
+        return s.release_version(snapshotSuffix='SNAPSHOT')
 
     if args.all_suites:
         _suites = suites()
@@ -18615,7 +18618,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.44.1")  # [GR-47931] Disable fatalOptionalError ECJ setting
+version = VersionSpec("6.44.2")  # [GR-_suite] `mx maven-deploy --version-suite`
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
