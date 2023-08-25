@@ -4454,7 +4454,7 @@ def clean(args, parser=None):
         return _dependencies_opt_limit_to_suites(res)
 
     if args.dependencies is not None:
-        deps = [dependency(mx_subst.string_substitutions.substitute(name)) for name in args.dependencies.split(',')]
+        deps = resolve_targets(args.dependencies.split(','))
     else:
         deps = _collect_clean_dependencies()
 
@@ -14903,6 +14903,59 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
                       'from within the plugins/ directory of an Eclipse IDE installation.')
     return ecj
 
+
+_special_build_targets = {}
+
+
+def register_special_build_target(name, target_enumerator, with_argument=False):
+    if name in _special_build_targets:
+        raise abort(f"Special build target {name} already registered")
+    _special_build_targets[name] = target_enumerator, with_argument
+
+
+def _platform_dependent_layout_dir_distributions():
+    for d in mx.distributions(True):
+        if isinstance(d, LayoutDirDistribution) and d.platformDependent:
+            yield d
+
+
+def _maven_tag_distributions(tag):
+    for d in mx.distributions(True):
+        if getattr(d, 'maven', False) and _match_tags(d, [tag]) :
+            yield d
+
+
+register_special_build_target('PLATFORM_DEPENDENT_LAYOUT_DIR_DISTRIBUTIONS', _platform_dependent_layout_dir_distributions)
+register_special_build_target('MAVEN_TAG_DISTRIBUTIONS', _maven_tag_distributions, with_argument=True)
+
+def resolve_targets(names):
+    targets = []
+    for name in names:
+        expanded_name = mx_subst.string_substitutions.substitute(name)
+        if expanded_name[0] == '{' and expanded_name[-1] == '}':
+            special_target = expanded_name[1:-1]
+            idx = special_target.find(':')
+            if idx >= 0:
+                arg = special_target[idx + 1:]
+                special_target = special_target[:idx]
+            else:
+                arg = None
+            if special_target not in _special_build_targets:
+                raise abort(f"Unknown special build target: {special_target}")
+            target_enumerator, with_arg = _special_build_targets[special_target]
+            if with_arg and arg is None:
+                raise abort(f"Special build target {special_target} requires an argument: {{{special_target}:argument}}")
+            if not with_arg and arg is not None:
+                raise abort(f"Special build target {special_target} doesn't accept an argument")
+            if arg is not None:
+                targets.extend(target_enumerator(arg))
+            else:
+                targets.extend(target_enumerator())
+        else:
+            targets.append(dependency(expanded_name))
+    return targets
+
+
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
     global _gmake_cmd
@@ -14987,12 +15040,12 @@ def build(cmd_args, parser=None):
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
-        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in onlyDeps]
+        roots = resolve_targets(onlyDeps)
     elif args.dependencies is not None:
         if len(args.dependencies) == 0:
             abort('The value of the --dependencies argument cannot be the empty string')
         names = args.dependencies.split(',')
-        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in names]
+        roots = resolve_targets(names)
     else:
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
