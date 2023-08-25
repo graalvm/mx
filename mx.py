@@ -18784,7 +18784,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.44.3")  # GR-48250, Fix: disable -Werror for javac if lint overrides for given project are "none"
+version = VersionSpec("6.45.0")  # multi-arch layout dirs
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
