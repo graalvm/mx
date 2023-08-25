@@ -33,6 +33,8 @@ import sys
 import uuid
 from abc import ABCMeta, abstractmethod, abstractproperty
 
+import mx
+
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
@@ -629,6 +631,8 @@ environment variables:
                                 "be stored in the parent directory of the repository containing the primary suite. This option "
                                 "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
         self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
+        self.add_argument('--multi-platform-layout-directories', action='store', help="Causes platform-dependent layout dir distribution to contain the union of the files from their declared platforms. "
+                                "Can be set to 'all' or to a comma-separated list of platforms.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -6699,16 +6703,90 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
         os.makedirs(os.path.abspath(os.path.dirname(sentinel)), exist_ok=True)
         with open(sentinel, 'w'):
             pass
+        self._persist_platforms_state()
+
+    def needsUpdate(self, newestInput):
+        reason = super().needsUpdate(newestInput)
+        if reason:
+            return reason
+        if not self._check_platforms():
+            return "--multi-platform-layout-directories changed"
+        return None
+
+    def _platforms_state_file(self):
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'platforms', self.name)
+
+    def _platforms_state(self):
+        if _opts.multi_platform_layout_directories is None or not self.platformDependent:
+            return None
+        canonical_platforms = sorted(set(_opts.multi_platform_layout_directories.split(',')))
+        return ','.join(canonical_platforms)
+
+    def _persist_platforms_state(self):
+        state_file = self._platforms_state_file()
+        current_state = self._platforms_state()
+        if current_state is None:
+            if exists(state_file):
+                os.unlink(state_file)
+            return
+        ensure_dir_exists(dirname(state_file))
+        with open(state_file, 'w') as fp:
+            fp.write(current_state)
+
+    def _check_platforms(self):
+        state_file = self._platforms_state_file()
+        current_state = self._platforms_state()
+        if not exists(state_file):
+            return current_state is None
+        if current_state is None:
+            return False
+        with open(state_file) as fp:
+            saved_state = fp.read()
+        return saved_state == current_state
 
     def getArchivableResults(self, use_relpath=True, single=False):
         if single:
             raise ValueError("{} only produces multiple output".format(self))
         output_dir = self.get_output()
+        contents = {}
         for dirpath, _, filenames in os.walk(output_dir):
             for filename in filenames:
                 file_path = join(dirpath, filename)
                 archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
+                contents[archive_path] = file_path
                 yield file_path, archive_path
+        if _opts.multi_platform_layout_directories and self.platformDependent:
+            if _opts.multi_platform_layout_directories == 'all':
+                requested_platforms = None
+            else:
+                requested_platforms = _opts.multi_platform_layout_directories.split(',')
+            local_os_arch = f"{get_os()}-{get_arch()}"
+            assert local_os_arch in output_dir
+            hashes = {}
+            def _hash(path):
+                if path not in hashes:
+                    hashes[path] = mx.digest_of_file(path, 'sha1')
+                return hashes[path]
+            for platform in self.platforms:
+                if requested_platforms is not None and platform not in requested_platforms:
+                    continue
+                if local_os_arch == platform:
+                    continue
+                foreign_output = output_dir.replace(local_os_arch, platform)
+                if not isdir(foreign_output):
+                    raise abort(f"Missing {platform} output directory for {self.name} ({foreign_output})")
+                for dirpath, _, filenames in os.walk(foreign_output):
+                    for filename in filenames:
+                        file_path = join(dirpath, filename)
+                        archive_path = relpath(file_path, foreign_output) if use_relpath else basename(file_path)
+                        if archive_path in contents:
+                            if _hash(file_path) != _hash(contents[archive_path]):
+                                raise abort(f"""File from alternative platfrom is located in the same path but has different contents:
+- {contents[archive_path]}
+- {file_path}""")
+                        else:
+                            contents[archive_path] = file_path
+                        yield file_path, archive_path
 
     def remoteExtension(self):
         return 'sentinel'
@@ -8626,7 +8704,7 @@ class Extractor(object, metaclass=ABCMeta):
     def create(src):
         if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz"):
             return TarExtractor(src)
-        if src.endswith(".zip"):
+        if src.endswith(".zip") or src.endswith(".jar"):
             return ZipExtractor(src)
         abort("Don't know how to extract the archive: " + src)
 
@@ -18360,6 +18438,7 @@ update_commands("mx", {
 import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
 import mx_gc # pylint: disable=unused-import
+import mx_multiplatform # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
