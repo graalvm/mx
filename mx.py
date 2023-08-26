@@ -8112,7 +8112,7 @@ class JavacCompiler(JavacLikeCompiler):
         else:
             if jdk.javaCompliance >= '9':
                 warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
-        if warningsAsErrors and lint != ['none']:
+        if warningsAsErrors and 'none' not in lint:
             # Some warnings cannot be disabled, such as those for jdk incubator modules.
             # When the linter is turned off, we also disable other warnings becoming errors to handle such cases.
             javacArgs.append('-Werror')
@@ -18618,7 +18618,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.44.2")  # [GR-_suite] `mx maven-deploy --version-suite`
+version = VersionSpec("6.44.3")  # GR-48250, Fix: disable -Werror for javac if lint overrides for given project are "none"
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
