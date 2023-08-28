@@ -24,12 +24,52 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from .._impl import mx
+import sys
+
 # Stores accesses to internal symbols
 _internal_accesses = set()
 # Sotres writes to non-internal symbols
 _settattrs = set()
 # Whether an exit handler was already installed
 _exit_handler_set = False
+
+
+class ModuleInterceptor:
+    def __init__(self, thisname, targetname, capture_writes):
+        self.__dict__["_thisname"] = thisname
+        self.__dict__["_targetname"] = targetname
+        self.__dict__["_capture_writes"] = capture_writes
+        self.__dict__["_thismodule"] = sys.modules[thisname]
+        self.__dict__["_othermodule"] = sys.modules[targetname]
+
+    def __get_target(self, name, is_set: bool):
+        if name.startswith("__"):
+            return self.__dict__["_thismodule"]
+
+        mem_name = f"{self.__dict__['_thisname']}.{name}"
+        if name.startswith("_"):
+            _internal_accesses.add(mem_name)
+            import traceback
+
+            frame = traceback.extract_stack()[-3]
+            mx.warn(f"Access to internal symbol detected: {mem_name} at {frame.filename}:{frame.lineno} {frame.line}")
+        elif is_set and self.__dict__["_capture_writes"]:
+            _settattrs.add(mem_name)
+            import traceback
+
+            frame = traceback.extract_stack()[-3]
+            mx.warn(f"Write to symbol detected: {mem_name} at {frame.filename}:{frame.lineno} {frame.line}")
+
+        return self.__dict__["_othermodule"]
+
+    def __setattr__(self, name, value):
+        target = self.__get_target(name, True)
+        setattr(target, name, value)
+
+    def __getattr__(self, name):
+        target = self.__get_target(name, False)
+        return getattr(target, name)
 
 
 def redirect(thisname: str, targetname: str, capture_writes: bool = True):
@@ -47,44 +87,8 @@ def redirect(thisname: str, targetname: str, capture_writes: bool = True):
 
     :param capture_writes: Whether writes to non-internal symbols should be captured and reported, defaults to True
     """
-    import sys
-    from .. import mx
 
-    thismodule = sys.modules[thisname]
-    othermodule = sys.modules[targetname]
-
-    class interceptor:
-        def __get_target(self, name, is_set: bool):
-            if name.startswith("__"):
-                return thismodule
-
-            mem_name = f"{thisname}.{name}"
-            if name.startswith("_"):
-                _internal_accesses.add(mem_name)
-                import traceback
-
-                frame = traceback.extract_stack()[-3]
-                mx.warn(
-                    f"Access to internal symbol detected: {mem_name} at {frame.filename}:{frame.lineno} {frame.line}"
-                )
-            elif is_set and capture_writes:
-                _settattrs.add(mem_name)
-                import traceback
-
-                frame = traceback.extract_stack()[-3]
-                mx.warn(f"Write to symbol detected: {mem_name} at {frame.filename}:{frame.lineno} {frame.line}")
-
-            return othermodule
-
-        def __setattr__(self, name, value):
-            target = self.__get_target(name, True)
-            setattr(target, name, value)
-
-        def __getattr__(self, name):
-            target = self.__get_target(name, False)
-            return getattr(target, name)
-
-    sys.modules[thisname] = interceptor()
+    sys.modules[thisname] = ModuleInterceptor(thisname, targetname, capture_writes)
 
     def exit_handler():
         if _internal_accesses:
