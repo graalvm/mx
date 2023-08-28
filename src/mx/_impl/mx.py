@@ -15617,6 +15617,10 @@ def pylint(args):
             rmtree(timestamps_dir)
         ensure_dir_exists(timestamps_dir)
 
+    if primary_suite() is _mx_suite:
+        path = dirname(__file__)
+        run([pylint_exe, '--reports=n', '--disable=cyclic-import', '--rcfile=' + rcfile, path] + additional_options, env=env)
+
     for pyfile in pyfiles:
         if timestamps_dir:
             ts = TimeStampFile(join(timestamps_dir, pyfile.replace(os.sep, '_') + '.timestamp'))
@@ -15627,6 +15631,7 @@ def pylint(args):
         run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
         if timestamps_dir:
             ts.touch()
+
     return 0
 
 def _find_pyfiles(find_all, primary, walk):
