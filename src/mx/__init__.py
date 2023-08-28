@@ -19,3 +19,10 @@ from ._impl.mx import (
     _needsUpdate,
     _removeSubprocess,
 )
+
+from mx.legacy.oldnames import redirect as _redirect
+
+# Unlike all the modules in oldnames, this module is used for both the legacy
+# access and access in the package system to the `mx` module because there is
+# no good way to overload the name.
+_redirect(__name__, "mx._impl." + __name__, capture_writes=False)

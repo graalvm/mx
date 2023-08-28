@@ -24,38 +24,76 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-_accessed_set = set()
-_undefined_set = set()
+# Stores accesses to internal symbols
+_internal_accesses = set()
+# Sotres writes to non-internal symbols
+_settattrs = set()
+# Whether an exit handler was already installed
+_exit_handler_set = False
 
 
-def redirect(thismodule, targetmodule):
-    global _accessed_set
-    global _undefined_set
+def redirect(thisname: str, targetname: str, capture_writes: bool = True):
+    global _exit_handler_set
+    """
+    Redirects all attribute accesses on the ``thisname`` module to the
+    ``targetname`` module.
 
+    The only exception are builtins (names starting with two underscores).
+
+    Produces warnings for accesses to internal symbols (which should not be accessed from outside)
+    and writes to non-internal symbols (we should not rely on setting arbitrary symbols from the outside).
+
+    At the end (using an exit handler), the final list of these symbols are produced.
+
+    :param capture_writes: Whether writes to non-internal symbols should be captured and reported, defaults to True
+    """
     import sys
+    from .. import mx
 
-    thismodule = sys.modules[thismodule]
-    othermodule = sys.modules[targetmodule]
+    thismodule = sys.modules[thisname]
+    othermodule = sys.modules[targetname]
 
     class interceptor:
+        def __get_target(self, name, is_set: bool):
+            if name.startswith("__"):
+                return thismodule
+
+            mem_name = f"{thisname}.{name}"
+            if name.startswith("_"):
+                _internal_accesses.add(mem_name)
+                import traceback
+
+                frame = traceback.extract_stack()[-3]
+                mx.warn(
+                    f"Access to internal symbol detected: {mem_name} at {frame.filename}:{frame.lineno} {frame.line}"
+                )
+            elif is_set and capture_writes:
+                _settattrs.add(mem_name)
+                import traceback
+
+                frame = traceback.extract_stack()[-3]
+                mx.warn(f"Write to symbol detected: {mem_name} at {frame.filename}:{frame.lineno} {frame.line}")
+
+            return othermodule
+
         def __setattr__(self, name, value):
-            mem_name = f"{thismodule}.{name}"
-            _accessed_set.add(mem_name)
-            if hasattr(thismodule):
-                target = thismodule
-            else:
-                target = othermodule
-                _undefined_set.add(target)
+            target = self.__get_target(name, True)
             setattr(target, name, value)
 
         def __getattr__(self, name):
-            mem_name = f"{thismodule}.{name}"
-            _accessed_set.add(mem_name)
-            if hasattr(thismodule, name):
-                target = thismodule
-            else:
-                target = othermodule
-                _undefined_set.add(mem_name)
+            target = self.__get_target(name, False)
             return getattr(target, name)
 
-    sys.modules[thismodule] = interceptor()
+    sys.modules[thisname] = interceptor()
+
+    def exit_handler():
+        if _internal_accesses:
+            mx.warn(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
+        if _settattrs:
+            mx.warn(f"The following mx symbols were overwritten: {', '.join(_settattrs)}")
+
+    if not _exit_handler_set:
+        import atexit
+
+        atexit.register(exit_handler)
+        _exit_handler_set = True
