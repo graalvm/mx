@@ -42,13 +42,14 @@ def mx_archive_pd_layouts(args):
 See mx restore-pd-layouts and --multi-platform-layout-directories.""")
     parser.add_argument('path', help='path to archive')
     args = parser.parse_args(args)
+    archive_path = os.path.realpath(args.path)
 
-    ext = mx.get_file_extension(args.path)
+    ext = mx.get_file_extension(archive_path)
     if ext not in ('zip', 'jar', 'tar', 'tgz'):
         raise mx.abort("Unsupported archive extension. Supported: .zip, .jar, .tar, .tgz")
 
     pd_layout_dirs = [d for d in mx.distributions(True) if isinstance(d, mx.LayoutDirDistribution) and d.platformDependent]
-    with mx.Archiver(args.path, kind=ext) as arc:
+    with mx.Archiver(archive_path, kind=ext) as arc:
         local_os_arch = _local_os_arch()
         arc.add_str(local_os_arch, "os-arch", None)
         for dist in pd_layout_dirs:
