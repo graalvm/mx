@@ -32,7 +32,7 @@ import time
 import re
 import pickle
 
-from os.path import join, exists, basename, dirname, isdir, islink, realpath
+from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
@@ -1069,7 +1069,6 @@ class _ArchiveStager(object):
                 self.add_file(dep, f, relpath, archivePrefix)
         elif dep.isLayoutDirDistribution():
             mx.logv('[' + original_path + ': adding contents of layout dir distribution ' + dep.name + ']')
-            output = realpath(dep.get_output())
             for file_path, arc_name in dep.getArchivableResults():
                 self.add_file(dep, file_path, arc_name, '')
         elif dep.isClasspathDependency():

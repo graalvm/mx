@@ -33,8 +33,6 @@ import sys
 import uuid
 from abc import ABCMeta, abstractmethod, abstractproperty
 
-import mx
-
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
@@ -6765,7 +6763,7 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
             hashes = {}
             def _hash(path):
                 if path not in hashes:
-                    hashes[path] = mx.digest_of_file(path, 'sha1')
+                    hashes[path] = digest_of_file(path, 'sha1')
                 return hashes[path]
             for platform in self.platforms:
                 if requested_platforms is not None and platform not in requested_platforms:
@@ -14914,19 +14912,20 @@ def register_special_build_target(name, target_enumerator, with_argument=False):
 
 
 def _platform_dependent_layout_dir_distributions():
-    for d in mx.distributions(True):
+    for d in distributions(True):
         if isinstance(d, LayoutDirDistribution) and d.platformDependent:
             yield d
 
 
 def _maven_tag_distributions(tag):
-    for d in mx.distributions(True):
-        if getattr(d, 'maven', False) and _match_tags(d, [tag]) :
+    for d in distributions(True):
+        if getattr(d, 'maven', False) and _match_tags(d, [tag]):
             yield d
 
 
 register_special_build_target('PLATFORM_DEPENDENT_LAYOUT_DIR_DISTRIBUTIONS', _platform_dependent_layout_dir_distributions)
 register_special_build_target('MAVEN_TAG_DISTRIBUTIONS', _maven_tag_distributions, with_argument=True)
+
 
 def resolve_targets(names):
     targets = []
