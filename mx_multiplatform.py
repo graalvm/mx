@@ -84,7 +84,7 @@ See mx archive-pd-layouts and --multi-platform-layout-directories.""")
                 dist = mx.distribution(entry.name, fatalIfMissing=not args.ignore_unknown_distributions)
                 if not dist:
                     continue
-                if not isinstance(dist, mx.LayoutDirDistribution) or not d.platformDependent:
+                if not isinstance(dist, mx.LayoutDirDistribution) or not dist.platformDependent:
                     raise mx.abort(f"{entry.name} is not a platform-dependent layout dir distribution")
                 local_output = dist.get_output()
                 assert local_os_arch in local_output
