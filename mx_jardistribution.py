@@ -32,7 +32,7 @@ import time
 import re
 import pickle
 
-from os.path import join, exists, basename, dirname, isdir, islink, realpath
+from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
@@ -875,14 +875,13 @@ class _ArchiveStager(object):
                                 if self.versioned_meta_inf_re.match(arcname):
                                     mx.warn(f"META-INF resources can not be versioned ({arcname} from {jar_path}). The resulting JAR will be invalid.")
 
-    def add_file(self, dep, base_dir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
+    def add_file(self, dep, filepath, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
         """
-        Adds the contents of the file `base_dir`/`relpath` to `self.bin_archive.staging_dir`
+        Adds the contents of the file `filepath` to `self.bin_archive.staging_dir`
         under the path formed by concatenating `archivePrefix` with `relpath`.
 
         :param Dependency dep: the Dependency owning the file
         """
-        filepath = join(base_dir, relpath)
         arcname = join(archivePrefix, relpath).replace(os.sep, '/')
         assert arcname[-1] != '/'
         if arcnameCheck is not None and not arcnameCheck(arcname):
@@ -1039,7 +1038,8 @@ class _ArchiveStager(object):
                             self.bin_archive.entries[dirEntry] = dirEntry
                         else:
                             relpath = join(reldir, f)
-                            self.add_file(dep, outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
+                            filepath = join(root, f)
+                            self.add_file(dep, filepath, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
 
             add_classes(archivePrefix, includeServices=True)
             sourceDirs = p.source_dirs()
@@ -1066,12 +1066,11 @@ class _ArchiveStager(object):
             outputDir = dep.output_dir()
             for f in dep.getResults():
                 relpath = dep.get_relpath(f, outputDir)
-                self.add_file(dep, outputDir, relpath, archivePrefix)
+                self.add_file(dep, f, relpath, archivePrefix)
         elif dep.isLayoutDirDistribution():
             mx.logv('[' + original_path + ': adding contents of layout dir distribution ' + dep.name + ']')
-            output = realpath(dep.get_output())
-            for _, p in dep.getArchivableResults():
-                self.add_file(dep, output, p, '')
+            for file_path, arc_name in dep.getArchivableResults():
+                self.add_file(dep, file_path, arc_name, '')
         elif dep.isClasspathDependency():
             mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
             jarPath = dep.classpath_repr(resolve=True)

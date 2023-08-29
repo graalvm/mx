@@ -629,6 +629,8 @@ environment variables:
                                 "be stored in the parent directory of the repository containing the primary suite. This option "
                                 "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
         self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
+        self.add_argument('--multi-platform-layout-directories', action='store', help="Causes platform-dependent layout dir distribution to contain the union of the files from their declared platforms. "
+                                "Can be set to 'all' or to a comma-separated list of platforms.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -4450,7 +4452,7 @@ def clean(args, parser=None):
         return _dependencies_opt_limit_to_suites(res)
 
     if args.dependencies is not None:
-        deps = [dependency(mx_subst.string_substitutions.substitute(name)) for name in args.dependencies.split(',')]
+        deps = resolve_targets(args.dependencies.split(','))
     else:
         deps = _collect_clean_dependencies()
 
@@ -6449,6 +6451,7 @@ Common causes:
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
         self._persist_linky_state()
+        self._persist_resource_entries_state()
 
     def getArchivableResults(self, use_relpath=True, single=False):
         for (p, n) in super(LayoutDistribution, self).getArchivableResults(use_relpath, single):
@@ -6502,6 +6505,8 @@ Common causes:
             return "LINKY_LAYOUT has changed"
         if not self._check_resources_file_list():
             return "fileListPurpose has changed"
+        if not self._check_resource_entries():
+            return "hashEntry or fileListEntry has changed"
         return None
 
     def _persist_layout(self):
@@ -6537,7 +6542,7 @@ Common causes:
         return False
 
     def _linky_state_file(self):
-        return join(self.suite.get_mx_output_dir(), 'linkyState', self.name)
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'linkyState', self.name)
 
     def _persist_linky_state(self):
         linky_state_file = self._linky_state_file()
@@ -6560,6 +6565,37 @@ Common causes:
         with open(linky_state_file) as fp:
             saved_pattern = fp.read()
         return saved_pattern == LayoutDistribution._linky.pattern
+
+    def _resource_entries_state_file(self):
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'resource_entries', self.name)
+
+    def _resource_entries_state(self):
+        if self.hashEntry is None and self.fileListEntry is None:
+            return None
+        return f"{self.hashEntry}\n{self.fileListEntry}"
+
+    def _persist_resource_entries_state(self):
+        state_file = self._resource_entries_state_file()
+        current_state = self._resource_entries_state()
+        if current_state is None:
+            if exists(state_file):
+                os.unlink(state_file)
+            return
+        ensure_dir_exists(dirname(state_file))
+        with open(state_file, 'w') as fp:
+            fp.write(current_state)
+
+    def _check_resource_entries(self):
+        state_file = self._resource_entries_state_file()
+        current_state = self._resource_entries_state()
+        if not exists(state_file):
+            return current_state is None
+        if current_state is None:
+            return False
+        with open(state_file) as fp:
+            saved_state = fp.read()
+        return saved_state == current_state
+
 
     def find_single_source_location(self, source, fatal_if_missing=True, abort_on_multiple=False):
         locations = self.find_source_location(source, fatal_if_missing=fatal_if_missing)
@@ -6665,16 +6701,90 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
         os.makedirs(os.path.abspath(os.path.dirname(sentinel)), exist_ok=True)
         with open(sentinel, 'w'):
             pass
+        self._persist_platforms_state()
+
+    def needsUpdate(self, newestInput):
+        reason = super().needsUpdate(newestInput)
+        if reason:
+            return reason
+        if not self._check_platforms():
+            return "--multi-platform-layout-directories changed"
+        return None
+
+    def _platforms_state_file(self):
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'platforms', self.name)
+
+    def _platforms_state(self):
+        if _opts.multi_platform_layout_directories is None or not self.platformDependent:
+            return None
+        canonical_platforms = sorted(set(_opts.multi_platform_layout_directories.split(',')))
+        return ','.join(canonical_platforms)
+
+    def _persist_platforms_state(self):
+        state_file = self._platforms_state_file()
+        current_state = self._platforms_state()
+        if current_state is None:
+            if exists(state_file):
+                os.unlink(state_file)
+            return
+        ensure_dir_exists(dirname(state_file))
+        with open(state_file, 'w') as fp:
+            fp.write(current_state)
+
+    def _check_platforms(self):
+        state_file = self._platforms_state_file()
+        current_state = self._platforms_state()
+        if not exists(state_file):
+            return current_state is None
+        if current_state is None:
+            return False
+        with open(state_file) as fp:
+            saved_state = fp.read()
+        return saved_state == current_state
 
     def getArchivableResults(self, use_relpath=True, single=False):
         if single:
             raise ValueError("{} only produces multiple output".format(self))
         output_dir = self.get_output()
+        contents = {}
         for dirpath, _, filenames in os.walk(output_dir):
             for filename in filenames:
                 file_path = join(dirpath, filename)
                 archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
+                contents[archive_path] = file_path
                 yield file_path, archive_path
+        if _opts.multi_platform_layout_directories and self.platformDependent:
+            if _opts.multi_platform_layout_directories == 'all':
+                requested_platforms = None
+            else:
+                requested_platforms = _opts.multi_platform_layout_directories.split(',')
+            local_os_arch = f"{get_os()}-{get_arch()}"
+            assert local_os_arch in output_dir
+            hashes = {}
+            def _hash(path):
+                if path not in hashes:
+                    hashes[path] = digest_of_file(path, 'sha1')
+                return hashes[path]
+            for platform in self.platforms:
+                if requested_platforms is not None and platform not in requested_platforms:
+                    continue
+                if local_os_arch == platform:
+                    continue
+                foreign_output = output_dir.replace(local_os_arch, platform)
+                if not isdir(foreign_output):
+                    raise abort(f"Missing {platform} output directory for {self.name} ({foreign_output})")
+                for dirpath, _, filenames in os.walk(foreign_output):
+                    for filename in filenames:
+                        file_path = join(dirpath, filename)
+                        archive_path = relpath(file_path, foreign_output) if use_relpath else basename(file_path)
+                        if archive_path in contents:
+                            if _hash(file_path) != _hash(contents[archive_path]):
+                                raise abort(f"""File from alternative platfrom is located in the same path but has different contents:
+- {contents[archive_path]}
+- {file_path}""")
+                        else:
+                            contents[archive_path] = file_path
+                        yield file_path, archive_path
 
     def remoteExtension(self):
         return 'sentinel'
@@ -8592,7 +8702,7 @@ class Extractor(object, metaclass=ABCMeta):
     def create(src):
         if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz"):
             return TarExtractor(src)
-        if src.endswith(".zip"):
+        if src.endswith(".zip") or src.endswith(".jar"):
             return ZipExtractor(src)
         abort("Don't know how to extract the archive: " + src)
 
@@ -14791,6 +14901,60 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
                       'from within the plugins/ directory of an Eclipse IDE installation.')
     return ecj
 
+
+_special_build_targets = {}
+
+
+def register_special_build_target(name, target_enumerator, with_argument=False):
+    if name in _special_build_targets:
+        raise abort(f"Special build target {name} already registered")
+    _special_build_targets[name] = target_enumerator, with_argument
+
+
+def _platform_dependent_layout_dir_distributions():
+    for d in distributions(True):
+        if isinstance(d, LayoutDirDistribution) and d.platformDependent:
+            yield d
+
+
+def _maven_tag_distributions(tag):
+    for d in distributions(True):
+        if getattr(d, 'maven', False) and _match_tags(d, [tag]):
+            yield d
+
+
+register_special_build_target('PLATFORM_DEPENDENT_LAYOUT_DIR_DISTRIBUTIONS', _platform_dependent_layout_dir_distributions)
+register_special_build_target('MAVEN_TAG_DISTRIBUTIONS', _maven_tag_distributions, with_argument=True)
+
+
+def resolve_targets(names):
+    targets = []
+    for name in names:
+        expanded_name = mx_subst.string_substitutions.substitute(name)
+        if expanded_name[0] == '{' and expanded_name[-1] == '}':
+            special_target = expanded_name[1:-1]
+            idx = special_target.find(':')
+            if idx >= 0:
+                arg = special_target[idx + 1:]
+                special_target = special_target[:idx]
+            else:
+                arg = None
+            if special_target not in _special_build_targets:
+                raise abort(f"Unknown special build target: {special_target}")
+            target_enumerator, with_arg = _special_build_targets[special_target]
+            if with_arg and arg is None:
+                raise abort(f"Special build target {special_target} requires an argument: {{{special_target}:argument}}")
+            if not with_arg and arg is not None:
+                raise abort(f"Special build target {special_target} doesn't accept an argument")
+            if arg is not None:
+                targets.extend(target_enumerator(arg))
+            else:
+                targets.extend(target_enumerator())
+        else:
+            targets.append(dependency(expanded_name))
+    return targets
+
+
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
     global _gmake_cmd
@@ -14875,12 +15039,12 @@ def build(cmd_args, parser=None):
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
-        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in onlyDeps]
+        roots = resolve_targets(onlyDeps)
     elif args.dependencies is not None:
         if len(args.dependencies) == 0:
             abort('The value of the --dependencies argument cannot be the empty string')
         names = args.dependencies.split(',')
-        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in names]
+        roots = resolve_targets(names)
     else:
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
@@ -18326,6 +18490,7 @@ update_commands("mx", {
 import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
 import mx_gc # pylint: disable=unused-import
+import mx_multiplatform # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
@@ -18618,7 +18783,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.44.3")  # GR-48250, Fix: disable -Werror for javac if lint overrides for given project are "none"
+version = VersionSpec("6.45.0")  # multi-arch layout dirs
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
