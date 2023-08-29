@@ -38,6 +38,7 @@ from stat import S_IMODE
 
 from . import mx
 from . import mx_subst
+from ..support import path
 
 
 class JARDistribution(mx.Distribution, mx.ClasspathDependency):
@@ -1493,11 +1494,7 @@ def _stage_file_impl(src, dst):
     else:
         if exists(dst):
             if islink(dst):
-                target = os.readlink(dst)
-                if target == src:
-                    return
-                if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
-                    # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                if path.equal(os.readlink(dst), src):
                     return
             mx.rmtree(dst)
         elif islink(dst):

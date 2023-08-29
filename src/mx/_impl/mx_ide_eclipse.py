@@ -34,6 +34,8 @@ from contextlib import ExitStack
 from os.path import join, basename, dirname, exists, isdir, abspath
 from io import StringIO
 
+from ..ide import helpers
+
 from . import mx
 from . import mx_ideconfig
 from . import mx_javamodules
@@ -981,15 +983,9 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         projectXml.open('projects')
         if s is not mx._mx_suite:
             projectXml.element('project', data=mx._mx_suite.name)
-        processed_suites = set([s.name])
-        def _mx_projects_suite(visited_suite, suite_import):
-            if suite_import.name in processed_suites:
-                return
-            processed_suites.add(suite_import.name)
-            dep_suite = mx.suite(suite_import.name)
-            projectXml.element('project', data='mx.' + suite_import.name)
-            dep_suite.visit_imports(_mx_projects_suite)
-        s.visit_imports(_mx_projects_suite)
+
+        helpers.iter_projects(s, lambda _, suite_name: projectXml.element('project', data='mx.' + suite_name))
+
         projectXml.close('projects')
         projectXml.open('buildSpec')
         projectXml.open('buildCommand')

@@ -44,6 +44,8 @@ from . import mx
 from . import mx_ideconfig
 from . import mx_javamodules
 
+from ..ide import helpers
+
 
 # IntelliJ SDK types.
 intellij_java_sdk_type = 'JavaSDK'
@@ -596,18 +598,13 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, f'suite {s}')})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
-        processed_suites = {s.name}
 
-        def _mx_projects_suite(visited_suite, suite_import):
-            if suite_import.name in processed_suites:
-                return
-            processed_suites.add(suite_import.name)
-            dep_suite = mx.suite(suite_import.name)
-            dep_module_name, _, _ = _python_module(dep_suite)
+        def _with_suite(suite, suite_name):
+            dep_module_name, _, _ = _python_module(suite)
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep_module_name})
-            _add_declared_module(dep_suite)
-            dep_suite.visit_imports(_mx_projects_suite)
-        s.visit_imports(_mx_projects_suite)
+            _add_declared_module(suite)
+        helpers.iter_projects(s, _with_suite)
+
         if s.name != 'mx':
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx.mx'})
         moduleXml.close('component')

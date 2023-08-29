@@ -233,6 +233,11 @@ class MultiarchProject(mx.AbstractNativeProject, NativeDependency):
                 for file_path, archive_path in self._archivable_results(target_arch, use_relpath, single):
                     yield file_path, mx.join(target_arch_path, archive_path)
 
+    def _archivable_result(self, use_relpath, base_dir, file_path):
+        assert not mx.isabs(file_path)
+        archive_path = file_path if use_relpath else mx.basename(file_path)
+        return mx.join(base_dir, file_path), archive_path
+
     @abc.abstractmethod
     def _archivable_results(self, target_arch, use_relpath, single):
         """:rtype: typing.Iterable[(str, str)]"""
@@ -727,13 +732,8 @@ class DefaultNativeProject(NinjaProject):
                 link(self._target, object_files + dep_libs)
 
     def _archivable_results(self, target_arch, use_relpath, single):
-        def result(base_dir, file_path):
-            assert not mx.isabs(file_path)
-            archive_path = file_path if use_relpath else mx.basename(file_path)
-            return mx.join(base_dir, file_path), archive_path
-
-        yield result(mx.join(self.out_dir, target_arch), self._target)
+        yield self._archivable_result(use_relpath, mx.join(self.out_dir, target_arch), self._target)
 
         if not single:
             for header in os.listdir(mx.join(self.dir, self.include)):
-                yield result(self.dir, mx.join(self.include, header))
+                yield self._archivable_result(use_relpath, self.dir, mx.join(self.include, header))

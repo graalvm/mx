@@ -2008,6 +2008,7 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
     def sets_vm_prefix(self):
         return True
 
+    # pylint: disable=access-member-before-definition
     def additional_options(self, dump_path):
         if not self.nextItemName:
             return [], []

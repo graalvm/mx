@@ -36,6 +36,8 @@ from zipfile import ZipFile
 
 from . import mx
 
+from ..support import path
+
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
 import itertools
 from io import StringIO
@@ -878,10 +880,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                 if exists(dst):
                                     if islink(dst):
                                         target = os.readlink(dst)
-                                        if target == src:
-                                            return
-                                        if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
-                                            # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                                        if path.equal(target, src):
                                             return
                                         restore_files[dst] = lambda: os.symlink(target, dst)
                                     else:

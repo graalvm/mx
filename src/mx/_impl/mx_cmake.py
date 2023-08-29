@@ -197,15 +197,9 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         return [mx_subst.as_engine(replaceVar).substitute(rt, dependency=self) for rt in self.results]
 
     def _archivable_results(self, target_arch, use_relpath, single):
-        def result(base_dir, file_path):
-            assert not mx.isabs(file_path)
-            archive_path = file_path if use_relpath else mx.basename(file_path)
-            return mx.join(base_dir, file_path), archive_path
-
         out_dir_arch = mx.join(self.out_dir, target_arch)
         for _result in self.getResults():
-            yield result(out_dir_arch, _result)
-
+            yield self._archivable_result(use_relpath, out_dir_arch, _result)
 
 class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
     """A build task which executes Ninja on a project configured by CMake."""
