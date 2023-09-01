@@ -48,7 +48,9 @@ class ModuleInterceptor:
             return self.__dict__["_thismodule"]
 
         mem_name = f"{self.__dict__['_thisname']}.{name}"
-        if name.startswith("_"):
+
+        # ignore _opts, as function such as mx.warn will not work
+        if name.startswith("_") and name != "_opts":
             _internal_accesses.add(mem_name)
             import traceback
 
