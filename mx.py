@@ -18783,7 +18783,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.45.0")  # multi-arch layout dirs
+version = VersionSpec("6.45.1")  # GR-48321 Fix JARDistribution exclude list not triggering rebuild
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
