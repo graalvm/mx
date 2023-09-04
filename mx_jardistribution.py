@@ -210,7 +210,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             self.original_path() + _staging_dir_suffix,
             self.sourcesPath + _staging_dir_suffix,
             self._stripped_path(),
-            self.strip_mapping_file()
+            self.strip_mapping_file(),
+            self._config_save_file(),
         ]
         jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance >= '9':
@@ -323,6 +324,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         latest_bin_archive = join(self.suite.get_output_root(False, False), "dists", os.path.basename(bin_archive.path))
         _stage_file_impl(bin_archive.path, latest_bin_archive)
 
+        with mx.open(self._config_save_file(), 'w') as fp:
+            fp.write(self._config_as_json())
+
         self.notify_updated()
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
@@ -330,15 +334,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
             if jmd:
                 setattr(self, '.javaModule', jmd)
-                mi_file = self._module_info_save_file()
-                with mx.open(mi_file, 'w') as fp:
-                    fp.write(self._module_info_as_json())
                 dependency_file = self._jmod_build_jdk_dependency_file()
                 with mx.open(dependency_file, 'w') as fp:
                     fp.write(jdk.home)
-
-        with mx.open(self._excluded_libs_save_file(), 'w') as fp:
-            fp.write(self._excluded_libs_as_json())
 
         if self.is_stripped():
             self.strip_jar()
@@ -580,33 +578,40 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         """
         return self.original_path() + '.jdk'
 
-    def _module_info_save_file(self):
+    def _config_save_file(self) -> str:
         """
-        Gets the path to the file saving `_module_info_as_json()`.
+        Gets the path to the file saving :meth:`_config_as_json`.
         """
-        return self.original_path() + '.module-info'
+        return self.original_path() + ".json"
 
-    def _module_info_as_json(self):
+    def _config_as_json(self) -> str:
         """
-        Gets the moduleInfo attribute(s) as sorted json.
+        Creates a sorted json dump of attributes that trigger a rebuild when they're changed (see :meth:`needsUpdate`).
         """
+        config = {}
+
+        def add_attribute(key, value):
+            """
+            Adds an attribute to the config dict and makes sure no entry is overwritten.
+
+            If entries are overwritten, the overwritten attribute is ignored when checking for updates.
+            """
+            assert key not in config, f"Duplicate value in distribution config: {key}"
+            config[key] = value
+
+        # The `exclude` list can change the jar file contents and needs to trigger a rebuild
+        add_attribute("excludedLibs", list(map(str, self.excludedLibs)))
+
+        compliance = self._compliance_for_build()
+        if compliance is not None and compliance >= '9':
+            if mx.get_java_module_info(self):
+                # Module info change triggers a rebuild.
+                for name in dir(self):
+                    if name == 'moduleInfo' or name.startswith('moduleInfo:'):
+                        add_attribute(name, getattr(self, name))
+
         import json
-        module_infos = {name:getattr(self, name) for name in dir(self) if name == 'moduleInfo' or name.startswith('moduleInfo:')}
-        return json.dumps(module_infos, sort_keys=True, indent=2)
-
-    def _excluded_libs_save_file(self) -> str:
-        """
-        Gets the path to the file saving the list of excluded libraries
-        """
-        return self.original_path() + ".excluded"
-
-    def _excluded_libs_as_json(self) -> str:
-        """
-        Gets the excludedLibs attribute as sorted json.
-        """
-        import json
-        excluded_libs = {"excludedLibs": list(map(str, self.excludedLibs))}
-        return json.dumps(excluded_libs, sort_keys=True, indent=2)
+        return json.dumps(config, sort_keys=True, indent=2)
 
     def needsUpdate(self, newestInput):
         res = mx._needsUpdate(newestInput, self.path)
@@ -638,17 +643,6 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                     return res
                 jdk = mx.get_jdk(compliance)
 
-                # Rebuild if module info changed
-                mi_file = self._module_info_save_file()
-                if exists(mi_file):
-                    module_info = self._module_info_as_json()
-                    with mx.open(mi_file) as fp:
-                        saved_module_info = fp.read()
-                    if module_info != saved_module_info:
-                        import difflib
-                        mx.log(f'{self} module info changed:' + os.linesep + ''.join(difflib.unified_diff(saved_module_info.splitlines(1), module_info.splitlines(1))))
-                        return 'module-info changed'
-
                 # Rebuild the jmod file if different JDK used previously
                 dependency_file = self._jmod_build_jdk_dependency_file()
                 if exists(dependency_file):
@@ -662,15 +656,18 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 except ValueError as e:
                     return f'Bad or incompatible module pickle: {e}'
 
-        excluded_libs_file = self._excluded_libs_save_file()
-        if exists(excluded_libs_file):
-            excluded_libs = self._excluded_libs_as_json()
-            with mx.open(excluded_libs_file) as fp:
-                saved_excluded_libs = fp.read()
-            if excluded_libs != saved_excluded_libs:
+        # Rebuild if the saved config file changed or doesn't exist
+        config_file = self._config_save_file()
+        if exists(config_file):
+            current_config = self._config_as_json()
+            with mx.open(config_file) as fp:
+                saved_config = fp.read()
+            if current_config != saved_config:
                 import difflib
-                mx.log(f'{self} excluded libraries changed:' + os.linesep + ''.join(difflib.unified_diff(saved_excluded_libs.splitlines(1), excluded_libs.splitlines(1))))
-                return 'excludedLibs changed'
+                mx.log(f'{self} distribution config changed:' + os.linesep + ''.join(difflib.unified_diff(saved_config.splitlines(True), current_config.splitlines(True))))
+                return f'{config_file} changed'
+        else:
+            return f'{config_file} does not exist'
 
         if self.is_stripped():
             previous_strip_configs = []
