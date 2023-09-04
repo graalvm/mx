@@ -3809,6 +3809,7 @@ import mx_proftool # pylint: disable=unused-import
 import mx_logcompilation # pylint: disable=unused-import
 import mx_downstream
 import mx_subst
+import mx_codeowners # pylint: disable=unused-import
 import mx_ideconfig # pylint: disable=unused-import
 import mx_ide_eclipse
 import mx_compdb
