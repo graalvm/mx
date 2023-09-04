@@ -582,9 +582,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         def add_attribute(key, value):
             """
-            Adds an attribute to the config dict and makes sure no entry is overwritten.
-
-            If entries are overwritten, the overwritten attribute is ignored when checking for updates.
+            Adds an attribute to the config dict and makes sure no entry is
+            overwritten, because otherwise attributes are ignored when checking
+            for updated.
             """
             assert key not in config, f"Duplicate value in distribution config: {key}"
             config[key] = value
