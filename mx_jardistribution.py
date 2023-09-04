@@ -334,9 +334,6 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
             if jmd:
                 setattr(self, '.javaModule', jmd)
-                dependency_file = self._jmod_build_jdk_dependency_file()
-                with mx.open(dependency_file, 'w') as fp:
-                    fp.write(jdk.home)
 
         if self.is_stripped():
             self.strip_jar()
@@ -571,13 +568,6 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             if self.is_stripped():
                 yield self.strip_mapping_file(), self.default_filename() + JARDistribution._strip_map_file_suffix
 
-    def _jmod_build_jdk_dependency_file(self):
-        """
-        Gets the path to the file recording the JAVA_HOME of the JDK last used to
-        build the modular jar for this distribution.
-        """
-        return self.original_path() + '.jdk'
-
     def _config_save_file(self) -> str:
         """
         Gets the path to the file saving :meth:`_config_as_json`.
@@ -610,6 +600,10 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                     if name == 'moduleInfo' or name.startswith('moduleInfo:'):
                         add_attribute(name, getattr(self, name))
 
+                # The jmod file needs to be rebuilt if a different JDK was used previously
+                jdk = mx.get_jdk(compliance)
+                add_attribute("jdk", str(jdk.home))
+
         import json
         return json.dumps(config, sort_keys=True, indent=2)
 
@@ -641,15 +635,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 res = mx._needsUpdate(self.original_path(), pickle_path)
                 if res:
                     return res
-                jdk = mx.get_jdk(compliance)
 
-                # Rebuild the jmod file if different JDK used previously
-                dependency_file = self._jmod_build_jdk_dependency_file()
-                if exists(dependency_file):
-                    with mx.open(dependency_file) as fp:
-                        last_build_jdk = fp.read()
-                    if last_build_jdk != jdk.home:
-                        return f'build JDK changed from {last_build_jdk} to {jdk.home}'
                 try:
                     with open(pickle_path, 'rb') as fp:
                         pickle.load(fp)
