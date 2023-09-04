@@ -57,6 +57,7 @@ class Streamer:
         self.column = 0
       else:
         self.line = self.line + character
+        self.column = self.column + 1
       self.pos = self.pos + 1
 
 class StomlParser:
