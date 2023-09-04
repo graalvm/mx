@@ -337,6 +337,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 with mx.open(dependency_file, 'w') as fp:
                     fp.write(jdk.home)
 
+        with mx.open(self._excluded_libs_save_file(), 'w') as fp:
+            fp.write(self._excluded_libs_as_json())
+
         if self.is_stripped():
             self.strip_jar()
 
@@ -591,6 +594,20 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         module_infos = {name:getattr(self, name) for name in dir(self) if name == 'moduleInfo' or name.startswith('moduleInfo:')}
         return json.dumps(module_infos, sort_keys=True, indent=2)
 
+    def _excluded_libs_save_file(self) -> str:
+        """
+        Gets the path to the file saving the list of excluded libraries
+        """
+        return self.original_path() + ".excluded"
+
+    def _excluded_libs_as_json(self) -> str:
+        """
+        Gets the excludedLibs attribute as sorted json.
+        """
+        import json
+        excluded_libs = {"excludedLibs": list(map(str, self.excludedLibs))}
+        return json.dumps(excluded_libs, sort_keys=True, indent=2)
+
     def needsUpdate(self, newestInput):
         res = mx._needsUpdate(newestInput, self.path)
         if res:
@@ -644,6 +661,17 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                         pickle.load(fp)
                 except ValueError as e:
                     return f'Bad or incompatible module pickle: {e}'
+
+        excluded_libs_file = self._excluded_libs_save_file()
+        if exists(excluded_libs_file):
+            excluded_libs = self._excluded_libs_as_json()
+            with mx.open(excluded_libs_file) as fp:
+                saved_excluded_libs = fp.read()
+            if excluded_libs != saved_excluded_libs:
+                import difflib
+                mx.log(f'{self} excluded libraries changed:' + os.linesep + ''.join(difflib.unified_diff(saved_excluded_libs.splitlines(1), excluded_libs.splitlines(1))))
+                return 'excludedLibs changed'
+
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
