@@ -26,7 +26,7 @@ class Streamer:
     self.slurp(len(self.content))
     raise RuntimeError(
         self.path + ":" + str(row + 1) + ":" + str(column) + ": " + message + "\n" +
-        self.lines[row] + "\n" +
+        (self.lines[row] if row < len(self.lines) else ("<row " + str(row)) + ">") + "\n" +
         (" " * column) + "^" + "\n")
 
   def peek(self, ahead=0):
@@ -50,7 +50,7 @@ class Streamer:
   def slurp(self, count):
     for i in range(0, count):
       character = self.peek()
-      if character == "\n":
+      if character == "\n" or character == "":
         self.lines.append(self.line)
         self.line = ""
         self.row = self.row + 1
