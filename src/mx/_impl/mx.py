@@ -15617,9 +15617,9 @@ def pylint(args):
             rmtree(timestamps_dir)
         ensure_dir_exists(timestamps_dir)
 
+    mx_path = dirname(__file__)
     if primary_suite() is _mx_suite:
-        path = dirname(__file__)
-        run([pylint_exe, '--reports=n', '--disable=cyclic-import', '--rcfile=' + rcfile, path] + additional_options, env=env)
+        run([pylint_exe, '--reports=n', '--disable=cyclic-import', '--rcfile=' + rcfile, mx_path] + additional_options, env=env)
 
     for pyfile in pyfiles:
         if timestamps_dir:
@@ -15628,7 +15628,10 @@ def pylint(args):
                 log('Skip pylinting ' + pyfile + ' as it has not changed')
                 continue
         log('Running pylint on ' + pyfile + '...')
-        run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
+        # pylint must be executed from the mx modules path, otherwise it may
+        # prefer mx.py over src/mx
+        cwd = join(mx_path, '..')
+        run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, cwd=cwd, env=env)
         if timestamps_dir:
             ts.touch()
 
@@ -15679,7 +15682,8 @@ def _find_pyfiles(find_all, primary, walk):
     pyfiles = []
     # Process mxtool's own py files only if mx is the primary suite
     if primary_suite() is _mx_suite:
-        for root, _, files in os.walk(dirname(__file__)):
+        # the mx module is checked separately
+        for root, _, files in os.walk(join(dirname(__file__), '../../../oldnames')):
             for f in files:
                 if f.endswith('.py'):
                     pyfile = join(root, f)
@@ -15693,7 +15697,7 @@ def _find_pyfiles(find_all, primary, walk):
 
 def _get_env_with_pythonpath():
     env = os.environ.copy()
-    pythonpath = dirname(__file__)
+    pythonpath = join(dirname(__file__), '../..')
     for suite in suites(True):
         pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
     env['PYTHONPATH'] = pythonpath
