@@ -31,6 +31,7 @@ import logging
 import os
 
 import mx
+import mx_stoml
 
 class TomlParsingException(Exception):
     pass
@@ -56,8 +57,14 @@ def load_toml_from_fd(fd):
         # Try another library
         pass
 
-    # No other libraries to try, aborting
-    mx.abort("Could not find any suitable TOML library.")
+    # No other libraries to try, falling back to our simplified parser
+    try:
+        tree = mx_stoml.parse_fd(fd)
+        return {
+            'rule': tree,
+        }
+    except RuntimeError:
+        raise TomlParsingException()
 
 
 def whitespace_split_(inp):

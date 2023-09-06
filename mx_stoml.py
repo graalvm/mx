@@ -1,10 +1,13 @@
 
 from argparse import ArgumentParser
 
+def parse_fd(fd, path="<fd>"):
+    content = fd.read().decode('utf-8')
+    return parse_string(content, path=path)
+
 def parse_file(path):
   with open(path, "r") as f:
-    content = f.read()
-    return parse_string(content, path=path)
+    return parse_fd(f, path)
 
 def parse_string(content, path="<toml-string>"):
   parser = StomlParser()
