@@ -12122,7 +12122,7 @@ def maven_deploy(args):
                             gpg=args.gpg,
                             keyid=args.gpg_keyid,
                             generateJavadoc=generateJavadoc,
-                            generateDummyJavadoc=args.generate_javadoc,
+                            generateDummyJavadoc=args.dummy_javadoc,
                             deployRepoMetadata=args.with_suite_revisions_metadata)
         has_deployed_dist = True
     if not has_deployed_dist:
@@ -18787,7 +18787,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.46.0")  # GR-48450: The maven-deploy command can force generation of dummy javadoc.
+version = VersionSpec("6.46.1")  # GR-48450: Read the value of the right argument.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
