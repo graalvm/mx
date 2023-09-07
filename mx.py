@@ -15005,6 +15005,7 @@ def build(cmd_args, parser=None):
     parser.add_argument('--all', action='store_true', help='build all dependencies (not just default targets)')
     parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
+    parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored', metavar='<path>', default=None)
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -15100,6 +15101,7 @@ def build(cmd_args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
+    edges = []
 
     def _createTask(dep, edge):
         if dep.name in deps_w_deprecation_errors:
@@ -15120,8 +15122,31 @@ def build(cmd_args, parser=None):
     def _registerDep(src, dst, edge):
         lst = depsMap.setdefault(src, [])
         lst.append(dst)
+        edges.append((src, dst, edge.kind))
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
+
+    if args.graph_file:
+        with open(args.graph_file, 'w') as f:
+            f.write('digraph build_plan {\n')
+            f.write('rankdir=BT;\n')
+            f.write('node [shape=rect];\n')
+            f.write('splines=true;\n')
+            f.write('ranksep=1;\n')
+            for src, dst, kind in edges:
+                attributes = {}
+                if kind == DEP_BUILD or kind == DEP_ANNOTATION_PROCESSOR:
+                    attributes['style'] = 'dashed'
+                if kind == DEP_STANDARD:
+                    attributes['color'] = 'blue'
+                if kind == DEP_ANNOTATION_PROCESSOR:
+                    attributes['color'] = 'green'
+                f.write(f'"{src}" -> "{dst}"')
+                if attributes:
+                    attr_str = ', '.join((k + '="' + v + '"' for k, v in attributes.items()))
+                    f.write(f'[{attr_str}]')
+                f.write(';\n')
+            f.write('}')
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
