@@ -15005,7 +15005,7 @@ def build(cmd_args, parser=None):
     parser.add_argument('--all', action='store_true', help='build all dependencies (not just default targets)')
     parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
-    parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored', metavar='<path>', default=None)
+    parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored.\nIf the extension is ps, pdf, svg, png, git, or jpg, it will be rendered.', metavar='<path>', default=None)
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -15127,7 +15127,15 @@ def build(cmd_args, parser=None):
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
 
     if args.graph_file:
-        with open(args.graph_file, 'w') as f:
+        ext = get_file_extension(args.graph_file)
+        if ext == 'dot' or ext == '':
+            dot_file = args.graph_file
+        else:
+            known_formats = 'ps', 'pdf', 'svg', 'png', 'gif', 'jpg'
+            if ext not in known_formats:
+                raise abort("Unknown format for graph file. use one of .dot, " + ', '.join('.' + fmt for fmt in known_formats))
+            dot_file = args.graph_file + '.dot'
+        with open(dot_file, 'w') as f:
             f.write('digraph build_plan {\n')
             f.write('rankdir=BT;\n')
             f.write('node [shape=rect];\n')
@@ -15147,6 +15155,10 @@ def build(cmd_args, parser=None):
                     f.write(f'[{attr_str}]')
                 f.write(';\n')
             f.write('}')
+        if dot_file != args.graph_file:
+            log(f"Rendering {args.graph_file}...")
+            with open(args.graph_file, 'wb') as f:
+                run(['dot', '-T' + ext, dot_file], out=f)
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
