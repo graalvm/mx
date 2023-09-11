@@ -162,15 +162,47 @@ def summarize_owners(all_owners):
         "any": list(set(map(tuple, anyof_reviewers))),
     }
 
+def run_capture(args, must_succeed=True):
+    cmd_stdout = mx.OutputCapture()
+    cmd_stderr = mx.OutputCapture()
+    cmd_rc = mx.run(args, must_succeed, cmd_stdout, cmd_stderr)
+    return (cmd_rc, cmd_stdout.data, cmd_stderr.data)
+
+def git_diff_name_only(extra_args=None):
+    args = ['git', 'diff', '--name-only', '-z']
+    if extra_args:
+        args.extend(extra_args)
+    rc, out, errout = run_capture(args)
+    assert rc == 0
+    return list(filter(lambda x: x != '', out.split('\0')))
 
 @mx.command('mx', 'codeowners')
 def codeowners(args):
     """Code owners check"""
     parser = argparse.ArgumentParser(prog='mx codeowners')
     parser.add_argument('files', metavar='FILENAME', nargs='*', help='Filenames to list owners of')
+    parser.add_argument('-a', dest='all_changes', action='store_true', default=False)
+    parser.add_argument('-b', dest='upstream_branch', default=None)
     args = parser.parse_args(args)
 
+    if args.upstream_branch:
+        args.all_changes = True
+    else:
+        args.upstream_branch = 'master'
+
+    if args.all_changes and args.files:
+        mx.abort("Do not specify list of files with -b or -a")
+
+    # TODO: what is the right starting directory?
     owners = FileOwners('.')
+
+    if args.all_changes:
+        # Current modifications and all changes up to the upstream branch
+        args.files = git_diff_name_only([args.upstream_branch]) + git_diff_name_only()
+    elif not args.files:
+        # No arguments, query list of currently modified files
+        args.files = git_diff_name_only()
+
     file_owners = [owners.get_owners_of(f) for f in args.files]
     reviewers = summarize_owners(file_owners)
 
