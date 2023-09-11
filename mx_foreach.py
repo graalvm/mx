@@ -25,15 +25,30 @@
 # ----------------------------------------------------------------------------------------------------
 #
 import argparse
+import textwrap
+
 import mx
 
 
 @mx.command('mx', 'foreach-repo')
 def foreach_repo(args):
-    """Run a command in the root of all repos of imported suites."""
 
     parser = argparse.ArgumentParser(prog='mx foreach-repo',
-                                     description='''Run a command in the root of all repos of imported suites.''',
+                                     formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description=textwrap.dedent('''
+                                         Run a command in the root of all repos of imported suites.
+
+                                           Example:
+                                             $ mx foreach-repo pwd
+                                             Entering directory
+                                             Running: pwd
+                                             .../path/to/graalpython
+                                             Leaving directory
+                                             Entering directory
+                                             Running: pwd
+                                             .../path/to/graal
+                                             Leaving directory
+                                         '''.rstrip()),
                                      usage='%(prog)s [options] [--] command...')
     parser.add_argument('-n', '--dry-run', action='store_true', help='show what would be removed without actually doing anything')
 
