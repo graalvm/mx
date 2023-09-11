@@ -18495,6 +18495,7 @@ import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
 import mx_gc # pylint: disable=unused-import
 import mx_multiplatform # pylint: disable=unused-import
+import mx_foreach # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
@@ -18787,7 +18788,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.46.1")  # GR-48450: Read the value of the right argument.
+version = VersionSpec("6.47.0")  # for each repo
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
