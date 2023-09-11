@@ -11795,6 +11795,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         gpg=False,
                         keyid=None,
                         generateJavadoc=False,
+                        generateDummyJavadoc=False,
                         deployMapFiles=False,
                         deployRepoMetadata=False):
     if repo != maven_local_repository():
@@ -11864,7 +11865,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
                         tmpJavadocJar.close()
                         javadocPath = tmpJavadocJar.name
-                        if getattr(dist, "noMavenJavadoc", False):
+                        if getattr(dist, "noMavenJavadoc", False) or generateDummyJavadoc:
                             with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
                                 arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
                         else:
@@ -12052,7 +12053,9 @@ def maven_deploy(args):
     parser.add_argument('--skip', action='store', help='Comma-separated list of globs of distributions not to be deployed')
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
-    parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
+    javadoc_parser = parser.add_mutually_exclusive_group()
+    javadoc_parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
+    javadoc_parser.add_argument('--dummy-javadoc', action='store_true', help='Generate and deploy dummy javadocs, as if every distribution has `"noMavenJavadoc": True`')
     parser.add_argument('--all-distribution-types', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
     parser.add_argument('--all-distributions', help='Include all distributions, regardless of the maven flags.', action='store_true')
     version_parser = parser.add_mutually_exclusive_group()
@@ -12120,6 +12123,7 @@ def maven_deploy(args):
                             gpg=args.gpg,
                             keyid=args.gpg_keyid,
                             generateJavadoc=generateJavadoc,
+                            generateDummyJavadoc=args.dummy_javadoc,
                             deployRepoMetadata=args.with_suite_revisions_metadata)
         has_deployed_dist = True
     if not has_deployed_dist:
@@ -18492,6 +18496,7 @@ import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
 import mx_gc # pylint: disable=unused-import
 import mx_multiplatform # pylint: disable=unused-import
+import mx_foreach # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
@@ -18784,7 +18789,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.46.0")  # code owners
+version = VersionSpec("6.48.0")  # code owners
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
