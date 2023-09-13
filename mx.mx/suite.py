@@ -880,6 +880,9 @@ suite = {
     "com.oracle.mxtool.junit.jdk9" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
+      "dependencies" : [
+        "JUNIT",
+      ],
       "requiresConcealed" : {
         "java.base" : [
           "jdk.internal.module",
