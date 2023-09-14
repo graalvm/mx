@@ -92,6 +92,9 @@ class FileOwners:
         while filepath != '':
             (dirs, filename) = os.path.split(filepath)
             res.append(filepath)
+            # For absolute path on Unix, we end with '/'
+            if filepath == dirs:
+                break
             filepath = dirs
         return reversed(res)
 
@@ -123,7 +126,10 @@ class FileOwners:
     def _parse_ownership_from_files(self, files):
         for fo in files:
             try:
-                full_path = os.path.join(self.src, fo)
+                if os.path.isabs(fo):
+                    full_path = fo
+                else:
+                    full_path = os.path.join(self.src, fo)
                 with open(full_path, 'rb') as f:
                     for i in self._parse_ownership(f, full_path):
                         yield i
@@ -131,12 +137,13 @@ class FileOwners:
                 pass
 
     def get_owners_of(self, filepath):
-        components = ['.'] + list(self._get_path_components(filepath))
+        components = ([] if os.path.isabs(filepath) else ['.']) + list(self._get_path_components(filepath))
         filename = os.path.split(filepath)[1]
         owners_files = [
             os.path.join(i, 'OWNERS.toml')
             for i in components[:-1]
         ]
+        owners_files = [i for i in owners_files if os.path.commonprefix([i, self.src]) == self.src]
         result = {}
         ownership = self._parse_ownership_from_files(owners_files)
         for pat, owners, modifiers in ownership:
@@ -179,6 +186,13 @@ def _git_diff_name_only(extra_args=None):
     rc, out, errout = _run_capture(args)
     assert rc == 0
     return list(filter(lambda x: x != '', out.split('\0')))
+
+def _git_get_repo_root_or_cwd():
+    rc, out, errout = _run_capture(['git', 'rev-parse', '--show-toplevel'])
+    if rc != 0:
+        return '.'
+    else:
+        return out.rstrip('\n')
 
 _MX_CODEOWNERS_HELP = """Find code owners from OWNERS.toml files.
 
@@ -223,7 +237,8 @@ Note that we allow both explicit TOML arrays as well as implicit
 separator of whitespace when specifying list of owners or list
 of file patterns.
 
-When no rule matches, the tool searches in parent directories too.
+When no rule matches, the tool searches in parent directories too
+(up to nearest Git repository root).
 
 """
 
@@ -244,8 +259,7 @@ def codeowners(args):
     if args.all_changes and args.files:
         mx.abort("Do not specify list of files with -b or -a")
 
-    # TODO: what is the right starting directory?
-    owners = FileOwners('.')
+    owners = FileOwners(_git_get_repo_root_or_cwd())
 
     if args.all_changes:
         # Current modifications and all changes up to the upstream branch
@@ -254,7 +268,7 @@ def codeowners(args):
         # No arguments, query list of currently modified files
         args.files = _git_diff_name_only()
 
-    file_owners = [owners.get_owners_of(f) for f in args.files]
+    file_owners = [owners.get_owners_of(os.path.abspath(f)) for f in args.files]
     reviewers = _summarize_owners(file_owners)
 
     if reviewers['all']:
