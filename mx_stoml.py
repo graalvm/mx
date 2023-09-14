@@ -64,7 +64,7 @@ class _Streamer:
         return ""
 
     def pull(self, expected=None):
-        if expected == None:
+        if expected is None:
             self.slurp(1)
             return
         for i in range(0, len(expected)):
@@ -73,11 +73,11 @@ class _Streamer:
         self.slurp(len(expected))
 
     def pullSpaces(self):
-      while self.peek().isspace():
-        self.pull()
+        while self.peek().isspace():
+            self.pull()
 
     def slurp(self, count):
-        for i in range(0, count):
+        for _ in range(0, count):
             character = self.peek()
             if character == "\n" or character == "":
                 self.lines.append(self.line)
@@ -92,7 +92,7 @@ class _Streamer:
 class _StomlParser:
     def parse(self, path, content):
         rules = []
-        streamer = _Streamer(path, content);
+        streamer = _Streamer(path, content)
         self.root(streamer, rules)
         return rules
 
