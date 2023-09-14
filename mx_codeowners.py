@@ -234,6 +234,15 @@ by ci.master@oracle.com and another.ci.master@oracle.com.
 Similarly, *.md files are owned by doc.owner@oracle.com and
 release.manager@oracle.com.
 
+These rules are applied to files in the same directory (i.e. same
+as the one where this OWNERS.toml is stored) as well as to files
+matching the pattern in subdirectories. The pattern can be
+overridden by another OWNERS.toml in a subdirectory. In other words,
+ownership tries to find first matching rule, starting with file
+OWNERS.toml in current directory and traversing to parent ones.
+Directories without OWNERS.toml are skipped and search continues
+in their parent.
+
 Note that we allow both explicit TOML arrays as well as implicit
 separator of whitespace when specifying list of owners or list
 of file patterns.
