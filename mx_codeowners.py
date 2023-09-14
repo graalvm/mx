@@ -34,15 +34,19 @@ import mx
 import mx_stoml
 
 class _TomlParsingException(Exception):
-    pass
+    def __init__(self, cause):
+        self.cause = cause
+
+    def __str__(self):
+        return str(self.cause)
 
 def _load_toml_from_fd(fd):
     try:
         import tomllib
         try:
             return tomllib.load(fd)
-        except tomllib.TOMLDecodeError:
-            raise _TomlParsingException()
+        except tomllib.TOMLDecodeError as e:
+            raise _TomlParsingException(str(e))
     except ImportError:
         # Try another library
         pass
@@ -51,8 +55,8 @@ def _load_toml_from_fd(fd):
         import toml
         try:
             return toml.load(fd)
-        except toml.TomlDecodeError:
-            raise _TomlParsingException()
+        except toml.TomlDecodeError as e:
+            raise _TomlParsingException(e)
     except ImportError:
         # Try another library
         pass
@@ -63,8 +67,8 @@ def _load_toml_from_fd(fd):
         return {
             'rule': tree,
         }
-    except RuntimeError:
-        raise _TomlParsingException()
+    except RuntimeError as e:
+        raise _TomlParsingException(e)
 
 
 def _whitespace_split(inp):
@@ -113,8 +117,8 @@ class FileOwners:
                     for pat in rule['files']:
                         yield pat, mandatory_owners, "all"
 
-        except _TomlParsingException:
-            logging.warning("Ignoring invalid input from %s", name)
+        except _TomlParsingException as e:
+            logging.warning("Ignoring invalid input from %s: %s", name, e)
 
     def _parse_ownership_from_files(self, files):
         for fo in files:
