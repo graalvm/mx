@@ -206,7 +206,7 @@ Can be executed in three modes.
 
 * Without any arguments at all it prints owners of currently modified
   but unstaged files (for Git). In other words, it prints possible
-  reviewers for changed but uncomitted files. Internally uses
+  reviewers for changed but uncommitted files. Internally uses
   git diff --name-only to query list of files.
 
 * When -a or -b BRANCH is provided, it looks also for all files
