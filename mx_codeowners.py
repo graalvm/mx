@@ -197,11 +197,37 @@ Can be executed in three modes.
   pull request.
 """
 
+MX_CODEOWNERS_HELP2 = """The ownership is read from OWNERS.toml files that can be added to any
+directory. As an example, let us have a look at the following snippet.
+
+    [[rule]]
+    files = "*.jsonnet *.libsonnet"
+    any = [
+        "ci.master@oracle.com",
+        "another.ci.master@oracle.com",
+    ]
+    [[rule]]
+    files = "*.md"
+    any = "doc.owner@oracle.com release.manager@oracle.com"
+
+This says that files matching *.jsonnet and *.libsonnet are owned
+by ci.master@oracle.com and another.ci.master@oracle.com.
+Similarly, *.md files are owned by doc.owner@oracle.com and
+release.manager@oracle.com.
+
+Note that we allow both explicit TOML arrays as well as implicit
+separator of whitespace when specifying list of owners or list
+of file patterns.
+
+When no rule matches, the tool searches in parent directories too.
+
+"""
+
 @mx.command('mx', 'codeowners')
 def codeowners(args):
     """Find code owners from OWNERS.toml files."""
-    parser = argparse.ArgumentParser(prog='mx codeowners', formatter_class=argparse.RawTextHelpFormatter, description=MX_CODEOWNERS_HELP)
-    parser.add_argument('files', metavar='FILENAME', nargs='*', help='Filenames to list owners of')
+    parser = argparse.ArgumentParser(prog='mx codeowners', formatter_class=argparse.RawTextHelpFormatter, description=MX_CODEOWNERS_HELP, epilog=MX_CODEOWNERS_HELP2)
+    parser.add_argument('files', metavar='FILENAME', nargs='*', help='File names to list owners of (relative to current work dir).')
     parser.add_argument('-a', dest='all_changes', action='store_true', default=False, help='Print reviewers for this branch against master.')
     parser.add_argument('-b', dest='upstream_branch', metavar='BRANCH', default=None, help='Print reviewers for this branch against BRANCH.')
     args = parser.parse_args(args)
