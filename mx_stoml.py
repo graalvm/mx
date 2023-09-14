@@ -28,18 +28,18 @@
 from argparse import ArgumentParser
 
 def parse_fd(fd, path="<fd>"):
-    content = fd.read().decode('utf-8')
-    return parse_string(content, path=path)
+  content = fd.read().decode('utf-8')
+  return parse_string(content, path=path)
 
 def parse_file(path):
   with open(path, "r") as f:
     return parse_fd(f, path)
 
 def parse_string(content, path="<toml-string>"):
-  parser = StomlParser()
+  parser = _StomlParser()
   return parser.parse(path, content)
 
-class Streamer:
+class _Streamer:
   def __init__(self, path, content):
     self.path = path
     self.content = content
@@ -89,10 +89,10 @@ class Streamer:
         self.column = self.column + 1
       self.pos = self.pos + 1
 
-class StomlParser:
+class _StomlParser:
   def parse(self, path, content):
     rules = []
-    streamer = Streamer(path, content);
+    streamer = _Streamer(path, content);
     self.root(streamer, rules)
     return rules
 

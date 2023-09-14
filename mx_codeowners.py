@@ -33,16 +33,16 @@ import os
 import mx
 import mx_stoml
 
-class TomlParsingException(Exception):
+class _TomlParsingException(Exception):
     pass
 
-def load_toml_from_fd(fd):
+def _load_toml_from_fd(fd):
     try:
         import tomllib
         try:
             return tomllib.load(fd)
         except tomllib.TOMLDecodeError:
-            raise TomlParsingException()
+            raise _TomlParsingException()
     except ImportError:
         # Try another library
         pass
@@ -52,7 +52,7 @@ def load_toml_from_fd(fd):
         try:
             return toml.load(fd)
         except toml.TomlDecodeError:
-            raise TomlParsingException()
+            raise _TomlParsingException()
     except ImportError:
         # Try another library
         pass
@@ -64,16 +64,16 @@ def load_toml_from_fd(fd):
             'rule': tree,
         }
     except RuntimeError:
-        raise TomlParsingException()
+        raise _TomlParsingException()
 
 
-def whitespace_split_(inp):
+def _whitespace_split(inp):
     if isinstance(inp, str):
         return inp.split()
     else:
         return inp
 
-def is_some_item_in_set(items, the_set):
+def _is_some_item_in_set(items, the_set):
     for i in items:
         if i in the_set:
             return True
@@ -83,7 +83,7 @@ class FileOwners:
     def __init__(self, src_root):
         self.src = os.path.abspath(src_root)
 
-    def get_path_components(self, filepath):
+    def _get_path_components(self, filepath):
         res = []
         while filepath != '':
             (dirs, filename) = os.path.split(filepath)
@@ -91,9 +91,9 @@ class FileOwners:
             filepath = dirs
         return reversed(res)
 
-    def parse_ownership(self, fd, name):
+    def _parse_ownership(self, fd, name):
         try:
-            tree = load_toml_from_fd(fd)
+            tree = _load_toml_from_fd(fd)
             logging.debug("Tree is %s", tree)
             for rule in tree.get('rule', []):
                 if not 'files' in rule:
@@ -103,38 +103,38 @@ class FileOwners:
                     logging.warning("Ignoring rule %s in %s as it contains no owner specification", rule, name)
                     continue
 
-                rule['files'] = whitespace_split_(rule['files'])
-                optional_owners = whitespace_split_(rule.get('any', []))
+                rule['files'] = _whitespace_split(rule['files'])
+                optional_owners = _whitespace_split(rule.get('any', []))
                 if optional_owners:
                     for pat in rule['files']:
                         yield pat, optional_owners, "any"
-                mandatory_owners = whitespace_split_(rule.get('all', []))
+                mandatory_owners = _whitespace_split(rule.get('all', []))
                 if mandatory_owners:
                     for pat in rule['files']:
                         yield pat, mandatory_owners, "all"
 
-        except TomlParsingException:
+        except _TomlParsingException:
             logging.warning("Ignoring invalid input from %s", name)
 
-    def parse_ownership_from_files(self, files):
+    def _parse_ownership_from_files(self, files):
         for fo in files:
             try:
                 full_path = os.path.join(self.src, fo)
                 with open(full_path, 'rb') as f:
-                    for i in self.parse_ownership(f, full_path):
+                    for i in self._parse_ownership(f, full_path):
                         yield i
             except IOError:
                 pass
 
     def get_owners_of(self, filepath):
-        components = ['.'] + list(self.get_path_components(filepath))
+        components = ['.'] + list(self._get_path_components(filepath))
         filename = os.path.split(filepath)[1]
         owners_files = [
             os.path.join(i, 'OWNERS.toml')
             for i in components[:-1]
         ]
         result = {}
-        ownership = self.parse_ownership_from_files(owners_files)
+        ownership = self._parse_ownership_from_files(owners_files)
         for pat, owners, modifiers in ownership:
             if fnmatch.fnmatch(filename, pat):
                 if "all" in modifiers:
@@ -143,7 +143,7 @@ class FileOwners:
                     result["any"] = sorted(owners)
         return result
 
-def summarize_owners(all_owners):
+def _summarize_owners(all_owners):
     must_review = set()
     anyof_reviewers = []
 
@@ -154,7 +154,7 @@ def summarize_owners(all_owners):
     for owners in all_owners:
         if owners.get('any', []):
             # One reviewer is already present? Skip this completely
-            if not is_some_item_in_set(owners['any'], must_review):
+            if not _is_some_item_in_set(owners['any'], must_review):
                 anyof_reviewers.append(owners['any'])
 
     return {
@@ -162,21 +162,21 @@ def summarize_owners(all_owners):
         "any": list(set(map(tuple, anyof_reviewers))),
     }
 
-def run_capture(args, must_succeed=True):
+def _run_capture(args, must_succeed=True):
     cmd_stdout = mx.OutputCapture()
     cmd_stderr = mx.OutputCapture()
     cmd_rc = mx.run(args, must_succeed, cmd_stdout, cmd_stderr)
     return (cmd_rc, cmd_stdout.data, cmd_stderr.data)
 
-def git_diff_name_only(extra_args=None):
+def _git_diff_name_only(extra_args=None):
     args = ['git', 'diff', '--name-only', '-z']
     if extra_args:
         args.extend(extra_args)
-    rc, out, errout = run_capture(args)
+    rc, out, errout = _run_capture(args)
     assert rc == 0
     return list(filter(lambda x: x != '', out.split('\0')))
 
-MX_CODEOWNERS_HELP = """Find code owners from OWNERS.toml files.
+_MX_CODEOWNERS_HELP = """Find code owners from OWNERS.toml files.
 
 
 Can be executed in three modes.
@@ -197,7 +197,7 @@ Can be executed in three modes.
   pull request.
 """
 
-MX_CODEOWNERS_HELP2 = """The ownership is read from OWNERS.toml files that can be added to any
+_MX_CODEOWNERS_HELP2 = """The ownership is read from OWNERS.toml files that can be added to any
 directory. As an example, let us have a look at the following snippet.
 
     [[rule]]
@@ -226,7 +226,7 @@ When no rule matches, the tool searches in parent directories too.
 @mx.command('mx', 'codeowners')
 def codeowners(args):
     """Find code owners from OWNERS.toml files."""
-    parser = argparse.ArgumentParser(prog='mx codeowners', formatter_class=argparse.RawTextHelpFormatter, description=MX_CODEOWNERS_HELP, epilog=MX_CODEOWNERS_HELP2)
+    parser = argparse.ArgumentParser(prog='mx codeowners', formatter_class=argparse.RawTextHelpFormatter, description=_MX_CODEOWNERS_HELP, epilog=_MX_CODEOWNERS_HELP2)
     parser.add_argument('files', metavar='FILENAME', nargs='*', help='File names to list owners of (relative to current work dir).')
     parser.add_argument('-a', dest='all_changes', action='store_true', default=False, help='Print reviewers for this branch against master.')
     parser.add_argument('-b', dest='upstream_branch', metavar='BRANCH', default=None, help='Print reviewers for this branch against BRANCH.')
@@ -245,13 +245,13 @@ def codeowners(args):
 
     if args.all_changes:
         # Current modifications and all changes up to the upstream branch
-        args.files = git_diff_name_only([args.upstream_branch]) + git_diff_name_only()
+        args.files = _git_diff_name_only([args.upstream_branch]) + _git_diff_name_only()
     elif not args.files:
         # No arguments, query list of currently modified files
-        args.files = git_diff_name_only()
+        args.files = _git_diff_name_only()
 
     file_owners = [owners.get_owners_of(f) for f in args.files]
-    reviewers = summarize_owners(file_owners)
+    reviewers = _summarize_owners(file_owners)
 
     if reviewers['all']:
         print("Mandatory reviewers (all of these must review):")
@@ -261,4 +261,3 @@ def codeowners(args):
         print("Any-of reviewers (at least one from each line):")
         for i in reviewers['any']:
             print(" o", ' or '.join(i))
-
