@@ -3809,6 +3809,7 @@ import mx_proftool # pylint: disable=unused-import
 import mx_logcompilation # pylint: disable=unused-import
 import mx_downstream
 import mx_subst
+import mx_codeowners # pylint: disable=unused-import
 import mx_ideconfig # pylint: disable=unused-import
 import mx_ide_eclipse
 import mx_compdb
@@ -18788,7 +18789,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.48.0")  # GR-48461: Update codesnippet doclet.
+version = VersionSpec("6.49.0")  # code owners
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
