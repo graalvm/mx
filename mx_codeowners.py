@@ -35,6 +35,7 @@ import mx_stoml
 
 class _TomlParsingException(Exception):
     def __init__(self, cause):
+        Exception.__init__()
         self.cause = cause
 
     def __str__(self):
@@ -90,7 +91,7 @@ class FileOwners:
     def _get_path_components(self, filepath):
         res = []
         while filepath != '':
-            (dirs, filename) = os.path.split(filepath)
+            (dirs, _) = os.path.split(filepath)
             res.append(filepath)
             # For absolute path on Unix, we end with '/'
             if filepath == dirs:
@@ -183,12 +184,12 @@ def _git_diff_name_only(extra_args=None):
     args = ['git', 'diff', '--name-only', '-z']
     if extra_args:
         args.extend(extra_args)
-    rc, out, errout = _run_capture(args)
+    rc, out, _ = _run_capture(args)
     assert rc == 0
     return list(filter(lambda x: x != '', out.split('\0')))
 
 def _git_get_repo_root_or_cwd():
-    rc, out, errout = _run_capture(['git', 'rev-parse', '--show-toplevel'])
+    rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'])
     if rc != 0:
         return '.'
     else:
