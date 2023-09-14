@@ -176,13 +176,34 @@ def git_diff_name_only(extra_args=None):
     assert rc == 0
     return list(filter(lambda x: x != '', out.split('\0')))
 
+MX_CODEOWNERS_HELP = """Find code owners from OWNERS.toml files.
+
+
+Can be executed in three modes.
+
+* Without any options but with list of files: print owners of the
+  provided files. Example:
+
+    mx codeowners -- substratevm/LICENSE substratevm/ci/ci.jsonnet
+
+* Without any arguments at all it prints owners of currently modified
+  but unstaged files (for Git). In other words, it prints possible
+  reviewers for changed but uncomitted files. Internally uses
+  git diff --name-only to query list of files.
+
+* When -a or -b BRANCH is provided, it looks also for all files
+  modified with comparison to given BRANCH (or to master with -a
+  only). In other words, it prints possible reviewers for the whole
+  pull request.
+"""
+
 @mx.command('mx', 'codeowners')
 def codeowners(args):
-    """Code owners check"""
-    parser = argparse.ArgumentParser(prog='mx codeowners')
+    """Find code owners from OWNERS.toml files."""
+    parser = argparse.ArgumentParser(prog='mx codeowners', formatter_class=argparse.RawTextHelpFormatter, description=MX_CODEOWNERS_HELP)
     parser.add_argument('files', metavar='FILENAME', nargs='*', help='Filenames to list owners of')
-    parser.add_argument('-a', dest='all_changes', action='store_true', default=False)
-    parser.add_argument('-b', dest='upstream_branch', default=None)
+    parser.add_argument('-a', dest='all_changes', action='store_true', default=False, help='Print reviewers for this branch against master.')
+    parser.add_argument('-b', dest='upstream_branch', metavar='BRANCH', default=None, help='Print reviewers for this branch against BRANCH.')
     args = parser.parse_args(args)
 
     if args.upstream_branch:
