@@ -79,7 +79,7 @@ class _Streamer:
     def slurp(self, count):
         for _ in range(0, count):
             character = self.peek()
-            if character == "\n" or character == "":
+            if character in ("\n", ""):
                 self.lines.append(self.line)
                 self.line = ""
                 self.row = self.row + 1
