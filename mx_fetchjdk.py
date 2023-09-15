@@ -584,8 +584,8 @@ class _JdkBinary(object):
 
 
 _instantiate_filters = {
-    'jvmci': lambda value: re.sub(r"(?:.*)-(.*jvmci-b\d+).*|.*jvmci-(\d+\.\d+-b\d+).*", r"\1\2", value),
-    'jvmci-tag': lambda value: re.sub(r"(?:.*)-(.*jvmci-b\d+).*|.*(jvmci-\d+\.\d+-b\d+).*", r"\1\2", value)
+    'jvmci': lambda value: re.sub(r"(?:.*)-(.*-jvmci-b\d+).*|.*jvmci-(\d+\.\d+-b\d+).*", r"\1\2", value),
+    'jvmci-tag': lambda value: re.sub(r"(?:.*)-(.*-jvmci-b\d+).*|.*(jvmci-\d+\.\d+-b\d+).*", r"\1\2", value)
 }
 
 def _quote(value):
