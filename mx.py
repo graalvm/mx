@@ -18789,7 +18789,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.49.1")  # fetch-jdk labsjdk-ee-latest
+version = VersionSpec("6.50.0")  # GR-48667 Scan SuiteClasses for @AddExports
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

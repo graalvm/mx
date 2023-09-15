@@ -35,6 +35,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.junit.runners.Suite;
+
 import jdk.internal.module.Modules;
 
 class ModuleSupport {
@@ -45,7 +47,13 @@ class ModuleSupport {
         this.out = out;
     }
 
-    void processAddExportsAnnotations(Set<Class<?>> classes, Set<String> opened, Set<String> exported) {
+    void processAddExportsAnnotations(Set<Class<?>> requestClasses, Set<String> opened, Set<String> exported) {
+        Set<Class<?>> classes = new HashSet<>();
+
+        for (Class<?> cls : requestClasses) {
+            gatherClasses(cls, classes);
+        }
+
         Set<Class<?>> types = new HashSet<>();
         for (Class<?> cls : classes) {
             gatherSupertypes(cls, types);
@@ -63,6 +71,22 @@ class ModuleSupport {
                     } else {
                         out.printf("%s: Ignoring \"AddExports\" annotation without `String value` element: %s%n", cls.getName(), a);
                     }
+                }
+            }
+        }
+    }
+
+    /**
+     * Recursively looks through the given base class for {@code Suite.SuiteClasses} annotations and
+     * adds all classes to the set.
+     */
+    private void gatherClasses(Class<?> base, Set<Class<?>> classes) {
+        if (!classes.contains(base)) {
+            classes.add(base);
+            Suite.SuiteClasses annot = base.getDeclaredAnnotation(Suite.SuiteClasses.class);
+            if (annot != null) {
+                for (Class<?> cls : annot.value()) {
+                    gatherClasses(cls, classes);
                 }
             }
         }
