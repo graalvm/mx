@@ -9,6 +9,19 @@
       "url": "https://github.com/graalvm/graal-jvmci-8/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
     },
 
+    "labsjdk-ce-22": {
+      "filename": "labsjdk-{version}-{platform}",
+      "url": "https://github.com/graalvm/labs-openjdk/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
+    },
+    "labsjdk-ce-22:-debug": {
+      "filename": "labsjdk-{version}-debug-{platform}",
+      "url": "https://github.com/graalvm/labs-openjdk/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
+    },
+    "labsjdk-ce-22:-llvm": {
+      "filename": "labsjdk-{version}-sulong-{platform}",
+      "url": "https://github.com/graalvm/labs-openjdk/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
+    },
+
     "labsjdk-ce-(?P<major>\\d+)": {
       "filename": "labsjdk-{version}-{platform}",
       "url": "https://github.com/graalvm/labs-openjdk-{major}/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
