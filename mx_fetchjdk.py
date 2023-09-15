@@ -296,8 +296,16 @@ def _parse_args(args):
         Each keyword value can be processed by a filter by appending "|<filter>" to the keyword selector.
         The supported filters are:
 
-        jvmci        Extracts the first string that looks like a jvmci version (e.g. "8u302+05-jvmci-21.2-b01" -> "21.2-b01").
-        jvmci-tag    Extracts the first string that looks like a jvmci tag (e.g. "8u302+05-jvmci-21.2-b01" -> "jvmci-21.2-b01").
+        jvmci        Extracts the first string that looks like a jvmci version.
+                     Note that with JDK 21, the JVMCI version scheme changed. There are no more JVMCI major and minor versions.
+                     Instead, the full JDK version is considered part of the JVMCI version, e.g. "22.0.1+3-jvmci-b01".
+                     In that case, the {jvmci} keyword will return the same as the {jvmci-tag} keyword. Examples:
+                       "8u302+05-jvmci-21.2-b01" -> "21.2-b01"
+                       "prefix-22.0.1+3-jvmci-b01Suffix" -> "22.0.1+3-jvmci-b01"
+
+        jvmci-tag    Extracts the first string that looks like a jvmci tag. Examples:
+                       "8u302+05-jvmci-21.2-b01" -> "jvmci-21.2-b01"
+                       "prefix-22.0.1+3-jvmci-b01Suffix" -> "22.0.1+3-jvmci-b01"
 
         If jdk-binaries.<id> contains "(P?<" it will be interpreted as a regular expression and the named pattern(s)
         will be additional keywords for the template string (e.g. "major" in the example above).
@@ -576,8 +584,8 @@ class _JdkBinary(object):
 
 
 _instantiate_filters = {
-    'jvmci': lambda value: re.sub(r".*jvmci-(\d+\.\d+-b\d+).*", r"\1", value),
-    'jvmci-tag': lambda value: re.sub(r".*(jvmci-\d+\.\d+-b\d+).*", r"\1", value)
+    'jvmci': lambda value: re.sub(r"(?:.*)-(.*-jvmci-b\d+).*|.*jvmci-(\d+\.\d+-b\d+).*", r"\1\2", value),
+    'jvmci-tag': lambda value: re.sub(r"(?:.*)-(.*-jvmci-b\d+).*|.*(jvmci-\d+\.\d+-b\d+).*", r"\1\2", value)
 }
 
 def _quote(value):
