@@ -26,13 +26,13 @@ jobs:
       - name: Style dependencies
         run: |
           cat common.json |
-            jq -r '.deps.common.packages | to_entries[] | select(.key | startswith("pip:")) | (.key | split(":")[1]) + .value' |
+            jq -r '.pip | to_entries[] | .key + .value' |
             xargs pip install
       - run: pylint --version
       - name: Download and set up Eclipse dependency
         run: |
-          ECLIPSE_ORG_VERSION=$(cat common.json | jq -r '.downloads.eclipse.eclipse_org.version')
-          ECLIPSE_ORG_TIMESTAMP=$(cat common.json | jq -r '.downloads.eclipse.eclipse_org.timestamp')
+          ECLIPSE_ORG_VERSION=$(cat common.json | jq -r '.eclipse.short_version')
+          ECLIPSE_ORG_TIMESTAMP=$(cat common.json | jq -r '.eclipse.timestamp')
           wget --no-verbose https://archive.eclipse.org/eclipse/downloads/drops4/R-${ECLIPSE_ORG_VERSION}-${ECLIPSE_ORG_TIMESTAMP}/eclipse-SDK-${ECLIPSE_ORG_VERSION}-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
           tar -C ${{ github.workspace }}/.. -xf $ECLIPSE_TAR
       - name: mx gate

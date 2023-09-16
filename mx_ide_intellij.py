@@ -106,7 +106,8 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
 
 def intellij_read_sdks():
     sdks = dict()
-    if mx.is_linux() or mx.is_openbsd() or mx.is_sunos() or mx.is_windows():
+    # https://www.jetbrains.com/help/idea/2023.2/directories-used-by-the-ide-to-store-settings-caches-plugins-and-logs.html
+    if mx.is_linux() or mx.is_openbsd() or mx.is_sunos():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
@@ -117,6 +118,12 @@ def intellij_read_sdks():
           glob.glob(os.path.expanduser("~/Library/Application Support/JetBrains/IntelliJIdea*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
+    elif mx.is_windows():
+        xmlSdks = \
+            glob.glob(os.path.expandvars("%APPDATA%/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
+            glob.glob(os.path.expandvars("%APPDATA%/JetBrains/IntelliJIdea*/options/jdk.table.xml")) + \
+            glob.glob(os.path.expandvars("%LOCALAPPDATA%/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
+            glob.glob(os.path.expandvars("%LOCALAPPDATA%/JetBrains/IntelliJIdea*/options/jdk.table.xml"))
     else:
         mx.warn(f"Location of IntelliJ SDK definitions on {mx.get_os()} is unknown")
         return sdks
@@ -132,7 +139,12 @@ def intellij_read_sdks():
     xmlSdks.sort(key=verSort, reverse=True)
 
     sdk_version_regexes = {
-        intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|^(Oracle OpenJDK )?version\s+(.+)$|^([\d._]+)$'),
+        # Examples:
+        #   java version "21"
+        #   GraalVM version 21 (vendor name may change)
+        intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|'
+                                           r'^(?:.+ )?version\s+(.+)$|'
+                                           r'^([\d._]+)$'),
         intellij_python_sdk_type: re.compile(r'^Python\s+(.+)$'),
 
         # Examples:
@@ -170,7 +182,7 @@ def intellij_read_sdks():
             sdk_version = sdk.find("version").get("value")
             match = version_re.match(sdk_version)
             if match:
-                version = match.group(1)
+                version = next(filter(None, match.groups()), None)
                 lang = sdk_languages[kind]
                 if kind == intellij_python_sdk_type:
                     import mx_enter
