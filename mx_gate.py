@@ -706,13 +706,12 @@ def _run_gate(cleanArgs, args, tasks):
     with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
         if t:
             defaultBuildArgs = ['-p']
-            fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags # pylint: disable=unsupported-membership-test
-            # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
-            if not args.no_warning_as_error and fullbuild:
+            if not args.no_warning_as_error:
                 defaultBuildArgs += ['--warning-as-error']
             if not mx.get_env('JDT'):
                 defaultBuildArgs += ['--jdt=builtin']
             mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
+            fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags # pylint: disable=unsupported-membership-test
             if fullbuild:
                 gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
 
@@ -746,10 +745,6 @@ def _run_gate(cleanArgs, args, tasks):
         _spotbugs_strict_mode = args.strict_mode and mx.primary_suite().getMxCompatibility().gate_spotbugs_strict_mode()
         if t and mx.command_function('spotbugs')(['--strict-mode'] if _spotbugs_strict_mode else []) != 0:
             t.abort('FindBugs warnings were found')
-
-    with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
-        if t:
-            mx.command_function('verifylibraryurls')([])
 
     jacoco_exec = get_jacoco_dest_file()
     if exists(jacoco_exec):

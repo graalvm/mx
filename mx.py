@@ -65,7 +65,7 @@ from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
-from io import BytesIO, open as io_open
+from io import BytesIO, StringIO, open as io_open
 import fnmatch
 import operator
 import calendar
@@ -629,6 +629,8 @@ environment variables:
                                 "be stored in the parent directory of the repository containing the primary suite. This option "
                                 "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
         self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
+        self.add_argument('--multi-platform-layout-directories', action='store', help="Causes platform-dependent layout dir distribution to contain the union of the files from their declared platforms. "
+                                "Can be set to 'all' or to a comma-separated list of platforms.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -3807,6 +3809,7 @@ import mx_proftool # pylint: disable=unused-import
 import mx_logcompilation # pylint: disable=unused-import
 import mx_downstream
 import mx_subst
+import mx_codeowners # pylint: disable=unused-import
 import mx_ideconfig # pylint: disable=unused-import
 import mx_ide_eclipse
 import mx_compdb
@@ -4450,7 +4453,7 @@ def clean(args, parser=None):
         return _dependencies_opt_limit_to_suites(res)
 
     if args.dependencies is not None:
-        deps = [dependency(mx_subst.string_substitutions.substitute(name)) for name in args.dependencies.split(',')]
+        deps = resolve_targets(args.dependencies.split(','))
     else:
         deps = _collect_clean_dependencies()
 
@@ -6449,6 +6452,7 @@ Common causes:
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
         self._persist_linky_state()
+        self._persist_resource_entries_state()
 
     def getArchivableResults(self, use_relpath=True, single=False):
         for (p, n) in super(LayoutDistribution, self).getArchivableResults(use_relpath, single):
@@ -6502,6 +6506,8 @@ Common causes:
             return "LINKY_LAYOUT has changed"
         if not self._check_resources_file_list():
             return "fileListPurpose has changed"
+        if not self._check_resource_entries():
+            return "hashEntry or fileListEntry has changed"
         return None
 
     def _persist_layout(self):
@@ -6537,7 +6543,7 @@ Common causes:
         return False
 
     def _linky_state_file(self):
-        return join(self.suite.get_mx_output_dir(), 'linkyState', self.name)
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'linkyState', self.name)
 
     def _persist_linky_state(self):
         linky_state_file = self._linky_state_file()
@@ -6560,6 +6566,37 @@ Common causes:
         with open(linky_state_file) as fp:
             saved_pattern = fp.read()
         return saved_pattern == LayoutDistribution._linky.pattern
+
+    def _resource_entries_state_file(self):
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'resource_entries', self.name)
+
+    def _resource_entries_state(self):
+        if self.hashEntry is None and self.fileListEntry is None:
+            return None
+        return f"{self.hashEntry}\n{self.fileListEntry}"
+
+    def _persist_resource_entries_state(self):
+        state_file = self._resource_entries_state_file()
+        current_state = self._resource_entries_state()
+        if current_state is None:
+            if exists(state_file):
+                os.unlink(state_file)
+            return
+        ensure_dir_exists(dirname(state_file))
+        with open(state_file, 'w') as fp:
+            fp.write(current_state)
+
+    def _check_resource_entries(self):
+        state_file = self._resource_entries_state_file()
+        current_state = self._resource_entries_state()
+        if not exists(state_file):
+            return current_state is None
+        if current_state is None:
+            return False
+        with open(state_file) as fp:
+            saved_state = fp.read()
+        return saved_state == current_state
+
 
     def find_single_source_location(self, source, fatal_if_missing=True, abort_on_multiple=False):
         locations = self.find_source_location(source, fatal_if_missing=fatal_if_missing)
@@ -6665,16 +6702,90 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
         os.makedirs(os.path.abspath(os.path.dirname(sentinel)), exist_ok=True)
         with open(sentinel, 'w'):
             pass
+        self._persist_platforms_state()
+
+    def needsUpdate(self, newestInput):
+        reason = super().needsUpdate(newestInput)
+        if reason:
+            return reason
+        if not self._check_platforms():
+            return "--multi-platform-layout-directories changed"
+        return None
+
+    def _platforms_state_file(self):
+        return join(self.suite.get_mx_output_dir(self.platformDependent), 'platforms', self.name)
+
+    def _platforms_state(self):
+        if _opts.multi_platform_layout_directories is None or not self.platformDependent:
+            return None
+        canonical_platforms = sorted(set(_opts.multi_platform_layout_directories.split(',')))
+        return ','.join(canonical_platforms)
+
+    def _persist_platforms_state(self):
+        state_file = self._platforms_state_file()
+        current_state = self._platforms_state()
+        if current_state is None:
+            if exists(state_file):
+                os.unlink(state_file)
+            return
+        ensure_dir_exists(dirname(state_file))
+        with open(state_file, 'w') as fp:
+            fp.write(current_state)
+
+    def _check_platforms(self):
+        state_file = self._platforms_state_file()
+        current_state = self._platforms_state()
+        if not exists(state_file):
+            return current_state is None
+        if current_state is None:
+            return False
+        with open(state_file) as fp:
+            saved_state = fp.read()
+        return saved_state == current_state
 
     def getArchivableResults(self, use_relpath=True, single=False):
         if single:
             raise ValueError("{} only produces multiple output".format(self))
         output_dir = self.get_output()
+        contents = {}
         for dirpath, _, filenames in os.walk(output_dir):
             for filename in filenames:
                 file_path = join(dirpath, filename)
                 archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
+                contents[archive_path] = file_path
                 yield file_path, archive_path
+        if _opts.multi_platform_layout_directories and self.platformDependent:
+            if _opts.multi_platform_layout_directories == 'all':
+                requested_platforms = None
+            else:
+                requested_platforms = _opts.multi_platform_layout_directories.split(',')
+            local_os_arch = f"{get_os()}-{get_arch()}"
+            assert local_os_arch in output_dir
+            hashes = {}
+            def _hash(path):
+                if path not in hashes:
+                    hashes[path] = digest_of_file(path, 'sha1')
+                return hashes[path]
+            for platform in self.platforms:
+                if requested_platforms is not None and platform not in requested_platforms:
+                    continue
+                if local_os_arch == platform:
+                    continue
+                foreign_output = output_dir.replace(local_os_arch, platform)
+                if not isdir(foreign_output):
+                    raise abort(f"Missing {platform} output directory for {self.name} ({foreign_output})")
+                for dirpath, _, filenames in os.walk(foreign_output):
+                    for filename in filenames:
+                        file_path = join(dirpath, filename)
+                        archive_path = relpath(file_path, foreign_output) if use_relpath else basename(file_path)
+                        if archive_path in contents:
+                            if _hash(file_path) != _hash(contents[archive_path]):
+                                raise abort(f"""File from alternative platfrom is located in the same path but has different contents:
+- {contents[archive_path]}
+- {file_path}""")
+                        else:
+                            contents[archive_path] = file_path
+                        yield file_path, archive_path
 
     def remoteExtension(self):
         return 'sentinel'
@@ -8112,7 +8223,7 @@ class JavacCompiler(JavacLikeCompiler):
         else:
             if jdk.javaCompliance >= '9':
                 warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
-        if warningsAsErrors and lint != ['none']:
+        if warningsAsErrors and 'none' not in lint:
             # Some warnings cannot be disabled, such as those for jdk incubator modules.
             # When the linter is turned off, we also disable other warnings becoming errors to handle such cases.
             javacArgs.append('-Werror')
@@ -8592,7 +8703,7 @@ class Extractor(object, metaclass=ABCMeta):
     def create(src):
         if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz"):
             return TarExtractor(src)
-        if src.endswith(".zip"):
+        if src.endswith(".zip") or src.endswith(".jar"):
             return ZipExtractor(src)
         abort("Don't know how to extract the archive: " + src)
 
@@ -11684,6 +11795,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         gpg=False,
                         keyid=None,
                         generateJavadoc=False,
+                        generateDummyJavadoc=False,
                         deployMapFiles=False,
                         deployRepoMetadata=False):
     if repo != maven_local_repository():
@@ -11753,7 +11865,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
                         tmpJavadocJar.close()
                         javadocPath = tmpJavadocJar.name
-                        if getattr(dist, "noMavenJavadoc", False):
+                        if getattr(dist, "noMavenJavadoc", False) or generateDummyJavadoc:
                             with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
                                 arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
                         else:
@@ -11808,7 +11920,20 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                 jar_to_deploy = alt_jmd.jarpath
 
                     pushed_file = dist.prePush(jar_to_deploy)
-                    pushed_src_file = dist.prePush(dist.sourcesPath)
+                    if getattr(dist, "noMavenSources", False):
+                        tmpSourcesJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+                        tmpSourcesJar.close()
+                        pushed_src_file = tmpSourcesJar.name
+                        with zipfile.ZipFile(pushed_src_file, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                            with StringIO() as license_file_content:
+                                license_ids = dist.theLicense
+                                if not license_ids:
+                                    license_ids = dist.suite.defaultLicense
+                                for resolved_license in get_license(license_ids):
+                                    print(f'{resolved_license.name}    {resolved_license.url}\n', file=license_file_content)
+                                arc.writestr("LICENSE", license_file_content.getvalue())
+                    else:
+                        pushed_src_file = dist.prePush(dist.sourcesPath)
                     _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo,
                                          srcPath=pushed_src_file,
                                          settingsXml=settingsXml,
@@ -11879,10 +12004,16 @@ def _deploy_dists(uploader, dists, version_getter, snapshot_id, primary_revision
 
 def _match_tags(dist, tags):
     maven = getattr(dist, 'maven', False)
-    maven_tag = 'default'
+    maven_tag = {'default'}
     if isinstance(maven, dict) and 'tag' in maven:
         maven_tag = maven['tag']
-    return maven_tag in tags
+        if isinstance(maven_tag, str):
+            maven_tag = {maven_tag}
+        elif isinstance(maven_tag, list):
+            maven_tag = set(maven_tag)
+        else:
+            abort('Maven tag must be str or list[str]', context=dist)
+    return any(tag in maven_tag for tag in tags)
 
 def _file_name_match(dist, names):
     return any(fnmatch.fnmatch(dist.name, n) or fnmatch.fnmatch(dist.qualifiedName(), n) for n in names)
@@ -11922,10 +12053,14 @@ def maven_deploy(args):
     parser.add_argument('--skip', action='store', help='Comma-separated list of globs of distributions not to be deployed')
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
-    parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
+    javadoc_parser = parser.add_mutually_exclusive_group()
+    javadoc_parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
+    javadoc_parser.add_argument('--dummy-javadoc', action='store_true', help='Generate and deploy dummy javadocs, as if every distribution has `"noMavenJavadoc": True`')
     parser.add_argument('--all-distribution-types', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
     parser.add_argument('--all-distributions', help='Include all distributions, regardless of the maven flags.', action='store_true')
-    parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
+    version_parser = parser.add_mutually_exclusive_group()
+    version_parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
+    version_parser.add_argument('--version-suite', action='store', help='The name of a vm suite that provides the version string for deployment')
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
     parser.add_argument('--gpg-keyid', help='GPG keyid to use when signing files (implies --gpg)', default=None)
@@ -11940,10 +12075,11 @@ def maven_deploy(args):
         logv('Implicitly setting gpg to true since a keyid was specified')
 
     _mvn.check()
-    def versionGetter(suite):
+    def versionGetter(_suite):
         if args.version_string:
             return args.version_string
-        return suite.release_version(snapshotSuffix='SNAPSHOT')
+        s = suite(args.version_suite) if args.version_suite is not None else _suite
+        return s.release_version(snapshotSuffix='SNAPSHOT')
 
     if args.all_suites:
         _suites = suites()
@@ -11987,6 +12123,7 @@ def maven_deploy(args):
                             gpg=args.gpg,
                             keyid=args.gpg_keyid,
                             generateJavadoc=generateJavadoc,
+                            generateDummyJavadoc=args.dummy_javadoc,
                             deployRepoMetadata=args.with_suite_revisions_metadata)
         has_deployed_dist = True
     if not has_deployed_dist:
@@ -12640,7 +12777,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
-def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None):
+def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
@@ -12654,17 +12791,18 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
 
     mp_entries_set = set()
     mp_entries = []
-    for entry in entries:
-        if entry.isClasspathDependency() and entry.use_module_path():
-            if entry.get_declaring_module_name() and entry not in mp_entries_set:
-                mp_entries.append(entry)
-                mp_entries_set.add(entry)
-                # if a distribution is a module put all dependencies
-                # on the module path as well.
-                for mp_entry in classpath_entries(names=[entry]):
-                    if mp_entry in entries and mp_entry not in mp_entries_set:
-                        mp_entries.append(mp_entry)
-                        mp_entries_set.add(mp_entry)
+    if not force_cp:
+        for entry in entries:
+            if entry.isClasspathDependency() and entry.use_module_path():
+                if entry.get_declaring_module_name() and entry not in mp_entries_set:
+                    mp_entries.append(entry)
+                    mp_entries_set.add(entry)
+                    # if a distribution is a module put all dependencies
+                    # on the module path as well.
+                    for mp_entry in classpath_entries(names=[entry]):
+                        if mp_entry in entries and mp_entry not in mp_entries_set:
+                            mp_entries.append(mp_entry)
+                            mp_entries_set.add(mp_entry)
     if mp_entries:
         cp_entries = [e for e in entries if e not in mp_entries_set]
     else:
@@ -14768,6 +14906,60 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
                       'from within the plugins/ directory of an Eclipse IDE installation.')
     return ecj
 
+
+_special_build_targets = {}
+
+
+def register_special_build_target(name, target_enumerator, with_argument=False):
+    if name in _special_build_targets:
+        raise abort(f"Special build target {name} already registered")
+    _special_build_targets[name] = target_enumerator, with_argument
+
+
+def _platform_dependent_layout_dir_distributions():
+    for d in distributions(True):
+        if isinstance(d, LayoutDirDistribution) and d.platformDependent:
+            yield d
+
+
+def _maven_tag_distributions(tag):
+    for d in distributions(True):
+        if getattr(d, 'maven', False) and _match_tags(d, [tag]):
+            yield d
+
+
+register_special_build_target('PLATFORM_DEPENDENT_LAYOUT_DIR_DISTRIBUTIONS', _platform_dependent_layout_dir_distributions)
+register_special_build_target('MAVEN_TAG_DISTRIBUTIONS', _maven_tag_distributions, with_argument=True)
+
+
+def resolve_targets(names):
+    targets = []
+    for name in names:
+        expanded_name = mx_subst.string_substitutions.substitute(name)
+        if expanded_name[0] == '{' and expanded_name[-1] == '}':
+            special_target = expanded_name[1:-1]
+            idx = special_target.find(':')
+            if idx >= 0:
+                arg = special_target[idx + 1:]
+                special_target = special_target[:idx]
+            else:
+                arg = None
+            if special_target not in _special_build_targets:
+                raise abort(f"Unknown special build target: {special_target}")
+            target_enumerator, with_arg = _special_build_targets[special_target]
+            if with_arg and arg is None:
+                raise abort(f"Special build target {special_target} requires an argument: {{{special_target}:argument}}")
+            if not with_arg and arg is not None:
+                raise abort(f"Special build target {special_target} doesn't accept an argument")
+            if arg is not None:
+                targets.extend(target_enumerator(arg))
+            else:
+                targets.extend(target_enumerator())
+        else:
+            targets.append(dependency(expanded_name))
+    return targets
+
+
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
     global _gmake_cmd
@@ -14852,12 +15044,12 @@ def build(cmd_args, parser=None):
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
-        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in onlyDeps]
+        roots = resolve_targets(onlyDeps)
     elif args.dependencies is not None:
         if len(args.dependencies) == 0:
             abort('The value of the --dependencies argument cannot be the empty string')
         names = args.dependencies.split(',')
-        roots = [dependency(mx_subst.string_substitutions.substitute(name)) for name in names]
+        roots = resolve_targets(names)
     else:
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
@@ -16625,7 +16817,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if p.isJavaProject() and not is_multirelease_jar_overlay(p):
                 snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
-    snippetslib = library('CODESNIPPET-DOCLET_0.81').get_path(resolve=True)
+    snippetslib = library('CODESNIPPET-DOCLET_1.0').get_path(resolve=True)
 
     ap = []
     for sp in snippetsPatterns:
@@ -18303,6 +18495,8 @@ update_commands("mx", {
 import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
 import mx_gc # pylint: disable=unused-import
+import mx_multiplatform # pylint: disable=unused-import
+import mx_foreach # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
@@ -18595,7 +18789,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.40.1")  # Fix LayoutDirDistribution rebuild check
+version = VersionSpec("6.50.0")  # GR-48667 Scan SuiteClasses for @AddExports
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

@@ -135,13 +135,13 @@ suite = {
       "digest": "sha512:4365f4bbfeca6f61c4d27f89c5bb6aa2fcc88dab3eab4e26a97ddbc6cfc6c2a0a67949b9e3417e43851fb92e04e639b7eb19c8c00c91ddfca9f1a6df4ec7deef",
     },
 
-    "CODESNIPPET-DOCLET_0.81" : {
+    "CODESNIPPET-DOCLET_1.0" : {
       "maven" : {
         "groupId" : "org.apidesign.javadoc",
         "artifactId" : "codesnippet-doclet",
-        "version" : "0.81",
+        "version" : "1.0",
       },
-      "digest": "sha512:16b521dbf0ca497a0808b37d3f3304c21c89fc9739fae3afa05600f405142fdc2e0d9f200e428142ef6bb13d6ba48019c236c02eb1ec7dada34b9ee3f2b096d6",
+      "digest": "sha512:6d4d4cf1a59e200a05b11d03fe61656401ddf76cac8a4017d83c478381c5ac727922709c7d2c511281e89a7de636e3bf997bcb22e516232e0ba1f662d0413794",
     },
 
     "JUNIT" : {
@@ -880,6 +880,9 @@ suite = {
     "com.oracle.mxtool.junit.jdk9" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
+      "dependencies" : [
+        "JUNIT",
+      ],
       "requiresConcealed" : {
         "java.base" : [
           "jdk.internal.module",

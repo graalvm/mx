@@ -32,7 +32,7 @@ import time
 import re
 import pickle
 
-from os.path import join, exists, basename, dirname, isdir, islink, realpath
+from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
@@ -69,11 +69,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
     :param bool maven:
     :param bool useModulePath: put this distribution and all its dependencies on the module-path.
+    :param bool compress: compress jar entries of the main jar with deflate. The source zip is always compressed.
     :param dict[str, str] | None manifestEntries: Entries for the `META-INF/MANIFEST.MF` file.
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
                  javadocType="implementation", allowsJavadocWarnings=False, maven=True, useModulePath=False, stripConfigFileNames=None,
-                 stripMappingFileNames=None, manifestEntries=None, alwaysStrip=None, **kwArgs):
+                 stripMappingFileNames=None, manifestEntries=None, alwaysStrip=None, compress=False, **kwArgs):
         assert manifestEntries is None or isinstance(manifestEntries, dict)
         mx.Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         mx.ClasspathDependency.__init__(self, use_module_path=useModulePath, **kwArgs)
@@ -99,6 +100,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
+        self.compress = compress
         self.manifestEntries = dict([]) if manifestEntries is None else manifestEntries
         if stripConfigFileNames and alwaysStrip:
             mx.abort('At most one of the "strip" and "alwaysStrip" properties can be used on a distribution', context=self)
@@ -208,7 +210,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             self.original_path() + _staging_dir_suffix,
             self.sourcesPath + _staging_dir_suffix,
             self._stripped_path(),
-            self.strip_mapping_file()
+            self.strip_mapping_file(),
+            self._config_save_file(),
         ]
         jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance >= '9':
@@ -309,8 +312,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         unified = self.original_path() == self.sourcesPath
         exploded = self._is_exploded()
 
-        bin_archive = _Archive(self, self.original_path(), exploded)
-        src_archive = _Archive(self, self.sourcesPath, exploded) if not unified else bin_archive
+        bin_archive = _Archive(self, self.original_path(), exploded, zipfile.ZIP_DEFLATED if self.compress else zipfile.ZIP_STORED)
+        src_archive = _Archive(self, self.sourcesPath, exploded, zipfile.ZIP_DEFLATED) if not unified else bin_archive
 
         bin_archive.clean()
         src_archive.clean()
@@ -321,6 +324,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         latest_bin_archive = join(self.suite.get_output_root(False, False), "dists", os.path.basename(bin_archive.path))
         _stage_file_impl(bin_archive.path, latest_bin_archive)
 
+        with mx.open(self._config_save_file(), 'w') as fp:
+            fp.write(self._config_as_json())
+
         self.notify_updated()
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
@@ -328,12 +334,6 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
             if jmd:
                 setattr(self, '.javaModule', jmd)
-                mi_file = self._module_info_save_file()
-                with mx.open(mi_file, 'w') as fp:
-                    fp.write(self._module_info_as_json())
-                dependency_file = self._jmod_build_jdk_dependency_file()
-                with mx.open(dependency_file, 'w') as fp:
-                    fp.write(jdk.home)
 
         if self.is_stripped():
             self.strip_jar()
@@ -568,26 +568,44 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             if self.is_stripped():
                 yield self.strip_mapping_file(), self.default_filename() + JARDistribution._strip_map_file_suffix
 
-    def _jmod_build_jdk_dependency_file(self):
+    def _config_save_file(self) -> str:
         """
-        Gets the path to the file recording the JAVA_HOME of the JDK last used to
-        build the modular jar for this distribution.
+        Gets the path to the file saving :meth:`_config_as_json`.
         """
-        return self.original_path() + '.jdk'
+        return self.original_path() + ".json"
 
-    def _module_info_save_file(self):
+    def _config_as_json(self) -> str:
         """
-        Gets the path to the file saving `_module_info_as_json()`.
+        Creates a sorted json dump of attributes that trigger a rebuild when they're changed (see :meth:`needsUpdate`).
         """
-        return self.original_path() + '.module-info'
+        config = {}
 
-    def _module_info_as_json(self):
-        """
-        Gets the moduleInfo attribute(s) as sorted json.
-        """
+        def add_attribute(key, value):
+            """
+            Adds an attribute to the config dict and makes sure no entry is
+            overwritten, because otherwise attributes are ignored when checking
+            for updated.
+            """
+            assert key not in config, f"Duplicate value in distribution config: {key}"
+            config[key] = value
+
+        # The `exclude` list can change the jar file contents and needs to trigger a rebuild
+        add_attribute("excludedLibs", list(map(str, self.excludedLibs)))
+
+        compliance = self._compliance_for_build()
+        if compliance is not None and compliance >= '9':
+            if mx.get_java_module_info(self):
+                # Module info change triggers a rebuild.
+                for name in dir(self):
+                    if name == 'moduleInfo' or name.startswith('moduleInfo:'):
+                        add_attribute(name, getattr(self, name))
+
+                # The jmod file needs to be rebuilt if a different JDK was used previously
+                jdk = mx.get_jdk(compliance)
+                add_attribute("jdk", str(jdk.home))
+
         import json
-        module_infos = {name:getattr(self, name) for name in dir(self) if name == 'moduleInfo' or name.startswith('moduleInfo:')}
-        return json.dumps(module_infos, sort_keys=True, indent=2)
+        return json.dumps(config, sort_keys=True, indent=2)
 
     def needsUpdate(self, newestInput):
         res = mx._needsUpdate(newestInput, self.path)
@@ -617,31 +635,26 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 res = mx._needsUpdate(self.original_path(), pickle_path)
                 if res:
                     return res
-                jdk = mx.get_jdk(compliance)
 
-                # Rebuild if module info changed
-                mi_file = self._module_info_save_file()
-                if exists(mi_file):
-                    module_info = self._module_info_as_json()
-                    with mx.open(mi_file) as fp:
-                        saved_module_info = fp.read()
-                    if module_info != saved_module_info:
-                        import difflib
-                        mx.log(f'{self} module info changed:' + os.linesep + ''.join(difflib.unified_diff(saved_module_info.splitlines(1), module_info.splitlines(1))))
-                        return 'module-info changed'
-
-                # Rebuild the jmod file if different JDK used previously
-                dependency_file = self._jmod_build_jdk_dependency_file()
-                if exists(dependency_file):
-                    with mx.open(dependency_file) as fp:
-                        last_build_jdk = fp.read()
-                    if last_build_jdk != jdk.home:
-                        return f'build JDK changed from {last_build_jdk} to {jdk.home}'
                 try:
                     with open(pickle_path, 'rb') as fp:
                         pickle.load(fp)
                 except ValueError as e:
                     return f'Bad or incompatible module pickle: {e}'
+
+        # Rebuild if the saved config file changed or doesn't exist
+        config_file = self._config_save_file()
+        if exists(config_file):
+            current_config = self._config_as_json()
+            with mx.open(config_file) as fp:
+                saved_config = fp.read()
+            if current_config != saved_config:
+                import difflib
+                mx.log(f'{self} distribution config changed:' + os.linesep + ''.join(difflib.unified_diff(saved_config.splitlines(True), current_config.splitlines(True))))
+                return f'{config_file} changed'
+        else:
+            return f'{config_file} does not exist'
+
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
@@ -782,9 +795,9 @@ class _ArchiveStager(object):
             else:
                 self.add_service_providers(service_or_version, providers)
 
-        self.bin_archive.finalize_archive_or_directory(self.manifest, zipfile.ZIP_STORED)
+        self.bin_archive.finalize_archive_or_directory(self.manifest)
         if self.bin_archive is not self.src_archive:
-            self.src_archive.finalize_archive_or_directory(None, zipfile.ZIP_DEFLATED)
+            self.src_archive.finalize_archive_or_directory(None)
 
     def close_archiveparticipant(self, a):
         """
@@ -873,14 +886,13 @@ class _ArchiveStager(object):
                                 if self.versioned_meta_inf_re.match(arcname):
                                     mx.warn(f"META-INF resources can not be versioned ({arcname} from {jar_path}). The resulting JAR will be invalid.")
 
-    def add_file(self, dep, base_dir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
+    def add_file(self, dep, filepath, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
         """
-        Adds the contents of the file `base_dir`/`relpath` to `self.bin_archive.staging_dir`
+        Adds the contents of the file `filepath` to `self.bin_archive.staging_dir`
         under the path formed by concatenating `archivePrefix` with `relpath`.
 
         :param Dependency dep: the Dependency owning the file
         """
-        filepath = join(base_dir, relpath)
         arcname = join(archivePrefix, relpath).replace(os.sep, '/')
         assert arcname[-1] != '/'
         if arcnameCheck is not None and not arcnameCheck(arcname):
@@ -1037,7 +1049,8 @@ class _ArchiveStager(object):
                             self.bin_archive.entries[dirEntry] = dirEntry
                         else:
                             relpath = join(reldir, f)
-                            self.add_file(dep, outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
+                            filepath = join(root, f)
+                            self.add_file(dep, filepath, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
 
             add_classes(archivePrefix, includeServices=True)
             sourceDirs = p.source_dirs()
@@ -1064,12 +1077,11 @@ class _ArchiveStager(object):
             outputDir = dep.output_dir()
             for f in dep.getResults():
                 relpath = dep.get_relpath(f, outputDir)
-                self.add_file(dep, outputDir, relpath, archivePrefix)
+                self.add_file(dep, f, relpath, archivePrefix)
         elif dep.isLayoutDirDistribution():
             mx.logv('[' + original_path + ': adding contents of layout dir distribution ' + dep.name + ']')
-            output = realpath(dep.get_output())
-            for _, p in dep.getArchivableResults():
-                self.add_file(dep, output, p, '')
+            for file_path, arc_name in dep.getArchivableResults():
+                self.add_file(dep, file_path, arc_name, '')
         elif dep.isClasspathDependency():
             mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
             jarPath = dep.classpath_repr(resolve=True)
@@ -1139,12 +1151,13 @@ class _Archive(object):
     The path to a distribution's archive and its staging directory as well as the metadata for
     entries in the staging directory.
     """
-    def __init__(self, dist, path, exploded):
+    def __init__(self, dist, path, exploded, compression):
         self.dist = dist
         self.path = path
         self.exploded = exploded
         self.staging_dir = path if exploded else mx.ensure_dir_exists(path + _staging_dir_suffix)
         self.entries = {} # Map from archive entry names to _ArchiveEntry objects
+        self.compression = compression
 
     def clean(self):
         path = self.path
@@ -1172,7 +1185,7 @@ class _Archive(object):
                 # Remove jar file
                 os.remove(path)
 
-    def finalize_archive_or_directory(self, manifest, compression):
+    def finalize_archive_or_directory(self, manifest):
         """
         Creates the archive in `self.path` from the files in `self.staging_dir` or, if `exploded` is True,
         make `self.path` be equivalent to `self.staging_dir` either by symlinking or copying it.
@@ -1194,7 +1207,7 @@ class _Archive(object):
                 with open(os.path.join(metainf, 'MANIFEST.MF'), 'w') as f:
                     f.write(manifest_contents)
         else:
-            with zipfile.ZipFile(self.path, 'w', compression=compression) as zf:
+            with zipfile.ZipFile(self.path, 'w', compression=self.compression) as zf:
                 if manifest_contents:
                     zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
 
@@ -1219,7 +1232,7 @@ class _Archive(object):
                         with open(filepath, 'rb') as fp:
                             contents = fp.read()
                         info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(filepath))[:6])
-                        info.compress_type = compression
+                        info.compress_type = self.compression
                         info.external_attr = S_IMODE(os.stat(filepath).st_mode) << 16
                         zf.writestr(info, contents)
 
