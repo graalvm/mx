@@ -5747,9 +5747,13 @@ class AbstractTARDistribution(AbstractDistribution):
         tgz = f + '.gz'
         logv(f'Compressing {f}...')
         if AbstractTARDistribution._has_gzip():
-            with open(tgz, 'wb') as tar:
-                # force, quiet, cat to stdout
-                run([AbstractTARDistribution._gzip_binary(), '-f', '-q', '-c', f], out=tar)
+            def _compress_with_gzip(quiet, nonZeroIsFatal):
+                with open(tgz, 'wb') as tar:
+                    # force, optionally quiet, cat to stdout
+                    return run([AbstractTARDistribution._gzip_binary(), '-f'] + (['-q'] if quiet else []) + ['-c', f], out=tar, nonZeroIsFatal=nonZeroIsFatal)
+            if _compress_with_gzip(True, False) != 0:
+                # if the first execution failed, try again not in quiet mode to see possible error messages on stderr
+                _compress_with_gzip(False, True)
         else:
             with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
                 shutil.copyfileobj(tar, gz)
@@ -18789,7 +18793,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.50.1")  # GR-47930 - Improve SDK lookup in intellijinit.
+version = VersionSpec("6.50.2")  # GR-48785 - Error messages during compression.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
