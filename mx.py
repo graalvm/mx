@@ -18830,7 +18830,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.50.2")  # GR-48785 - Error messages during compression.
+version = VersionSpec("6.50.3")  # build graph
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
