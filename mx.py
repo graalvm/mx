@@ -15128,7 +15128,7 @@ def build(cmd_args, parser=None):
 
     if args.graph_file:
         ext = get_file_extension(args.graph_file)
-        if ext == 'dot' or ext == '':
+        if ext in ('dot', ''):
             dot_file = args.graph_file
         else:
             known_formats = 'ps', 'pdf', 'svg', 'png', 'gif', 'jpg'
@@ -15143,7 +15143,7 @@ def build(cmd_args, parser=None):
             f.write('ranksep=1;\n')
             for src, dst, kind in edges:
                 attributes = {}
-                if kind == DEP_BUILD or kind == DEP_ANNOTATION_PROCESSOR:
+                if kind in (DEP_BUILD, DEP_ANNOTATION_PROCESSOR):
                     attributes['style'] = 'dashed'
                 if kind == DEP_STANDARD:
                     attributes['color'] = 'blue'
