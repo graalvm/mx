@@ -3830,7 +3830,12 @@ def get_mx_path():
     return join(_mx_home, 'mx')
 
 
+# Location of mx repo
 _mx_home = realpath(dirname(__file__) + '/../../..')
+# Location of the source folder
+_src_path = join(_mx_home, "src")
+# Location of the mx package
+_pkg_path = join(_src_path, "mx")
 _mx_path = 'mx' if _mx_home in os.environ.get('PATH', '').split(os.pathsep) else get_mx_path()
 
 
@@ -15617,9 +15622,8 @@ def pylint(args):
             rmtree(timestamps_dir)
         ensure_dir_exists(timestamps_dir)
 
-    mx_path = dirname(__file__)
     if primary_suite() is _mx_suite:
-        run([pylint_exe, '--reports=n', '--disable=cyclic-import', '--rcfile=' + rcfile, mx_path] + additional_options, env=env)
+        run([pylint_exe, '--reports=n', '--disable=cyclic-import', '--rcfile=' + rcfile, _pkg_path] + additional_options, env=env)
 
     for pyfile in pyfiles:
         if timestamps_dir:
@@ -15630,7 +15634,7 @@ def pylint(args):
         log('Running pylint on ' + pyfile + '...')
         # pylint must be executed from the mx modules path, otherwise it may
         # prefer mx.py over src/mx
-        cwd = join(mx_path, '..')
+        cwd = _src_path
         run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, cwd=cwd, env=env)
         if timestamps_dir:
             ts.touch()
@@ -15682,12 +15686,12 @@ def _find_pyfiles(find_all, primary, walk):
     pyfiles = []
     # Process mxtool's own py files only if mx is the primary suite
     if primary_suite() is _mx_suite:
-        # the mx module is checked separately
-        for root, _, files in os.walk(join(dirname(__file__), '../../../oldnames')):
-            for f in files:
-                if f.endswith('.py'):
-                    pyfile = join(root, f)
-                    pyfiles.append(pyfile)
+        # Only include the files directly in the src directory (not nested
+        # deeper), the mx package files are checked separately
+        for f in os.listdir(_src_path):
+            if f.endswith('.py'):
+                pyfile = join(_src_path, f)
+                pyfiles.append(pyfile)
     else:
         if walk:
             findfiles_by_walk(pyfiles)
@@ -15697,7 +15701,7 @@ def _find_pyfiles(find_all, primary, walk):
 
 def _get_env_with_pythonpath():
     env = os.environ.copy()
-    pythonpath = join(dirname(__file__), '../..')
+    pythonpath = _src_path
     for suite in suites(True):
         pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
     env['PYTHONPATH'] = pythonpath

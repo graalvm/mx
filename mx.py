@@ -10,15 +10,15 @@ from pathlib import Path
 
 def patch_path():
     """
-    Prepends the location of the main mx package as well as the `oldnames`
-    directory to `sys.path`.
+    Prepends the location of the main mx package and the legacy files to
+    `sys.path`.
 
-    We prepend because otherwise this file is recognized as the `mx` module and
-    not `src/mx`.
+    We prepend, because otherwise this file is recognized as the `mx` module
+    and not `src/mx`.
     """
     base_dir = Path(__file__).parent.absolute()
-    # Include the parent directory of this script in the python path variable,
-    # then allow loading of the mx module
+    # Include the sibling directory 'src' of this script in the python search
+    # path, this allows loading of the mx module
     sys.path.insert(0, str(base_dir / 'src'))
 
 
