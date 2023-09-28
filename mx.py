@@ -619,7 +619,7 @@ environment variables:
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars to be used instead of default versions')
-        self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
+        self.add_argument('--strip-jars', action='store_true', default=env_var_to_bool('MX_STRIP_JARS'), help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
         self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
