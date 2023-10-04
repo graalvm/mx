@@ -27,5 +27,5 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_fetchjdk import *
 
-import mx._impl.mx_fetchjdk as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_fetchjdk import __all__ as _fetchjdk_symbols
+__all__ = _fetchjdk_symbols

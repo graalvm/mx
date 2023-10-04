@@ -27,5 +27,5 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_urlrewrites import *
 
-import mx._impl.mx_urlrewrites as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_urlrewrites import __all__ as _urlrewrites_symbols
+__all__ = _urlrewrites_symbols

@@ -27,5 +27,5 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_native import *
 
-import mx._impl.mx_native as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_native import __all__ as _native_symbols
+__all__ = _native_symbols

@@ -27,5 +27,5 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_pomdistribution import *
 
-import mx._impl.mx_pomdistribution as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_pomdistribution import __all__ as _pomdistribution_symbols
+__all__ = _pomdistribution_symbols

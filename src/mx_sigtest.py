@@ -27,5 +27,5 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_sigtest import *
 
-import mx._impl.mx_sigtest as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_sigtest import __all__ as _sigtest_symbols
+__all__ = _sigtest_symbols

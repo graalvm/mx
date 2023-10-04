@@ -27,5 +27,5 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_cmake import *
 
-import mx._impl.mx_cmake as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_cmake import __all__ as _cmake_symbols
+__all__ = _cmake_symbols

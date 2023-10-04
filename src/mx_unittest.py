@@ -29,9 +29,9 @@ from mx._impl.mx_unittest import *
 # pylint: disable=unused-import
 from mx._impl.mx_unittest import Action, _run_tests, _VMLauncher, _config_participants
 
-import mx._impl.mx_unittest as _orig
+from mx._impl.mx_unittest import __all__ as _unittest_symbols
 
 # TODO: [GR-48911] Users should rather use argparse.Action
 __legacy__ = ["Action"]
 
-__all__ = _orig.__all__+ __legacy__
+__all__ = _unittest_symbols + __legacy__

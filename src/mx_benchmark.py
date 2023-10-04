@@ -32,5 +32,5 @@ from mx._impl.mx_benchmark import (
     _add_opens_and_exports_from_manifest,
 )
 
-import mx._impl.mx_benchmark as _orig
-__all__ = _orig.__all__
+from mx._impl.mx_benchmark import __all__ as _benchmark_symbols
+__all__ = _benchmark_symbols
