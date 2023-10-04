@@ -163,6 +163,8 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         cmake_config = self.cmake_config()
         if extra_cmake_config:
             cmake_config.extend(extra_cmake_config)
+        if mx._opts.extra_cmake_arg:
+            cmake_config.extend(mx._opts.extra_cmake_arg)
 
         # explicitly set ninja executable if not on path
         cmake_make_program = 'CMAKE_MAKE_PROGRAM'
