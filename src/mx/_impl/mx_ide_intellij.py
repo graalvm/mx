@@ -75,7 +75,13 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     declared_modules = set()
     referenced_modules = set()
     sdks = intellij_read_sdks()
-    for suite in mx.suites(True) + ([mx._mx_suite] if mx_python_modules else []):
+
+    suites = mx.suites(True)
+
+    if mx_python_modules and mx._mx_suite not in suites:
+        suites.append(mx._mx_suite)
+
+    for suite in suites:
         _intellij_suite(args, suite, declared_modules, referenced_modules, sdks, refreshOnly, mx_python_modules,
                         generate_external_projects, java_modules and not suite.isBinarySuite(), suite != mx.primary_suite(),
                         generate_native_projects=native_projects)
@@ -84,17 +90,16 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
         mx.abort(f'Some referenced modules are missing from modules.xml: {referenced_modules - declared_modules}')
 
     if mx_python_modules:
-        # mx module
+        # Module for the MX source code and tests
         moduleXml = mx.XMLDoc()
         moduleXml.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
         moduleXml.element('exclude-output')
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
-        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
-        for d in set((p.subDir for p in mx._mx_suite.projects if p.subDir)):
-            moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
-        if dirname(mx._mx_suite.get_output_root()) == mx._mx_suite.dir:
-            moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + basename(mx._mx_suite.get_output_root())})
+        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/src', 'isTestSource': 'false'})
+        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/tests', 'isTestSource': 'true'})
+        # Ignore all other sources because there are some conflicting files in the project root folder
+        moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$'})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, 'mx')})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
@@ -583,13 +588,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
         moduleXml.element('exclude-output')
 
-        if s.name == 'mx':
-            # MX itself is special. Python sources are also in the parent folder.
-            moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$/..'})
-            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/..', 'isTestSource': 'false'})
-        else:
-            moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
-            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(s.mxDir, module_dir), 'isTestSource': 'false'})
+        moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
+        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(s.mxDir, module_dir), 'isTestSource': 'false'})
         for d in os.listdir(s.mxDir):
             directory = join(s.mxDir, d)
             if isdir(directory) and mx.dir_contains_files_recursively(directory, r".*\.java"):
@@ -612,7 +612,13 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         moduleFile = join(module_dir, iml_file)
         mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
         _add_declared_module(s)
-        _add_declared_module(mx._mx_suite)
+        if s != mx._mx_suite:
+            _add_declared_module(mx._mx_suite)
+
+        if not module_files_only:
+            mxModuleFile = join(mx._mx_suite.dir, basename(mx._mx_suite.dir) + '.iml')
+            moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, project_dir)
+            modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if generate_native_projects:
         _intellij_native_projects(s, module_files_only, declared_modules, modulesXml)
