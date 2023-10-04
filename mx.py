@@ -18831,7 +18831,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.50.3")  # build graph
+version = VersionSpec("6.51.0")  # GR-49282 mx cmake features and tar.bz2 support
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
