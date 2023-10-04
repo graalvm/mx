@@ -8705,7 +8705,7 @@ class Extractor(object, metaclass=ABCMeta):
 
     @staticmethod
     def create(src):
-        if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz"):
+        if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz") or src.endswith(".tar.bz2") or src.endswith(".tbz2"):
             return TarExtractor(src)
         if src.endswith(".zip") or src.endswith(".jar"):
             return ZipExtractor(src)
