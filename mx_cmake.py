@@ -44,6 +44,8 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         cmakeConfig: dict, optional
             Additional arguments passed to CMake in the form '-D{key}={value}'.
             Path substitution is performed on the values.
+        cmakePreset: str, optional
+            The CMake preset to use.
         cmakeSubdir: str, optional
             Subdirectory of sourceDir that contains the CMakeLists.txt. If omitted, CMakeLists.txt is assumed to be in sourceDir.
         symlinkSource: bool, optional
@@ -73,6 +75,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
         self.silent = not cmake_show_warnings
         self._cmake_config_raw = args.pop('cmakeConfig', {})
+        self._cmake_preset = args.pop('cmakePreset', None)
         self.buildDependencies += extraBuildDeps
         if self._cmake_toolchain:
             self.buildDependencies += [self._cmake_toolchain]
@@ -117,7 +120,10 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         return {"CMAKE_TOOLCHAIN_FILE": mx.join(tc.get_output(), 'cmake', 'toolchain.cmake') for tc in [self._cmake_toolchain] if tc}
 
     def cmake_config(self):
-        return [CMakeNinjaProject.config_entry(k, v) for k, v in sorted({**self._cmake_config_raw, **self._toolchain_config()}.items())]
+        cfgArgs = [CMakeNinjaProject.config_entry(k, v) for k, v in sorted({**self._cmake_config_raw, **self._toolchain_config()}.items())]
+        if self._cmake_preset:
+            cfgArgs = ["--preset", self._cmake_preset] + cfgArgs
+        return cfgArgs
 
     def sourceDir(self, create=False):
         src_dir = self.source_dirs()[0]
@@ -163,6 +169,8 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         cmake_config = self.cmake_config()
         if extra_cmake_config:
             cmake_config.extend(extra_cmake_config)
+        if mx._opts.extra_cmake_arg:
+            cmake_config.extend(mx._opts.extra_cmake_arg)
 
         # explicitly set ninja executable if not on path
         cmake_make_program = 'CMAKE_MAKE_PROGRAM'

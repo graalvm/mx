@@ -631,6 +631,7 @@ environment variables:
         self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
         self.add_argument('--multi-platform-layout-directories', action='store', help="Causes platform-dependent layout dir distribution to contain the union of the files from their declared platforms. "
                                 "Can be set to 'all' or to a comma-separated list of platforms.")
+        self.add_argument('--extra-cmake-arg', action='append', metavar='<arg>')
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -8705,7 +8706,7 @@ class Extractor(object, metaclass=ABCMeta):
 
     @staticmethod
     def create(src):
-        if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz"):
+        if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz") or src.endswith(".tar.bz2") or src.endswith(".tbz2"):
             return TarExtractor(src)
         if src.endswith(".zip") or src.endswith(".jar"):
             return ZipExtractor(src)
@@ -18830,7 +18831,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.50.3")  # build graph
+version = VersionSpec("6.51.0")  # GR-49282 mx cmake features and tar.bz2 support
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
