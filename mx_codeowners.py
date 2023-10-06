@@ -55,7 +55,10 @@ def _load_toml_from_fd(fd):
     try:
         import toml
         try:
-            return toml.load(fd)
+            # This is kind of confusing because tomllib expects 'rb',
+            # toml expects 'rt' mode when reading from a file and for
+            # mx_stoml we also decode from UTF-8 ourselves explicitly.
+            return toml.loads(fd.read().decode('utf-8'))
         except toml.TomlDecodeError as e:
             raise _TomlParsingException(e)
     except ImportError:
