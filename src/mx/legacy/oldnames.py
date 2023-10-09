@@ -38,7 +38,6 @@ _exit_handler_set = False
 class ModuleInterceptor:
     def __init__(self, thisname, targetname, allowed_writes):
         self.__dict__["_thisname"] = thisname
-        self.__dict__["_targetname"] = targetname
         self.__dict__["_allowed_writes"] = allowed_writes or []
         self.__dict__["_thismodule"] = sys.modules[thisname]
         self.__dict__["_othermodule"] = sys.modules[targetname]
@@ -57,10 +56,8 @@ class ModuleInterceptor:
                 f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name} at {frame.filename}:{frame.lineno} {frame.line}"
             )
 
-        if is_set:
-            if name not in self.__dict__["_allowed_writes"]:
-                traceback.print_stack()
-                mx.abort(f"Disallowed write to {mem_name}")
+        if is_set and name not in self.__dict__["_allowed_writes"]:
+            mx.abort(f"Disallowed write to {mem_name}")
 
         return self.__dict__["_othermodule"]
 
