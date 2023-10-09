@@ -29,4 +29,4 @@ __all__ = _orig.__all__
 # Unlike all the modules in oldnames, this module is used for both the legacy
 # access and access in the package system to the `mx` module because there is
 # no good way to overload the name.
-_redirect(__name__, "mx._impl." + __name__, capture_writes=False)
+_redirect(__name__, ["_check_global_structures"])

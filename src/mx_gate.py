@@ -29,9 +29,10 @@ from mx._impl.mx_gate import *
 
 # pylint: disable=unused-import
 from mx._impl.mx_gate import _jacoco
+
 from mx.legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_gate import __all__ as _gate_symbols
 __all__ = _gate_symbols
 
-_redirect(__name__, "mx._impl." + __name__)
+_redirect(__name__, ["JACOCO_EXEC", "_jacoco"])
