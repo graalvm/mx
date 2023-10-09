@@ -27,5 +27,9 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_sigtest import *
 
+from mx.legacy.oldnames import redirect as _redirect
+
 from mx._impl.mx_sigtest import __all__ as _sigtest_symbols
 __all__ = _sigtest_symbols
+
+_redirect(__name__)

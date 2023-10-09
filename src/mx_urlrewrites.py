@@ -26,6 +26,9 @@
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_urlrewrites import *
+from mx.legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_urlrewrites import __all__ as _urlrewrites_symbols
 __all__ = _urlrewrites_symbols
+
+_redirect(__name__)
