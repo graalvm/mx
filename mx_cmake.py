@@ -178,7 +178,11 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
             cmake_config.append(CMakeNinjaProject.config_entry(cmake_make_program, mx_native.Ninja.binary))
 
         # cmake will always create build.ninja - there is nothing we can do about it ATM
-        cmdline = ["-G", "Ninja", source_dir] + cmake_config
+
+        # Always specify -S and -B explicitly to override settings from presets. This is for compatibility
+        # with CMake 3.20, in this version the "binaryDir" attribute in presets is mandatory.
+        cmdline = ["-G", "Ninja", "-S", source_dir, "-B", output_dir] + cmake_config
+
         CMakeNinjaProject.check_cmake()
         CMakeNinjaProject.run_cmake(cmdline, silent=self.silent, cwd=output_dir, log_error=True)
         # move the build.ninja to the temporary path (just move it back later ... *sigh*)
