@@ -217,32 +217,34 @@ def checkout_downstream(args):
     # We now need to find a revision in `downstream_suite` that imports `upstream_commit` of `upstream_suite`.
     # For doing this, we grep the log of a set of branches in `downstream_suite`, checking out the revision of the first branch that matches.
     # As a consequence, the order in which we check branches in `downstream_suite` is fundamental:
-    # 1. we check if the `${DOWNSTREAM_BRANCH}` env var is set. If so, we look for branches named `${DOWNSTREAM_BRANCH}` and `${DOWNSTREAM_BRANCH}_gate`
+    # 1. we check if the `${DOWNSTREAM_BRANCH}` env var is set. If so, we look for branches named `${DOWNSTREAM_BRANCH}` and `${DOWNSTREAM_BRANCH}_gate(_[0-9]+)?`
     # 2. we (optionally) fetch `upstream_suite` and ask git which branches of `upstream_suite` contain `upstream_commit`
 
-    ci_upstream_branch_candidates = []
+    ci_downstream_branch_candidates = []
     ci_downstream_branch = mx.get_env('DOWNSTREAM_BRANCH', None)
     if ci_downstream_branch is not None:
-        ci_upstream_branch_candidates.extend([ci_downstream_branch, ci_downstream_branch + '_gate'])
-        mx.log(f"The '$DOWNSTREAM_BRANCH' env var is set. Adding '{ci_upstream_branch_candidates}' to the list of upstream branch candidates.")
+        mx.log(f"The '$DOWNSTREAM_BRANCH' env var is set. Adding '{ci_downstream_branch}' to the list of downstream branch candidates")
+        ci_downstream_branch_candidates.append(ci_downstream_branch)
+        ci_downstream_branch_candidates += re.findall(ci_downstream_branch + '_gate(?:_[0-9]+)?', _run_git_cmd(downstream_suite.vc_dir, ['branch', '-r']))
+        mx.log(f"Complete list of downstream branch candidates: {ci_downstream_branch_candidates}")
 
-    if not _checkout_upstream_revision(upstream_commit, ci_upstream_branch_candidates, upstream_suite, downstream_suite):
+    if not _checkout_upstream_revision(upstream_commit, ci_downstream_branch_candidates, upstream_suite, downstream_suite):
         if not args.no_fetch:
             mx.log(f"Fetching remote content from '{git.default_pull(upstream_suite.vc_dir)}'")
             git.pull(upstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
         # Print the list of branches that contain the upstream commit
         upstream_branches_out = _run_git_cmd(upstream_suite.vc_dir, ['branch', '-a', '--contains', upstream_commit])  # old git versions do not support `--format`
-        upstream_branch_candidates = []
+        downstream_branch_candidates = []
         for ub in upstream_branches_out.split('\n'):
             ub = re.sub(r'^\*', '', ub).lstrip()
             ub = re.sub('^remotes/origin/', '', ub)
             if not re.match(r'\(HEAD detached at [a-z0-9]+\)$', ub):
-                upstream_branch_candidates.append(ub)
+                downstream_branch_candidates.append(ub)
 
-        candidates = '\n- '.join(upstream_branch_candidates)
+        candidates = '\n- '.join(downstream_branch_candidates)
         mx.log(f"The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{upstream_commit}', which is part of the following branches:\n- {candidates}")
-        if not _checkout_upstream_revision(upstream_commit, upstream_branch_candidates, upstream_suite, downstream_suite):
+        if not _checkout_upstream_revision(upstream_commit, downstream_branch_candidates, upstream_suite, downstream_suite):
             mx.abort(f"Cannot find a revision of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}")
 
 
@@ -263,24 +265,24 @@ def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
     return output
 
 
-def _checkout_upstream_revision(upstream_commit, candidate_upstream_branches, upstream_suite, downstream_suite):
+def _checkout_upstream_revision(upstream_commit, candidate_downstream_branches, upstream_suite, downstream_suite):
     """
     :type upstream_commit: str
-    :type candidate_upstream_branches: str
+    :type candidate_downstream_branches: str
     :type upstream_suite: str
     :type downstream_suite: str
     :rtype: bool
     """
-    for upstream_branch in candidate_upstream_branches:
-        mx.log(f"Analyzing branch '{upstream_branch}':")
-        rev_parse_output = _run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', f'origin/{upstream_branch}'], regex=r'[a-f0-9]{40}$', abortOnError=False)
+    for candidate_downstream_branch in candidate_downstream_branches:
+        mx.log(f"Analyzing branch '{candidate_downstream_branch}':")
+        rev_parse_output = _run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', f'origin/{candidate_downstream_branch}'], regex=r'[a-f0-9]{40}$', abortOnError=False)
         if rev_parse_output is None:
-            mx.log(f" - the downstream repository does not contain a branch named '{upstream_branch}'")
+            mx.log(f" - the downstream repository does not contain a branch named '{candidate_downstream_branch}'")
             continue
-        mx.log(f" - the downstream repository contains a branch named '{upstream_branch}'")
-        downstream_branch = upstream_branch
+        mx.log(f" - the downstream repository contains a branch named '{candidate_downstream_branch}'")
+        downstream_branch = candidate_downstream_branch
 
-        mx.log(f" - searching 'origin/{downstream_branch}' of the downstream repo in '{downstream_suite.vc_dir}' for a commit that imports revision '{upstream_commit}' of '{upstream_suite.name}'")
+        mx.log(f" - searching the 'origin/{downstream_branch}' branch of the downstream repo in '{downstream_suite.vc_dir}' for a commit that imports revision '{upstream_commit}' of '{upstream_suite.name}'")
         # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
         downstream_commit_cmd = ['log', f'origin/{downstream_branch}', '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
         downstream_commit = _run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
