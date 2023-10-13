@@ -18833,7 +18833,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.51.4")  # GR-49401: checkout-downstream
+version = VersionSpec("6.51.5")  # GR-49438: Improve ninja rebuild detection
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
