@@ -44,7 +44,7 @@ from . import mx
 from . import mx_ideconfig
 from . import mx_javamodules
 
-from ..ide import helpers
+from .ide import helpers
 
 
 # IntelliJ SDK types.

@@ -28,7 +28,7 @@
 from mx._impl.mx_unittest import *
 # pylint: disable=unused-import
 from mx._impl.mx_unittest import Action, _run_tests, _VMLauncher, _config_participants
-from mx.legacy.oldnames import redirect as _redirect
+from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_unittest import __all__ as _unittest_symbols
 

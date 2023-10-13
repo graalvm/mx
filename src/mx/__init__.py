@@ -20,7 +20,7 @@ from ._impl.mx import (
     _removeSubprocess,
 )
 
-from mx.legacy.oldnames import redirect as _redirect
+from mx._legacy.oldnames import redirect as _redirect
 
 import mx._impl.mx as _orig
 

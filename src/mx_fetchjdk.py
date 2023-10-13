@@ -27,7 +27,7 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_fetchjdk import *
 
-from mx.legacy.oldnames import redirect as _redirect
+from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_fetchjdk import __all__ as _fetchjdk_symbols
 __all__ = _fetchjdk_symbols

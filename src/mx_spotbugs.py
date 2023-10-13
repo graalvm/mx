@@ -27,7 +27,7 @@
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_spotbugs import *
 
-from mx.legacy.oldnames import redirect as _redirect
+from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_spotbugs import __all__ as _spotbugs_symbols
 __all__ = _spotbugs_symbols

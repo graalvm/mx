@@ -50,7 +50,7 @@ from zipfile import ZipFile
 
 from . import mx
 
-from ..support import path
+from .support import path
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
 import itertools

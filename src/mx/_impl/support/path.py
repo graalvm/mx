@@ -27,7 +27,7 @@ r"""
 helper functions for dealing with paths
 """
 
-from .._impl import mx
+from .. import mx
 
 
 def canonicalize(p):

@@ -50,7 +50,7 @@ from contextlib import ExitStack
 from os.path import join, basename, dirname, exists, isdir, abspath
 from io import StringIO
 
-from ..ide import helpers
+from .ide import helpers
 
 from . import mx
 from . import mx_ideconfig

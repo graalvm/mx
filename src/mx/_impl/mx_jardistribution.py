@@ -42,7 +42,7 @@ from stat import S_IMODE
 
 from . import mx
 from . import mx_subst
-from ..support import path
+from .support import path
 
 
 class JARDistribution(mx.Distribution, mx.ClasspathDependency):
