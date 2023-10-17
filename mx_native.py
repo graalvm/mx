@@ -125,6 +125,9 @@ class Ninja(object):
 
         self._run('-n', '-d', 'explain', *self.targets, out=out, err=details)
         if details.lines:
+            if out.lines and out.lines[0] == "ninja: no work to do.":
+                mx.logv("Despite presumed dirty or modified files, ninja has nothing to do.")
+                return False, out.lines[0]
             return True, [l for l in details.lines if l.startswith('ninja explain:')][0]
         else:
             assert out.lines == ['ninja: no work to do.']
