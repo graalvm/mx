@@ -542,6 +542,7 @@ class ArgParser(ArgumentParser):
 environment variables:
   JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
   EXTRA_JAVA_HOMES      Secondary JDK directories. Can be overridden with --extra-java-homes option.
+  TOOLS_JAVA_HOME       JDK directory only used for tools such as ProGuard or SpotBugs. Can be overridden with --tools-java-home option.
   MX_BUILD_EXPLODED     Create and use jar distributions as extracted directories.
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
@@ -599,6 +600,7 @@ environment variables:
         jaargs.add_argument('--Ja', action='append', dest='java_args_sfx_legacy', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
+        self.add_argument('--tools-java-home', help='JDK directory only used for tools such as ProGuard or SpotBugs', metavar='<path>')
         self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
         self.add_argument('--jacoco-whitelist-package', help='only include classes in the specified package', metavar='<package>', action='append', default=[])
         self.add_argument('--jacoco-exclude-annotation', help='exclude classes with annotation from JaCoCo instrumentation', metavar='<annotation>', action='append', default=[])
@@ -13290,10 +13292,67 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     _jdks_cache[cache_key] = jdk
     return jdk
 
+_tools_jdks = {}
+
+def get_tools_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, abortCallback=abort, **kwargs):
+    """
+    Get a JDKConfig for executing tools such as SpotBugs or ProGuard.
+
+    The JDK is primarily selected via the --tools-java-home option or the
+    TOOLS_JAVA_HOME environment variable. If those are not provided, it falls back
+    to get_jdk, i.e., looking at --java-home, JAVA_HOME, etc.
+    """
+    global _tools_jdks
+    cache_key = (versionCheck, tag)
+    _versionDescription = versionDescription
+    _versionCheck = versionCheck
+    if cache_key not in _tools_jdks:
+        # interpret string and compliance as compliance check
+        if isinstance(_versionCheck, str):
+            _versionCheck = JavaCompliance(_versionCheck)
+        if isinstance(_versionCheck, JavaCompliance):
+            _versionCheck, _versionDescription = _versionCheck.as_version_check()
+
+        def abort_not_found():
+            msg = 'Could not find a JDK'
+            if _versionDescription:
+                msg += ' ' + _versionDescription
+            if purpose:
+                msg += ' for ' + purpose
+            import select_jdk
+            available = _filtered_jdk_configs(select_jdk.find_system_jdks(), _versionCheck)
+            if available:
+                msg += '\nThe following JDKs are available:\n  ' + '\n  '.join(sorted([jdk.home for jdk in available]))
+
+            msg += '\nSpecify one with the --tools-java-home option or with the TOOLS_JAVA_HOME environment variable.'
+            abortCallback(msg)
+
+
+        if _tools_java_home():
+            # TOOLS_JAVA_HOME is set. Either it is compliant or we fail. Not looking at JAVA_HOME or EXTRA_JAVA_HOMES
+            candidateJdks = [_tools_java_home()]
+            source = '--tools-java-home' if _opts.tools_java_home else 'TOOLS_JAVA_HOME'
+            result = _filtered_jdk_configs(candidateJdks, _versionCheck, missingIsError=True, source=source)
+            if not result:
+                # TOOLS_JAVA_HOME is specified, but it is not compliant
+                abort_not_found()
+            _tools_jdks[cache_key] = result[0]
+        else:
+            # TOOLS_JAVA_HOME is not set. Try JAVA_HOME or EXTRA_JAVA_HOMES
+            def _dummy_abort(msg):
+                # Do not suggest to set JAVA_HOME or EXTRA_JAVA_HOMES. Always recommend setting TOOLS_JAVA_HOME
+                abort_not_found()
+
+            _tools_jdks[cache_key] = get_jdk(versionCheck=versionCheck, purpose=purpose, cancel=cancel, versionDescription=versionDescription, tag=tag, abortCallback=_dummy_abort, **kwargs)
+
+    return _tools_jdks[cache_key]
+
+
 _warned_about_ignoring_extra_jdks = False
 
 _resolved_java_home = False
 _resolved_extra_java_homes = False
+_resolved_tools_java_home = False
 
 # opts.java_home and opts.extra_java_homes can be just JDK names in ~/.mx/jdks and not absolute paths.
 # And the same for the JAVA_HOME/EXTRA_JAVA_HOMES environment variables.
@@ -13324,6 +13383,19 @@ def _extra_java_homes():
         else:
             _resolved_extra_java_homes = []
     return _resolved_extra_java_homes
+
+def _tools_java_home():
+    global _resolved_tools_java_home
+    if _resolved_tools_java_home is False:
+        if _opts.tools_java_home is not None:
+            os.environ['TOOLS_JAVA_HOME'] = _opts.tools_java_home
+
+        if os.environ.get('TOOLS_JAVA_HOME'):
+            _resolved_tools_java_home = _expand_java_home(os.environ.get('TOOLS_JAVA_HOME'))
+            os.environ['TOOLS_JAVA_HOME'] = _resolved_tools_java_home
+        else:
+            _resolved_tools_java_home = None
+    return _resolved_tools_java_home
 
 def _find_jdk(versionCheck=None, versionDescription=None):
     """
