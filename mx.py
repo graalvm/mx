@@ -18905,7 +18905,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.51.6")  # GR-48618: Pom distributions propagate the build status
+version = VersionSpec("6.52.0")  # --tools-java-home
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
