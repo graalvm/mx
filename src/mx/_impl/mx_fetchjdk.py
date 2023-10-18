@@ -72,11 +72,13 @@ def fetch_jdk(args):
     if not is_quiet():
         if not mx.ask_yes_no(f"Install {artifact} to {final_path}", default='y'):
             mx.abort("JDK installation canceled")
-    if exists(final_path):
+    if not settings["force"] and exists(final_path):
         if settings["keep-archive"]:
             mx.warn("The --keep-archive option is ignored when the JDK is already installed.")
         mx.log(f"Requested JDK is already installed at {final_path}")
     else:
+        if settings["force"] and exists(final_path):
+            mx.rmtree(final_path)
         # Try to extract on the same file system as the target to be able to atomically move the result.
         with mx.TempDir(parent_dir=jdks_dir) as temp_dir:
             part = 1
@@ -333,6 +335,7 @@ def _parse_args(args):
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
+    parser.add_argument('--force', action='store_true', help='force download the JDK and overwrite existing files')
     args = parser.parse_args(args)
 
     if args.to is not None:
@@ -378,6 +381,7 @@ def _parse_args(args):
         settings["keep-archive"] = args.keep_archive
 
     settings["strip-contents-home"] = args.strip_contents_home
+    settings["force"] = args.force
 
     return settings
 
