@@ -51,10 +51,10 @@ class ModuleInterceptor:
         if name.startswith("_"):
             _internal_accesses.add(mem_name)
 
-            frame = traceback.extract_stack()[-3]
-            mx.warn(
-                f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name} at {frame.filename}:{frame.lineno} {frame.line}"
-            )
+            stack = traceback.extract_stack()
+
+            mx.warn(f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name}")
+            mx.logv("".join(stack.format()))
 
         if is_set and name not in self.__dict__["_allowed_writes"]:
             mx.abort(f"Disallowed write to {mem_name}")
