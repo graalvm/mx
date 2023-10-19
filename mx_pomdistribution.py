@@ -26,6 +26,8 @@
 #
 
 import mx
+from os import remove
+from os.path import exists, join
 
 
 class POMDistribution(mx.Distribution):
@@ -47,13 +49,13 @@ class POMDistribution(mx.Distribution):
         self.runtimeDependencies = runtimeDependencies
 
     def getBuildTask(self, args):
-        return mx.NoOpTask(self, args)
+        return PomBuildTask(self, args)
 
     def make_archive(self):
         pass
 
     def exists(self):
-        return True
+        return mx.exists(self.output_witness())
 
     def remoteExtension(self):
         return 'pom'
@@ -68,5 +70,41 @@ class POMDistribution(mx.Distribution):
             new_runtime_deps.append(mx.dependency(runtime_dep, fatalIfMissing=True, context=self))
         self.runtimeDependencies = new_runtime_deps
 
+    def output_directory(self):
+        return join(self.get_output_base(), self.name)
+
+    def output_witness(self):
+        return join(self.output_directory(), 'witness')
+
     def is_runtime_dependency(self, dependency):
         return dependency in self.runtimeDependencies
+
+
+class PomBuildTask(mx.BuildTask):
+    def __init__(self, subject, args):
+        super(PomBuildTask, self).__init__(subject, args, 1)
+
+    def newestOutput(self):
+        return mx.TimeStampFile(self.subject.output_witness())
+
+    def needsBuild(self, newestInput):
+        sup = super(PomBuildTask, self).needsBuild(newestInput)
+        if sup[0]:
+            return sup
+        newestOutput = self.newestOutput()
+        if not newestOutput.exists():
+            return True, '{} does not exist'.format(newestOutput.path)
+        if newestInput and newestOutput.isOlderThan(newestInput):
+            return True, '{} is older than {}'.format(newestOutput, newestInput)
+        return False, None
+
+    def build(self):
+        mx.TimeStampFile(self.subject.output_witness()).touch()
+
+    def clean(self, forBuild=False):
+        witness = self.subject.output_witness()
+        if exists(witness):
+            remove(witness)
+
+    def __str__(self):
+        return 'Building {}'.format(self.subject.name)
