@@ -370,16 +370,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def strip_jar(self):
         assert self.is_stripped()
 
-        def _abort(*args, **kwargs):
-            mx.log_error(f'No JDK compatible with ProGuard found')
-            mx.abort(*args, **kwargs)
-
         max_java_compliance = self.maxJavaCompliance().value
         proguard_jdk_version = self.suite.getMxCompatibility().proguard_supported_jdk_version()
         if max_java_compliance > proguard_jdk_version and mx.get_opts().proguard_cp is None:
             mx.abort(f'Cannot strip {self} - ProGuard does not yet support JDK {max_java_compliance}')
         _range = f'{max_java_compliance}..{proguard_jdk_version}' if max_java_compliance != proguard_jdk_version else str(max_java_compliance)
-        jdk = mx.get_jdk(_range, abortCallback=_abort)
+        jdk = mx.get_tools_jdk(_range, purpose='ProGuard')
 
         mx.logv(f'Stripping {self.name}...')
         jdk9_or_later = jdk.javaCompliance >= '9'
