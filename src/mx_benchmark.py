@@ -23,9 +23,19 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+"""
+Proxy file for the mx_benchmark module.
+
+Exposes public symbols from the original module and possibly some private ones.
+
+DO NOT WRITE IMPLEMENTATION CODE HERE.
+
+See docs/package-structure.md for more details.
+"""
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_benchmark import *
+
 # pylint: disable=unused-import
 from mx._impl.mx_benchmark import (
     _mx_benchmark_usage_example,
@@ -35,6 +45,7 @@ from mx._impl.mx_benchmark import (
 from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_benchmark import __all__ as _benchmark_symbols
+
 __all__ = _benchmark_symbols
 
 _redirect(__name__)

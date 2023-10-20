@@ -23,6 +23,11 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+"""
+Implements intercepting logic for proxy files.
+
+.. seealso:: :func:`redirect`
+"""
 
 from .._impl import mx
 import sys
@@ -42,7 +47,7 @@ class ModuleInterceptor:
         self.__dict__["_thismodule"] = sys.modules[thisname]
         self.__dict__["_othermodule"] = sys.modules[targetname]
 
-    def __get_target(self, name, is_set: bool):
+    def _get_target(self, name, is_set: bool):
         if name.startswith("__"):
             return self.__dict__["_thismodule"]
 
@@ -62,38 +67,39 @@ class ModuleInterceptor:
         return self.__dict__["_othermodule"]
 
     def __setattr__(self, name, value):
-        target = self.__get_target(name, True)
+        target = self._get_target(name, True)
         setattr(target, name, value)
 
     def __getattr__(self, name):
-        target = self.__get_target(name, False)
+        target = self._get_target(name, False)
         return getattr(target, name)
 
 
+def _exit_handler():
+    if _internal_accesses:
+        mx.warn(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
+
+
 def redirect(thisname: str, allowed_writes: [str] = None):
-    global _exit_handler_set
     """
     Redirects all attribute accesses on the ``thisname`` module to the
     ``mx._impl.{thisname}`` module.
 
     The only exception are builtins (names starting with two underscores).
 
-    Produces warnings for accesses to internal symbols (which should not be accessed from outside)
+    Produces warnings for accesses to internal symbols (which should not be accessed from the outside)
 
     Produces errors for writes to symbols (we should not rely on setting arbitrary symbols from the outside) that are
     not explicitly allowed in ``allowed_writes``.
 
-    At the end (using an exit handler), the final list of these symbols are produced.
+    At the end (using an exit handler :func:_exit_handler:), the final list of these symbols is printed.
 
     :param: allowed_writes: List of symbols that are allowed to be set. All other assignments will produce an error.
     """
+    global _exit_handler_set
 
     sys.modules[thisname] = ModuleInterceptor(thisname, "mx._impl." + thisname, allowed_writes)
 
-    def exit_handler():
-        if _internal_accesses:
-            mx.warn(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
-
     if not _exit_handler_set:
-        atexit.register(exit_handler)
+        atexit.register(_exit_handler)
         _exit_handler_set = True

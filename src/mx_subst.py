@@ -23,6 +23,15 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+"""
+Proxy file for the mx_subst module.
+
+Exposes public symbols from the original module and possibly some private ones.
+
+DO NOT WRITE IMPLEMENTATION CODE HERE.
+
+See docs/package-structure.md for more details.
+"""
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_subst import *
@@ -30,6 +39,7 @@ from mx._impl.mx_subst import *
 from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_subst import __all__ as _subst_symbols
+
 __all__ = _subst_symbols
 
 _redirect(__name__)

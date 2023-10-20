@@ -23,6 +23,15 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+"""
+Proxy file for the mx_gate module.
+
+Exposes public symbols from the original module and possibly some private ones.
+
+DO NOT WRITE IMPLEMENTATION CODE HERE.
+
+See docs/package-structure.md for more details.
+"""
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_gate import *
@@ -33,6 +42,7 @@ from mx._impl.mx_gate import _jacoco
 from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_gate import __all__ as _gate_symbols
+
 __all__ = _gate_symbols
 
 _redirect(__name__, ["JACOCO_EXEC", "_jacoco"])

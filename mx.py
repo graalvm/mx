@@ -3,6 +3,10 @@
 Main entry point for running mx.
 """
 
+# Looking for something?
+# The mx implementation code has moved to src/mx/_impl
+# See `docs/package-structure.md` for more details
+
 import sys
 import runpy
 from pathlib import Path

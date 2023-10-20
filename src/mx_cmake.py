@@ -23,9 +23,19 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+"""
+Proxy file for the mx_cmake module.
+
+Exposes public symbols from the original module and possibly some private ones.
+
+DO NOT WRITE IMPLEMENTATION CODE HERE.
+
+See docs/package-structure.md for more details.
+"""
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_cmake import *
 
 from mx._impl.mx_cmake import __all__ as _cmake_symbols
+
 __all__ = _cmake_symbols

@@ -24,9 +24,11 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+"""
+This exists solely so that old versions of mx_graal_enterprise.py and mx_bisect_strategy.py can load successfully.
+These modules have been fixed as part of GR-28853 to no longer use this API.
+"""
 
 
-# This exists solely so that old versions of mx_graal_enterprise.py and mx_bisect_strategy.py can load successfully.
-# These modules have been fixed as part of GR-28853 to no longer use this API.
 class JdkDistribution(object):
     _jdk_distributions = []

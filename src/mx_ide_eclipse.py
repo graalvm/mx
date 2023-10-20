@@ -23,15 +23,26 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+"""
+Proxy file for the mx_ide_eclipse module.
+
+Exposes public symbols from the original module and possibly some private ones.
+
+DO NOT WRITE IMPLEMENTATION CODE HERE.
+
+See docs/package-structure.md for more details.
+"""
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_ide_eclipse import *
+
 # pylint: disable=unused-import
 from mx._impl.mx_ide_eclipse import _eclipseinit_project
 
 from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_ide_eclipse import __all__ as _eclipse_symbols
+
 __all__ = _eclipse_symbols
 
 _redirect(__name__)
