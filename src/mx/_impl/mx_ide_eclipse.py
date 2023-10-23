@@ -50,7 +50,7 @@ from contextlib import ExitStack
 from os.path import join, basename, dirname, exists, isdir, abspath
 from io import StringIO
 
-from .ide import helpers
+from .ide import project_processor
 
 from . import mx
 from . import mx_ideconfig
@@ -1000,7 +1000,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         if s is not mx._mx_suite:
             projectXml.element('project', data=mx._mx_suite.name)
 
-        helpers.iter_projects(s, lambda _, suite_name: projectXml.element('project', data='mx.' + suite_name))
+        project_processor.iter_projects(s, lambda _, suite_name: projectXml.element('project', data='mx.' + suite_name))
 
         projectXml.close('projects')
         projectXml.open('buildSpec')

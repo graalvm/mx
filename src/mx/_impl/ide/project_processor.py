@@ -2,9 +2,9 @@ from .. import mx
 
 
 def iter_projects(suite, fn):
-    processed_suites = set([suite.name])
+    processed_suites = {suite.name}
 
-    def _mx_projects_suite(visited_suite, suite_import):
+    def _mx_projects_suite(_, suite_import):
         if suite_import.name in processed_suites:
             return
         processed_suites.add(suite_import.name)

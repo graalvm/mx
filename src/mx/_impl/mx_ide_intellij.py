@@ -44,7 +44,7 @@ from . import mx
 from . import mx_ideconfig
 from . import mx_javamodules
 
-from .ide import helpers
+from .ide import project_processor
 
 
 # IntelliJ SDK types.
@@ -603,7 +603,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             dep_module_name, _, _ = _python_module(suite)
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep_module_name})
             _add_declared_module(suite)
-        helpers.iter_projects(s, _with_suite)
+        project_processor.iter_projects(s, _with_suite)
 
         if s.name != 'mx':
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx.mx'})
