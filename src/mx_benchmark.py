@@ -48,4 +48,10 @@ from mx._impl.mx_benchmark import __all__ as _benchmark_symbols
 
 __all__ = _benchmark_symbols
 
-_redirect(__name__)
+_redirect(
+    __name__,
+    allowed_internal_reads=[
+        "_mx_benchmark_usage_example",
+        "_add_opens_and_exports_from_manifest",
+    ],
+)

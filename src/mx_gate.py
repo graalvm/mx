@@ -45,4 +45,4 @@ from mx._impl.mx_gate import __all__ as _gate_symbols
 
 __all__ = _gate_symbols
 
-_redirect(__name__, ["JACOCO_EXEC", "_jacoco"])
+_redirect(__name__, ["_gate_symbols"], ["JACOCO_EXEC", "_jacoco"])

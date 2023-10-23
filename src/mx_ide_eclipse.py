@@ -45,4 +45,4 @@ from mx._impl.mx_ide_eclipse import __all__ as _eclipse_symbols
 
 __all__ = _eclipse_symbols
 
-_redirect(__name__)
+_redirect(__name__, allowed_internal_reads=["_eclipseinit_project"])

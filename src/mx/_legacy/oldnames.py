@@ -41,30 +41,32 @@ _exit_handler_set = False
 
 
 class ModuleInterceptor:
-    def __init__(self, thisname, targetname, allowed_writes):
-        self.__dict__['_thisname'] = thisname
-        self.__dict__['_allowed_writes'] = allowed_writes or []
-        self.__dict__['_thismodule'] = sys.modules[thisname]
-        self.__dict__['_othermodule'] = sys.modules[targetname]
+    def __init__(self, thisname, targetname, allowed_internal_reads, allowed_writes=None):
+        self.__dict__["_thisname"] = thisname
+        self.__dict__["_allowed_internal_reads"] = allowed_internal_reads or []
+        self.__dict__["_allowed_writes"] = allowed_writes or []
+        self.__dict__["_thismodule"] = sys.modules[thisname]
+        self.__dict__["_othermodule"] = sys.modules[targetname]
 
     def _get_target(self, name, is_set: bool):
         if name.startswith("__"):
-            return self.__dict__['_thismodule']
+            return self.__dict__["_thismodule"]
 
         mem_name = f"{self.__dict__['_thisname']}.{name}"
 
         if name.startswith("_"):
+            if not is_set and name not in self.__dict__["_allowed_internal_reads"]:
+                mx.abort(f"Disallowed read of internal symbol detected: {mem_name}")
+
             _internal_accesses.add(mem_name)
-
             stack = traceback.extract_stack()
+            mx.logv(f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name}")
+            mx.logvv("".join(stack.format()))
 
-            mx.warn(f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name}")
-            mx.logv("".join(stack.format()))
-
-        if is_set and name not in self.__dict__['_allowed_writes']:
+        if is_set and name not in self.__dict__["_allowed_writes"]:
             mx.abort(f"Disallowed write to {mem_name}")
 
-        return self.__dict__['_othermodule']
+        return self.__dict__["_othermodule"]
 
     def __setattr__(self, name, value):
         target = self._get_target(name, True)
@@ -77,17 +79,18 @@ class ModuleInterceptor:
 
 def _exit_handler():
     if _internal_accesses:
-        mx.warn(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
+        mx.logv(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
 
 
-def redirect(thisname: str, allowed_writes: [str] = None):
+def redirect(thisname: str, allowed_internal_reads: [str] = None, allowed_writes: [str] = None):
     """
     Redirects all attribute accesses on the ``thisname`` module to the
     ``mx._impl.{thisname}`` module.
 
     The only exception are builtins (names starting with two underscores).
 
-    Produces warnings for accesses to internal symbols (which should not be accessed from the outside)
+    Produces warnings for accesses to internal symbols (which should not be accessed from the outside) that are not
+    explicitly allowed in ``allowed_internal_reads``.
 
     Produces errors for writes to symbols (we should not rely on setting arbitrary symbols from the outside) that are
     not explicitly allowed in ``allowed_writes``.
@@ -98,7 +101,7 @@ def redirect(thisname: str, allowed_writes: [str] = None):
     """
     global _exit_handler_set
 
-    sys.modules[thisname] = ModuleInterceptor(thisname, "mx._impl." + thisname, allowed_writes)
+    sys.modules[thisname] = ModuleInterceptor(thisname, "mx._impl." + thisname, allowed_internal_reads, allowed_writes)
 
     if not _exit_handler_set:
         atexit.register(_exit_handler)

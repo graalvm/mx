@@ -64,4 +64,24 @@ __all__ = _orig.__all__
 # Unlike all the modules in oldnames, this module is used for both the legacy
 # access and access in the package system to the `mx` module because there is
 # no good way to overload the name.
-_redirect(__name__, ["_check_global_structures"])
+_redirect(
+    __name__,
+    allowed_internal_reads=[
+        "_mx_path",
+        "_opts",
+        "_replaceResultsVar",
+        "_addSubprocess",
+        "_cache_dir",
+        "_check_global_structures",
+        "_chunk_files_for_command_line",
+        "_encode",
+        "_entries_to_classpath",
+        "_get_dependency_path",
+        "_missing_dep_message",
+        "_mx_home",
+        "_mx_suite",
+        "_needsUpdate",
+        "_removeSubprocess",
+    ],
+    allowed_writes=["_check_global_structures"],
+)

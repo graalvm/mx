@@ -47,4 +47,11 @@ __legacy__ = ["Action"]
 
 __all__ = _unittest_symbols + __legacy__
 
-_redirect(__name__)
+_redirect(
+    __name__,
+    allowed_internal_reads=[
+        "_run_tests",
+        "_VMLauncher",
+        "_config_participants",
+    ],
+)
