@@ -474,22 +474,22 @@ unittestHelpSuffix = """
 
     Examples:
 
-    Export and open all packages in jdk.internal.vm.compiler to all unnamed modules:
+    Export and open all packages in jdk.graal.compiler to all unnamed modules:
 
-      --open-packages jdk.internal.vm.compiler/*=ALL-UNNAMED
+      --open-packages jdk.graal.compiler/*=ALL-UNNAMED
 
     Equivalent shorthand form:
 
-      --open-packages jdk.internal.vm.compiler/*
+      --open-packages jdk.graal.compiler/*
 
-    Export and open all packages starting with "org.graalvm.compiler." in all
-    modules whose name starts with "jdk.internal.vm." to all unnamed modules:
+    Export and open all packages starting with "jdk.graal.compiler." in all
+    modules whose name starts with "jdk.graal.compiler." to all unnamed modules:
 
-      --open-packages jdk.internal.vm.*/org.graalvm.compiler.*
+      --open-packages jdk.graal.compiler.*/jdk.graal.compiler.*
 
     Same as above but also export and open to the org.graalvm.enterprise module:
 
-      --open-packages jdk.internal.vm.*/org.graalvm.compiler.*=ALL-UNNAMED,org.graalvm.enterprise
+      --open-packages jdk.graal.compiler.*/jdk.graal.compiler.*=ALL-UNNAMED,org.graalvm.enterprise
 """
 
 def is_strictly_positive(value):

@@ -47,21 +47,21 @@ for the `compiler` suite, it is `mx.compiler`. The format of `suite.py` is JSON 
 
 Java source code is contained in a `project`. Here's an example of two [Graal compiler projects](https://github.com/oracle/graal/blob/b95d8827609d8b28993bb4468f5daa128a614e52/compiler/mx.compiler/suite.py#L129-L147):
 ```python
-"org.graalvm.compiler.serviceprovider" : {
+"jdk.graal.compiler.serviceprovider" : {
   "subDir" : "src",
   "sourceDirs" : ["src"],
   "dependencies" : ["JVMCI_SERVICES"],
-  "checkstyle" : "org.graalvm.compiler.graph",
+  "checkstyle" : "jdk.graal.compiler.graph",
   "javaCompliance" : "8",
   "workingSets" : "API,Graal",
 },
 
-"org.graalvm.compiler.serviceprovider.jdk9" : {
+"jdk.graal.compiler.serviceprovider.jdk9" : {
   "subDir" : "src",
   "sourceDirs" : ["src"],
-  "dependencies" : ["org.graalvm.compiler.serviceprovider"],
-  "uses" : ["org.graalvm.compiler.serviceprovider.GraalServices.JMXService"],
-  "checkstyle" : "org.graalvm.compiler.graph",
+  "dependencies" : ["jdk.graal.compiler.serviceprovider"],
+  "uses" : ["jdk.graal.compiler.serviceprovider.GraalServices.JMXService"],
+  "checkstyle" : "jdk.graal.compiler.graph",
   "javaCompliance" : "9+",
   "multiReleaseJarVersion" : "9",
   "workingSets" : "API,Graal",
@@ -138,11 +138,11 @@ Here is an extract from the definition of the `TRUFFLE_API` distribution which p
             "static java.desktop"
         ],
         "exports" : [
-            "com.oracle.truffle.api.nodes to jdk.internal.vm.compiler",
-            "com.oracle.truffle.api.impl to jdk.internal.vm.compiler, org.graalvm.locator",
-            "com.oracle.truffle.api to jdk.internal.vm.compiler, org.graalvm.locator, com.oracle.graal.graal_enterprise",
-            "com.oracle.truffle.api.object to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
-            "com.oracle.truffle.object to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
+            "com.oracle.truffle.api.nodes to jdk.graal.compiler",
+            "com.oracle.truffle.api.impl to jdk.graal.compiler, org.graalvm.locator",
+            "com.oracle.truffle.api to jdk.graal.compiler, org.graalvm.locator, com.oracle.graal.graal_enterprise",
+            "com.oracle.truffle.api.object to jdk.graal.compiler, com.oracle.graal.graal_enterprise",
+            "com.oracle.truffle.object to jdk.graal.compiler, com.oracle.graal.graal_enterprise",
         ],
         "uses" : [
           "com.oracle.truffle.api.TruffleRuntimeAccess",
@@ -167,11 +167,11 @@ module org.graalvm.truffle {
     requires java.logging;
     requires jdk.unsupported;
     requires transitive org.graalvm.sdk;
-    exports com.oracle.truffle.api to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler, org.graalvm.locator;
-    exports com.oracle.truffle.api.impl to jdk.internal.vm.compiler, org.graalvm.locator;
-    exports com.oracle.truffle.api.nodes to jdk.internal.vm.compiler;
-    exports com.oracle.truffle.api.object to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler;
-    exports com.oracle.truffle.object to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler;
+    exports com.oracle.truffle.api to com.oracle.graal.graal_enterprise, jdk.graal.compiler, org.graalvm.locator;
+    exports com.oracle.truffle.api.impl to jdk.graal.compiler, org.graalvm.locator;
+    exports com.oracle.truffle.api.nodes to jdk.graal.compiler;
+    exports com.oracle.truffle.api.object to com.oracle.graal.graal_enterprise, jdk.graal.compiler;
+    exports com.oracle.truffle.object to com.oracle.graal.graal_enterprise, jdk.graal.compiler;
     uses com.oracle.truffle.api.TruffleRuntimeAccess;
     uses com.oracle.truffle.api.impl.TruffleLocator;
     uses com.oracle.truffle.api.object.LayoutFactory;
@@ -227,11 +227,11 @@ The GRAAL distribution shows how a single `exports` attribute can be used to spe
 ```
 "GRAAL" : {
     "moduleInfo" : {
-        "name" : "jdk.internal.vm.compiler",
+        "name" : "jdk.graal.compiler",
         "exports" : [
             # Qualified exports of all packages in GRAAL to modules built from
             # ENTERPRISE_GRAAL and GRAAL_MANAGEMENT distributions
-            "* to com.oracle.graal.graal_enterprise,jdk.internal.vm.compiler.management",
+            "* to com.oracle.graal.graal_enterprise,jdk.graal.compiler.management",
         ],
         ...
     },
@@ -241,14 +241,14 @@ The GRAAL distribution shows how a single `exports` attribute can be used to spe
 
 This results info a `module-info.java` as that contains qualified exports, a small subset of which are shown below:
 ```
-module jdk.internal.vm.compiler {
+module jdk.graal.compiler {
     ...
-    exports org.graalvm.compiler.api.directives to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
-    exports org.graalvm.compiler.api.replacements to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
-    exports org.graalvm.compiler.api.runtime to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
-    exports org.graalvm.compiler.asm to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
-    exports org.graalvm.compiler.asm.aarch64 to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
-    exports org.graalvm.compiler.asm.amd64 to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    exports jdk.graal.compiler.api.directives to com.oracle.graal.graal_enterprise, jdk.graal.compiler.management;
+    exports jdk.graal.compiler.api.replacements to com.oracle.graal.graal_enterprise, jdk.graal.compiler.management;
+    exports jdk.graal.compiler.api.runtime to com.oracle.graal.graal_enterprise, jdk.graal.compiler.management;
+    exports jdk.graal.compiler.asm to com.oracle.graal.graal_enterprise, jdk.graal.compiler.management;
+    exports jdk.graal.compiler.asm.aarch64 to com.oracle.graal.graal_enterprise, jdk.graal.compiler.management;
+    exports jdk.graal.compiler.asm.amd64 to com.oracle.graal.graal_enterprise, jdk.graal.compiler.management;
     ...
 ```
 
@@ -261,7 +261,7 @@ constituent projects.
 If a project with a Java compliance >= 9 uses a package from a module other than `java.base`, it must specify these
 additional modules with the `requires` attribute. For example:
 ```
-"org.graalvm.compiler.hotspot.management.jdk11" : {
+"jdk.graal.compiler.hotspot.management.jdk11" : {
     ...
     "requires" : [
         "jdk.management"
@@ -276,12 +276,12 @@ The `requires` attribute is used for two purposes:
 * To derive a value for the `--limit-modules` javac option
   which restricts the modules observable during compilation. This is required to support
   separate compilation of projects that are part of a JDK module. For example,
-  `org.graalvm.compiler.hotspot.amd64` depends on `org.graalvm.compiler.hotspot`
-  and the classes of both these projects are contained in the `jdk.internal.vm.compiler`
-  module. When compiling `org.graalvm.compiler.hotspot.amd64`, we must compile against
-  classes in `org.graalvm.compiler.hotspot` as they might be different (i.e., newer)
-  than the classes in `jdk.internal.vm.compiler`. The value of `--limit-modules` will
-  omit `jdk.internal.vm.compiler` in this case to achieve this hiding. In the absence
+  `jdk.graal.compiler.hotspot.amd64` depends on `jdk.graal.compiler.hotspot`
+  and the classes of both these projects are contained in the `jdk.graal.compiler`
+  module. When compiling `jdk.graal.compiler.hotspot.amd64`, we must compile against
+  classes in `jdk.graal.compiler.hotspot` as they might be different (i.e., newer)
+  than the classes in `jdk.graal.compiler`. The value of `--limit-modules` will
+  omit `jdk.graal.compiler` in this case to achieve this hiding. In the absence
   of a `requires` attribute, only the `java.base` module is observable when compiling
   on JDK 9+.
 
@@ -291,7 +291,7 @@ Concealed packages are those defined by a module but not exported by the module.
 If a project uses concealed packages, it must specify a `requiresConcealed` attribute
 denoting the concealed packages it accesses. For example:
 ```
-"org.graalvm.compiler.lir.aarch64.jdk11" : {
+"jdk.graal.compiler.lir.aarch64.jdk11" : {
     "requiresConcealed" : {
         "jdk.internal.vm.ci" : [
             "jdk.vm.ci.aarch64",
@@ -303,7 +303,7 @@ denoting the concealed packages it accesses. For example:
 ```
 This will result in `--add-exports=jdk.internal.vm.ci/jdk.vm.ci.aarch64=ALL-UNNAMED` and
 `--add-exports=jdk.internal.vm.ci/jdk.vm.ci.code=ALL-UNNAMED` being added to the `javac`
-command line when the `org.graalvm.compiler.lir.aarch64.jdk11` project is compiled by a
+command line when the `jdk.graal.compiler.lir.aarch64.jdk11` project is compiled by a
 JDK 9+ `javac`.
 
 Note that the `requires` and `requiresConcealed` attributes only apply to projects with
@@ -312,14 +312,14 @@ conjunction with `-source 8` (as will be the case for projects with a minimum `j
 of 8 or less), all classes in the JDK are observable. However, if an 8 project would need a
 `requires` or `requiresConcealed` attribute were it a 9+ project, then these attributes must be
 applied to any module containing the project. For example,
-`org.graalvm.compiler.serviceprovider` has `"javaCompliance" : "8+"` and contains
-code that imports `sun.misc.Unsafe`. Since `org.graalvm.compiler.serviceprovider`
-is part of the `jdk.internal.vm.compiler` module defined by the `GRAAL` distribution,
+`jdk.graal.compiler.serviceprovider` has `"javaCompliance" : "8+"` and contains
+code that imports `sun.misc.Unsafe`. Since `jdk.graal.compiler.serviceprovider`
+is part of the `jdk.graal.compiler` module defined by the `GRAAL` distribution,
 `GRAAL` must include a `requires` attribute in its `moduleInfo` attribute:
 ```
 "GRAAL" : {
     "moduleInfo" : {
-        "name" : "jdk.internal.vm.compiler",
+        "name" : "jdk.graal.compiler",
         "requires" : ["jdk.unsupported"],
         ...
     }
@@ -327,15 +327,15 @@ is part of the `jdk.internal.vm.compiler` module defined by the `GRAAL` distribu
 ```
 
 Modules can be removed from the JDK. For example, [JDK-8255616](https://bugs.openjdk.java.net/browse/JDK-8255616)
-removed the `jdk.aot`, `jdk.internal.vm.compile` and `jdk.internal.vm.compile.management` modules from standard JDK binaries
+removed the `jdk.aot`, `jdk.internal.vm.compiler` and `jdk.internal.vm.compiler.management` modules from standard JDK binaries
 as of JDK 16. Any `requiresConcealed` attributes targeting these modules must use a Java compliance qualifier so that
 the relevant sources can still be built on JDK 16:
 ```
 "com.oracle.svm.enterprise.jdk11.test": {
     ...
     "requiresConcealed": {
-        "jdk.internal.vm.compiler@11..15": [
-            "org.graalvm.compiler.serviceprovider"
+        "jdk.graal.compiler@11..15": [
+            "jdk.graal.compiler.serviceprovider"
         ],
         ...
     }

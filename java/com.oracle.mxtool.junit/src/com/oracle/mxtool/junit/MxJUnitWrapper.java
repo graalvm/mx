@@ -61,7 +61,7 @@ public class MxJUnitWrapper {
     // add --add-exports and --add-opens as necessary to the JVM command line.
     //
     // Known usages:
-    // org.graalvm.compiler.test.SubprocessUtil.getPackageOpeningOptions()
+    // jdk.graal.compiler.test.SubprocessUtil.getPackageOpeningOptions()
     public static final String OPENED_PACKAGES_PROPERTY_NAME = "com.oracle.mxtool.junit.opens";
     public static final String EXPORTED_PACKAGES_PROPERTY_NAME = "com.oracle.mxtool.junit.exports";
 
