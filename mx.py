@@ -8062,7 +8062,8 @@ class JavacLikeCompiler(JavaCompiler):
                 jmodsDir = join(self.jdk.home, 'jmods')
 
                 # If Graal is in the JDK we need to remove it to avoid conflicts with build artefacts
-                jmodsToRemove = ('jdk.internal.vm.compiler.jmod', 'jdk.internal.vm.compiler.management.jmod')
+                jmodsToRemove = ('jdk.internal.vm.compiler.jmod', 'jdk.internal.vm.compiler.management.jmod',
+                                 'jdk.graal.compiler.jmod', 'jdk.graal.compiler.management.jmod')
                 if any(exists(join(jmodsDir, jmod)) for jmod in jmodsToRemove):
                     # Use version and sha1 of source JDK's JAVA_HOME to ensure jmods copy is unique to source JDK
                     d = hashlib.sha1()
@@ -16832,7 +16833,8 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None, packa
 
 def _get_javadoc_module_args(projects, jdk):
     additional_javadoc_args = []
-    jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
+    jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'
+                            'jdk.graal.compiler', 'jdk.graal.compiler.management'}
     additional_javadoc_args = [
         '--limit-modules',
         ','.join([module.name for module in jdk.get_modules() if not module.name in jdk_excluded_modules])
@@ -18905,7 +18907,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.52.0")  # --tools-java-home
+version = VersionSpec("6.53.0")  # GR-49610 - Graal module and package renaming
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

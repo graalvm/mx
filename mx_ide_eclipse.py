@@ -716,7 +716,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         out.element('attribute', {'name' : 'module', 'value' : 'true'})
         moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
         if len(moduleDeps) != 0:
-            # Ignore modules (such as jdk.internal.vm.compiler) that define packages
+            # Ignore modules (such as jdk.graal.compiler) that define packages
             # that are also defined by project deps as the latter will have the most
             # recent API.
             exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.items() if allProjectPackages.isdisjoint(pkgs)])

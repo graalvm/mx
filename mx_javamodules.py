@@ -591,7 +591,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
               "org.graalvm.foo,org.graalvm.bar" -> set("org.graalvm.foo", "org.graalvm.bar")
               "<package-info>" -> set of all entries in `available_packages` denoting a package with a package-info.java file
               "org.graalvm.*" -> set of all entries in `available_packages` that start with "org.graalvm."
-              "org.graalvm.compiler.code" -> set("org.graalvm.compiler.code")
+              "jdk.graal.compiler.code" -> set("jdk.graal.compiler.code")
 
             :param dict available_packages: map from package names to JavaCompliance values
             :return dict: entries from `available_packages` selected by `packages_spec`
@@ -729,7 +729,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     for pkg in itertools.chain(project.imported_java_packages(projectDepsOnly=False), getattr(project, 'imports', [])):
                         # Only consider packages not defined by the module we're creating. This handles the
                         # case where we're creating a module that will upgrade an existing upgradeable
-                        # module in the JDK such as jdk.internal.vm.compiler.
+                        # module in the JDK such as jdk.graal.compiler.
                         if pkg not in module_packages:
                             module, visibility = lookup_package(allmodules, pkg, moduleName)
                             if module and module.name != moduleName:
