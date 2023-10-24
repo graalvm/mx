@@ -90,23 +90,35 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
         mx.abort(f'Some referenced modules are missing from modules.xml: {referenced_modules - declared_modules}')
 
     if mx_python_modules:
-        # Module for the MX source code and tests
-        moduleXml = mx.XMLDoc()
-        moduleXml.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
-        moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
-        moduleXml.element('exclude-output')
-        moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
-        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/src', 'isTestSource': 'false'})
-        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/tests', 'isTestSource': 'true'})
-        # Ignore all other sources because there are some conflicting files in the project root folder
-        moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$'})
-        moduleXml.close('content')
-        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, 'mx')})
-        moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
-        moduleXml.close('component')
-        moduleXml.close('module')
-        mxModuleFile = join(mx._mx_suite.dir, basename(mx._mx_suite.dir) + '.iml')
-        mx.update_file(mxModuleFile, moduleXml.xml(indent='  ', newl='\n'))
+        # Module for the MX source code
+        module_src = mx.XMLDoc()
+        module_src.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
+        module_src.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
+        module_src.element('exclude-output')
+        module_src.open('content', attributes={'url': 'file://$MODULE_DIR$'})
+        module_src.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
+        module_src.close('content')
+        module_src.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, 'mx')})
+        module_src.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
+        module_src.close('component')
+        module_src.close('module')
+        mx.update_file(join(mx._mx_suite.dir, 'src', 'mx.iml'), module_src.xml(indent='  ', newl='\n'))
+
+        # Module for the MX tests
+        module_tests = mx.XMLDoc()
+        module_tests.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
+        module_tests.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
+        module_tests.element('exclude-output')
+        module_tests.open('content', attributes={'url': 'file://$MODULE_DIR$'})
+        module_tests.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'true'})
+        module_tests.close('content')
+        module_tests.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks, 'mx')})
+        module_tests.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
+        # Add dependency on mx source code module
+        module_tests.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx'})
+        module_tests.close('component')
+        module_tests.close('module')
+        mx.update_file(join(mx._mx_suite.dir, 'tests', 'mx_tests.iml'), module_tests.xml(indent='  ', newl='\n'))
 
     if doFsckProjects and not refreshOnly:
         mx_ideconfig.fsckprojects([])
@@ -607,6 +619,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         if s.name != 'mx':
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx.mx'})
+        # Add dependency on the mx intellij module, the module containing the mx source code
+        moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx'})
         moduleXml.close('component')
         moduleXml.close('module')
         moduleFile = join(module_dir, iml_file)
@@ -616,8 +630,12 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             _add_declared_module(mx._mx_suite)
 
         if not module_files_only:
-            mxModuleFile = join(mx._mx_suite.dir, basename(mx._mx_suite.dir) + '.iml')
-            moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, project_dir)
+            mx_module_file = join(mx._mx_suite.dir, 'src', 'mx.iml')
+            moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mx_module_file, project_dir)
+            modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+
+            mx_tests_module_file = join(mx._mx_suite.dir, 'tests', 'mx_tests.iml')
+            moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mx_tests_module_file, project_dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if generate_native_projects:
