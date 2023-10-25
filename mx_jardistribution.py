@@ -668,13 +668,13 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def get_declaring_module_name(self):
         return mx.get_module_name(self)
 
-def _get_proguard_cp(suite=mx.primary_suite()):
+def _get_proguard_cp(suite=None):
     """
     Gets the class path required to run ProGuard (either the main app or the retrace app).
     """
     proguard_cp = mx.get_opts().proguard_cp
     if not proguard_cp:
-        proguard_cp = mx.classpath(['PROGUARD_' + name + '_' + version for name, version in suite.getMxCompatibility().proguard_libs().items()])
+        proguard_cp = mx.classpath(['PROGUARD_' + name + '_' + version for name, version in (suite or mx.primary_suite()).getMxCompatibility().proguard_libs().items()])
     return proguard_cp
 
 class _StagingGuard:

@@ -18907,7 +18907,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.53.0")  # GR-49610 - Graal module and package renaming
+version = VersionSpec("6.53.1")  # GR-49713 - mx unstrip
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
