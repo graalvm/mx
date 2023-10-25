@@ -3573,8 +3573,9 @@ class InternalSuite(SourceSuite):
     def __init__(self, mxDir):
         mxMxDir = _is_suite_dir(mxDir)
         assert mxMxDir
-        SourceSuite.__init__(self, mxMxDir, internal=True)
+        SourceSuite.__init__(self, mxMxDir, load=False, internal=True)
         _register_suite(self)
+        self._load()
 
 
 class MXSuite(InternalSuite):
