@@ -25,6 +25,12 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+__all__ = [
+    "fetch_jdk_cli",
+    "fetch_jdk",
+    "PathList",
+]
+
 import os, shutil, json, re, glob
 from os.path import join, exists, abspath, dirname, basename, isabs
 from argparse import ArgumentParser

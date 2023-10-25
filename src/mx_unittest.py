@@ -28,3 +28,6 @@
 from mx._impl.mx_unittest import *
 # pylint: disable=unused-import
 from mx._impl.mx_unittest import _run_tests, _VMLauncher, _config_participants
+
+import mx._impl.mx_unittest as _orig
+__all__ = _orig.__all__

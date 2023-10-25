@@ -22,6 +22,10 @@ from ._impl.mx import (
 
 from mx.legacy.oldnames import redirect as _redirect
 
+import mx._impl.mx as _orig
+
+__all__ = _orig.__all__
+
 # Unlike all the modules in oldnames, this module is used for both the legacy
 # access and access in the package system to the `mx` module because there is
 # no good way to overload the name.

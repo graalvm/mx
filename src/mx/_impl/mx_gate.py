@@ -24,6 +24,33 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+__all__ = [
+    "Tags",
+    "Task",
+    "add_gate_argument",
+    "add_gate_runner",
+    "prepend_gate_runner",
+    "add_omit_clean_args",
+    "gate_clean",
+    "check_gate_noclean_arg",
+    "parse_tags_argument",
+    "gate",
+    "checkheaders",
+    "JACOCO_EXEC",
+    "add_jacoco_includes",
+    "add_jacoco_excludes",
+    "add_jacoco_excluded_annotations",
+    "add_jacoco_whitelisted_packages",
+    "get_jacoco_dest_file",
+    "get_jacoco_agent_path",
+    "get_jacoco_agent_args",
+    "jacocoreport",
+    "lcov_report",
+    "coverage_upload",
+    "sonarqube_upload",
+    "make_test_report",
+]
+
 import os, re, time, json
 import tempfile
 import atexit

@@ -26,3 +26,6 @@
 
 # pylint: disable=wildcard-import,unused-wildcard-import
 from mx._impl.mx_javamodules import *
+
+import mx._impl.mx_javamodules as _orig
+__all__ = _orig.__all__

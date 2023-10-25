@@ -24,6 +24,22 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+
+__all__ = [
+    "BuildSteps",
+    "DefaultBuildStepsStrategy",
+    "define_bisect_default_build_steps",
+    "mx_bisect",
+    "Config",
+    "Commit",
+    "CommitStatus",
+    "IssueSearchInfra",
+    "BisectStrategy",
+    "BisectBayesianSearch",
+    "BisectSearch",
+    "Bisect",
+]
+
 import os, subprocess, math, signal, time, re
 from . import mx
 from .mx import VC

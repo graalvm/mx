@@ -24,6 +24,14 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+__all__ = [
+    "register_urlrewrite",
+    "register_urlrewrites_from_env",
+    "rewriteurl",
+    "urlrewrite_cli",
+    "URLRewrite",
+]
+
 import re
 import json
 from . import mx

@@ -25,6 +25,22 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+__all__ = [
+    "add_global_ignore_glob",
+    "find_test_candidates",
+    "set_vm_launcher",
+    "add_config_participant",
+    "MxUnittestConfig",
+    "DefaultMxUnittestConfig",
+    "register_unittest_config",
+    "get_config_participants_copy",
+    "add_unittest_argument",
+    "unittestHelpSuffix",
+    "is_strictly_positive",
+    "parse_split_args",
+    "unittest",
+]
+
 from . import mx
 import os
 import re

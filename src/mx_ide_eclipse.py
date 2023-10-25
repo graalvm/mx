@@ -28,3 +28,6 @@
 from mx._impl.mx_ide_eclipse import *
 # pylint: disable=unused-import
 from mx._impl.mx_ide_eclipse import _eclipseinit_project
+
+import mx._impl.mx_ide_eclipse as _orig
+__all__ = _orig.__all__

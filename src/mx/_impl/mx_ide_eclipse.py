@@ -25,6 +25,22 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+__all__ = [
+    "eclipseinit_and_format_files",
+    "eclipseformat",
+    "locate_eclipse_exe",
+    "make_eclipse_attach",
+    "make_eclipse_launch",
+    "eclipseinit_cli",
+    "eclipseinit",
+    "EclipseLinkedResource",
+    "get_eclipse_project_rel_locationURI",
+    "RelevantResource",
+    "IRESOURCE_FILE",
+    "IRESOURCE_FOLDER",
+    "generate_eclipse_workingsets",
+]
+
 import os, time, zipfile, tempfile
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom

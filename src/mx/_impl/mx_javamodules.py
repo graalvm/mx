@@ -24,6 +24,20 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+__all__ = [
+    "JavaModuleDescriptor",
+    "lookup_package",
+    "get_module_deps",
+    "as_java_module",
+    "get_module_name",
+    "get_java_module_info",
+    "get_library_as_module",
+    "make_java_module",
+    "get_transitive_closure",
+    "parse_requiresConcealed_attribute",
+    "requiredExports",
+]
+
 import os
 import re
 import pickle

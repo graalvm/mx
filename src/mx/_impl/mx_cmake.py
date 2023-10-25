@@ -22,6 +22,12 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+
+__all__ = [
+    "CMakeNinjaProject",
+    "CMakeNinjaBuildTask",
+]
+
 import os
 import shutil
 

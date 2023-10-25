@@ -24,6 +24,15 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+__all__ = [
+    "SubstitutionEngine",
+    "CompatSubstitutionEngine",
+    "as_engine",
+    "results_substitutions",
+    "path_substitutions",
+    "string_substitutions",
+]
+
 import re
 from . import mx
 

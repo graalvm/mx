@@ -22,6 +22,20 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+
+__all__ = [
+    "lazy_default",
+    "lazy_class_default",
+    "Ninja",
+    "NativeDependency",
+    "MultiarchProject",
+    "TargetArchBuildTask",
+    "NinjaProject",
+    "NinjaBuildTask",
+    "NinjaManifestGenerator",
+    "DefaultNativeProject",
+]
+
 import abc
 import collections
 import errno

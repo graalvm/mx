@@ -24,6 +24,12 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+
+__all__ = [
+    "defaultFindbugsArgs",
+    "spotbugs",
+]
+
 from argparse import ArgumentParser
 
 from . import mx

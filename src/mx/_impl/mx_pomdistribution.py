@@ -25,6 +25,10 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+__all__ = [
+    "POMDistribution",
+]
+
 from os import remove
 from os.path import exists, join
 
