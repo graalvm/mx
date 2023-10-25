@@ -1,1 +1,1 @@
-from mx.mx_javamodules import *
+from mx._impl.mx_javamodules import *

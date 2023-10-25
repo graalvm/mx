@@ -29,7 +29,7 @@ import shutil
 from argparse import ArgumentParser
 from os.path import join, exists, dirname
 
-import mx
+from . import mx
 
 
 def _local_os_arch():

@@ -42,6 +42,6 @@ if sys.version_info < _min_required_version:
         )
     raise SystemExit(msg)
 
-from .mx import _main_wrapper
+from ._impl.mx import _main_wrapper
 
 _main_wrapper()

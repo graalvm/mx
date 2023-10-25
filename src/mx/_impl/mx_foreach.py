@@ -27,7 +27,7 @@
 import argparse
 import textwrap
 
-import mx
+from . import mx
 
 
 @mx.command('mx', 'foreach-repo')

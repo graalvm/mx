@@ -30,8 +30,8 @@ import fnmatch
 import logging
 import os
 
-import mx
-import mx_stoml
+from . import mx
+from . import mx_stoml
 
 class _TomlParsingException(Exception):
     def __init__(self, cause):

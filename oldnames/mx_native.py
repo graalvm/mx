@@ -1,1 +1,1 @@
-from mx.mx_native import *
+from mx._impl.mx_native import *

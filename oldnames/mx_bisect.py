@@ -1,1 +1,1 @@
-from mx.mx_bisect import *
+from mx._impl.mx_bisect import *

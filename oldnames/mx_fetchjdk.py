@@ -1,1 +1,1 @@
-from mx.mx_fetchjdk import *
+from mx._impl.mx_fetchjdk import *

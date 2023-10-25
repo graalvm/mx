@@ -3824,7 +3824,7 @@ from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_p
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
-_mx_home = realpath(dirname(__file__))
+_mx_home = realpath(dirname(__file__) + '/../../..')
 _mx_path = 'mx' if _mx_home in os.environ.get('PATH', '').split(os.pathsep) else join(_mx_home, 'mx')
 
 try:

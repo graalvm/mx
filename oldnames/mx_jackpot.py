@@ -1,1 +1,1 @@
-from mx.mx_jackpot import *
+from mx._impl.mx_jackpot import *
