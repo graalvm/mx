@@ -20,8 +20,6 @@ def patch_path():
     # Include the parent directory of this script in the python path variable,
     # then allow loading of the mx module
     sys.path.insert(0, str(base_dir / 'src'))
-    # The following allows the use of existing module names
-    sys.path.insert(0, str(base_dir / 'oldnames'))
 
 
 if __name__ == "__main__":
