@@ -13264,9 +13264,9 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
         p = _findPrimarySuiteMxDir()
         if p:
-            msg += f"\nOr run `{dirname(__file__)}/select_jdk.py -p {dirname(p)}` to set and persist these variables in {join(p, 'env')}."
+            msg += f"\nOr run `{_mx_home}/select_jdk.py -p {dirname(p)}` to set and persist these variables in {join(p, 'env')}."
         else:
-            msg += f'\nOr run `{dirname(__file__)}/select_jdk.py` to set these variables.'
+            msg += f'\nOr run `{_mx_home}/select_jdk.py` to set these variables.'
         abortCallback(msg)
 
     if defaultJdk:
