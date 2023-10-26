@@ -16012,11 +16012,11 @@ def _find_pyfiles(find_all, primary, walk):
             if f.endswith('.py'):
                 pyfile = join(_src_path, f)
                 pyfiles.append(pyfile)
+
+    if walk:
+        findfiles_by_walk(pyfiles)
     else:
-        if walk:
-            findfiles_by_walk(pyfiles)
-        else:
-            findfiles_by_vc(pyfiles)
+        findfiles_by_vc(pyfiles)
     return pyfiles
 
 def _get_env_with_pythonpath():
