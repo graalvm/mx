@@ -28,6 +28,8 @@ import argparse
 import shutil
 
 import mx
+import mx_gate
+from mx_gate import Tags, Task
 
 suite = mx.suite("mx")
 
@@ -57,7 +59,7 @@ def pyformat(arg_list: [str]):
     black_exe = find_black()
 
     if not black_exe:
-        mx.log_error("Could not find black executable for formatting")
+        mx.log_error("Could not find 'black' executable for formatting")
         return 1
 
     mx.logv(f"Using black executable at {black_exe}")
@@ -79,3 +81,15 @@ def pyformat(arg_list: [str]):
         black_args += ["--verbose"]
 
     mx.run([black_exe] + black_args + ["--"] + source_files)
+
+    return 0
+
+
+def gate_runner(args, tasks):
+    with Task("Format python code", tasks, tags=[Tags.style]) as t:
+        if t:
+            if pyformat(["--dry-run"]) != 0:
+                mx.abort_or_warn("Python formatting tools not configured correctly", args.strict_mode)
+
+
+mx_gate.add_gate_runner(suite, gate_runner)
