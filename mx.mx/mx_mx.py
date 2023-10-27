@@ -22,11 +22,18 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+from __future__ import annotations
+
 import argparse
+import shutil
 
 import mx
 
 suite = mx.suite("mx")
+
+
+def find_black() -> str | None:
+    return shutil.which("black")
 
 
 @mx.command(suite.name, "pyformat")
@@ -47,6 +54,14 @@ def pyformat(arg_list: [str]):
     )
     args = parser.parse_args(arg_list)
 
+    black_exe = find_black()
+
+    if not black_exe:
+        mx.log_error("Could not find black executable for formatting")
+        return 1
+
+    mx.logv(f"Using black executable at {black_exe}")
+
     source_files: [str] = args.source_files
 
     if not source_files:
@@ -59,7 +74,8 @@ def pyformat(arg_list: [str]):
     if args.dry_run:
         black_args += ["--check", "--diff", "--color"]
 
+    # Propagate mx verbosity to the formatter
     if mx._opts.verbose:
         black_args += ["--verbose"]
 
-    mx.run(["black"] + black_args + ["--"] + source_files)
+    mx.run([black_exe] + black_args + ["--"] + source_files)
