@@ -319,11 +319,6 @@ def check_gate_noclean_arg(args):
         cleanArgs.append('--all')
     return cleanArgs
 
-def _warn_or_abort(msg, strict_mode):
-    reporter = mx.abort if strict_mode else mx.warn
-    reporter(msg)
-
-
 def parse_tags_argument(tags_arg, exclude):
     pattern = re.compile(r"^(?P<tag>[^:]*)(?::(?P<from>\d+):(?P<to>\d+)?)?$")
     tags = tags_arg.split(',')
@@ -709,7 +704,7 @@ def _run_gate(cleanArgs, args, tasks):
     with Task('Pylint', tasks, tags=[Tags.style]) as t:
         if t:
             if mx.command_function('pylint')(['--primary']) != 0:
-                _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
+                mx.abort_or_warn('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
 
     gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild, Tags.ecjbuild])
 
@@ -762,7 +757,7 @@ def _run_gate(cleanArgs, args, tasks):
                 if mx.command_function('eclipseformat')(['-e', eclipse_exe, '--primary']) != 0:
                     t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
             else:
-                _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
+                mx.abort_or_warn('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
     with Task('Checkstyle', tasks, tags=[Tags.style]) as t:
         if t and mx.command_function('checkstyle')(['--primary']) != 0:
