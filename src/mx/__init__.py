@@ -53,6 +53,8 @@ from ._impl.mx import (
     _mx_suite,
     _needsUpdate,
     _removeSubprocess,
+    # Only used by tests
+    _primary_suite_init,
 )
 
 from mx._legacy.oldnames import redirect as _redirect
@@ -82,6 +84,7 @@ _redirect(
         "_mx_suite",
         "_needsUpdate",
         "_removeSubprocess",
+        "_primary_suite_init",
     ],
     allowed_writes=["_check_global_structures"],
 )
