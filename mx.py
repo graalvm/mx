@@ -4845,7 +4845,7 @@ def _remove_unsatisfied_deps():
                                                      and not dd.isJreLibrary()
                                                      and dd not in d.excludedLibs)
                                                  for dd in d.deps))
-        elif dep.isTARDistribution():
+        elif dep.isTARDistribution() or dep.isZIPDistribution():
             if dep.isLayoutDistribution():
                 prune(dep, discard=LayoutDistribution.canDiscard)
             else:
@@ -18907,7 +18907,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("6.53.1")  # GR-49713 - mx unstrip
+version = VersionSpec("6.53.2")  # GR-49779 - mx unstrip
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
