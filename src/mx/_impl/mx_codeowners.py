@@ -281,14 +281,31 @@ def codeowners(args):
         # No arguments, query list of currently modified files
         args.files = _git_diff_name_only()
 
-    file_owners = [owners.get_owners_of(os.path.abspath(f)) for f in args.files]
-    reviewers = _summarize_owners(file_owners)
+    file_owners = {f: owners.get_owners_of(os.path.abspath(f)) for f in args.files}
+    reviewers = _summarize_owners(file_owners.values())
 
     if reviewers['all']:
         print("Mandatory reviewers (all of these must review):")
         for i in reviewers['all']:
-            print(" o", i)
+            mx.log(" o " + i)
     if reviewers['any']:
         print("Any-of reviewers (at least one from each line):")
         for i in reviewers['any']:
-            print(" o", ' or '.join(i))
+            mx.log(" o " + ' or '.join(i))
+
+    if len(reviewers["all"]) == 0 and len(reviewers["any"]) == 0:
+        mx.log("No specific reviewer requested by OWNERS.toml files for the given changeset.")
+
+    num_files_changed = len(file_owners.keys())
+    num_owned_files = len([f for f, o in file_owners.items() if o])
+
+    if num_files_changed == 0:
+        mx.warn("The changeset is empty!")
+    else:
+        print(f"\n{num_owned_files}/{num_files_changed} of the files have ownership defined by one or more OWNERS.toml file(s)")
+        if num_owned_files < num_files_changed:
+            mx.log("Consider adding ownership for the files with no ownership! (mx verbose mode shows details)")
+
+        import pprint
+        mx.logv("Ownership of each file:")
+        mx.logv(pprint.pformat(file_owners, indent=2))
