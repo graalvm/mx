@@ -68,7 +68,6 @@ __all__ = [
     "DummyJavaVm",
     "add_java_vm",
     "get_java_vm",
-    "TestBenchmarkSuite",
     "JMeterBenchmarkSuite",
     "JMHBenchmarkSuiteBase",
     "JMHJarBasedBenchmarkSuiteBase",

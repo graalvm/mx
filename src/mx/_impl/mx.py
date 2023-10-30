@@ -69,7 +69,6 @@ __all__ = [
     "BinarySuite",
     "InternalSuite",
     "MXSuite",
-    "MXTestsSuite",
     "suites",
     "suite",
     "primary_or_specific_suites",
@@ -333,7 +332,6 @@ __all__ = [
     "verify_library_urls",
     "suite_ci_files",
     "verify_ci",
-    "checkmarkdownlinks",
     "checkcopyrights",
     "mvn_local_install",
     "maven_install",
@@ -933,7 +931,8 @@ environment variables:
         self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
-        self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
+        # TODO GR-49766 completely remove this line and usages of `mx_tests`
+        # self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
         self.add_argument('--jmods-dir', action='store', help='path to built jmods (default JAVA_HOME/jmods)', metavar='<path>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
@@ -3600,6 +3599,7 @@ class MXSuite(InternalSuite):
         self._resolve_dependencies()
         self._post_init()
 
+# TODO GR-49766 remove when refactoring testing
 class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
@@ -5075,6 +5075,7 @@ _loadedEnv = dict()
 _jdkFactories = {}
 
 _annotationProcessorProjects = None
+# TODO GR-49766 remove when refactoring testing
 _mx_tests_suite = None
 _suitemodel = None
 _opts = Namespace()
@@ -19154,8 +19155,9 @@ def main():
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
-    if _opts.mx_tests:
-        MXTestsSuite()
+    # TODO GR-49766 remove when refactoring testing
+    # if _opts.mx_tests:
+    #     MXTestsSuite()
 
     if primarySuiteMxDir and not _mx_suite.primary and should_load_suites:
         primary_suite().recursive_post_init()
