@@ -25,12 +25,17 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from .task import Args, Dependency, Task
+
 class NoOpTask(Task):
-    def __init__(self, subject, args):
+    """
+    A task that does nothing.
+    """
+    def __init__(self, subject: Dependency, args: Args):
         super(NoOpTask, self).__init__(subject, args, 1)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'NoOp'
 
-    def execute(self):
+    def execute(self) -> None:
         pass

@@ -25,5 +25,9 @@
 #
 
 class Daemon:
+    """
+    Daemons are background processes used during the build process and
+    should be terminated once the build is finished.
+    """
     def shutdown(self) -> None:
         pass

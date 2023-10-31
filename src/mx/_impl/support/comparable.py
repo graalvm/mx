@@ -25,29 +25,37 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from typing import Any, Callable, TypeVar, Union
 
-# Support for comparing objects given removal of `cmp` function in Python 3.
-# https://portingguide.readthedocs.io/en/latest/comparisons.html
+
 def compare(a, b):
+    """
+    Support for comparing objects given removal of `cmp` function in Python 3.
+    https://portingguide.readthedocs.io/en/latest/comparisons.html
+    """
     return (a > b) - (a < b)
 
-class Comparable(object):
-    def _checked_cmp(self, other, f):
-        compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
-        return f(compar, 0) if compar is not NotImplemented else compare(id(self), id(other))
+Ty = TypeVar('Ty')
 
-    def __lt__(self, other):
+ComparisonResult = Union[int, type(NotImplemented)]
+
+class Comparable(object):
+    def _checked_cmp(self, other, f: Callable[[Any, Any], Ty]) -> Ty:
+        compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
+        return f(compar, 0) if compar is not NotImplemented else f(compare(id(self), id(other)), 0)
+
+    def __lt__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a < b)
-    def __gt__(self, other):
+    def __gt__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a > b)
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a == b)
-    def __le__(self, other):
+    def __le__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a <= b)
-    def __ge__(self, other):
+    def __ge__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a >= b)
-    def __ne__(self, other):
+    def __ne__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a != b)
 
-    def __cmp__(self, other): # to override
+    def __cmp__(self, other: Any) -> ComparisonResult: # to override
         raise TypeError("No override for compare")

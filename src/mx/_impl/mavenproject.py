@@ -40,6 +40,7 @@ from argparse import ArgumentParser
 
 from .mx_javacompliance import JavaCompliance
 from . import mx
+from .build.tasks import BuildTask
 
 __all__ = [
     "MavenProject",
@@ -364,7 +365,7 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
         return _MavenBuildTask(self, args)
 
 
-class _MavenBuildTask(mx.BuildTask):
+class _MavenBuildTask(BuildTask):
     def __init__(self, subject: MavenProject, args):
         super().__init__(subject, args, 1)
 

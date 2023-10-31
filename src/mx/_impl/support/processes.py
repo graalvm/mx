@@ -25,20 +25,38 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+__all__ = [
+    "ERROR_TIMEOUT",
+    "terminate_subprocesses",
+    "waitOn"
+]
+
+import multiprocessing, os, signal, subprocess, time
+from typing import List, Optional, Sequence, Tuple, Union
+
+from .logging import log, log_error, logvv
+from .system import is_windows
+
+Pid = int
+Signal = int
+Args = Sequence[str]
+Process = Union[subprocess.Popen, multiprocessing.Process]
+ReturnCode = int
+
 # Makes the current subprocess accessible to the abort() function
 # This is a list of tuples of the subprocess.Popen or
 # multiprocessing.Process object and args.
-_currentSubprocesses = []
+_currentSubprocesses: List[Tuple[Process, Args]] = []
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
-def _is_process_alive(p):
+def _is_process_alive(p: Process) -> bool:
     if isinstance(p, subprocess.Popen):
         return p.poll() is None
     assert isinstance(p, multiprocessing.Process), p
     return p.is_alive()
 
-def _check_output_str(*args, **kwargs):
+def _check_output_str(*args, **kwargs) -> str:
     try:
         return subprocess.check_output(*args, **kwargs).decode()
     except subprocess.CalledProcessError as e:
@@ -48,7 +66,28 @@ def _check_output_str(*args, **kwargs):
             e.stderr = e.stderr.decode()
         raise e
 
-def _kill_process(pid, sig):
+def terminate_subprocesses(killsig: Signal = signal.SIGTERM) -> None:
+    for p, args in _currentSubprocesses:
+        if _is_process_alive(p):
+            if is_windows():
+                p.terminate()
+            else:
+                assert isinstance(p, subprocess.Popen)
+                _kill_process(p.pid, killsig)
+            time.sleep(0.1)
+        if _is_process_alive(p):
+            try:
+                if is_windows():
+                    p.terminate()
+                else:
+                    assert isinstance(p, subprocess.Popen)
+                    _kill_process(p.pid, signal.SIGKILL)
+            except BaseException as e:
+                if _is_process_alive(p):
+                    log_error(f"error while killing subprocess {p.pid} \"{' '.join(args)}\": {e}")
+
+
+def _kill_process(pid: Pid, sig: Signal) -> bool:
     """
     Sends the signal `sig` to the process identified by `pid`. If `pid` is a process group
     leader, then signal is sent to the process group id.
@@ -65,7 +104,8 @@ def _kill_process(pid, sig):
         log('Error killing subprocess ' + str(pid) + ': ' + str(e))
         return False
 
-def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True, on_timeout=None):
+def _waitWithTimeout(process: Process, cmd_line, timeout: Optional[float], nonZeroIsFatal=True, on_timeout=None) -> ReturnCode:
+    assert isinstance(process, subprocess.Popen)
     try:
         return process.wait(timeout)
     except subprocess.TimeoutExpired:
@@ -75,20 +115,21 @@ def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True, on_timeout
         process.kill()
         return ERROR_TIMEOUT
 
-def _addSubprocess(p, args):
+def _addSubprocess(p: Process, args: Args) -> Tuple[Process, Args]:
     entry = (p, args)
     logvv(f'[{os.getpid()}: started subprocess {p.pid}: {args}]')
     _currentSubprocesses.append(entry)
     return entry
 
-def _removeSubprocess(entry):
+def _removeSubprocess(entry: Tuple[Process, Args]) -> None:
     if entry and entry in _currentSubprocesses:
         try:
             _currentSubprocesses.remove(entry)
         except:
             pass
 
-def waitOn(p):
+def waitOn(p: Process) -> ReturnCode:
+    assert isinstance(p, subprocess.Popen)
     if is_windows():
         # on windows use a poll loop, otherwise signal does not get handled
         retcode = None
@@ -98,4 +139,3 @@ def waitOn(p):
     else:
         retcode = p.wait()
     return retcode
-

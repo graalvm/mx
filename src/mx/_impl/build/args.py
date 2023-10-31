@@ -25,43 +25,16 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from __future__ import annotations
+from argparse import Namespace
+from typing import Optional
 
-__all__ = ["get_env", "check_get_env", "env_var_to_bool", "str_to_bool"]
+class ArgsNamespace(Namespace):
+    verbose: bool = False
+    very_verbose: bool = False
+    warn: bool = True
+    quiet: bool = False
+    answer: Optional[str] = None
+    """Answer all questions with 'y' or 'n'"""
+    java_dbg_port: Optional[int] = None
+    clean: bool = False
 
-import os
-from typing import TypeVar
-
-from .logging import abort
-
-def check_get_env(key) -> str:
-    """
-    Gets an environment variable, aborting with a useful message if it is not set.
-    """
-    value = get_env(key)
-    if value is None:
-        return abort(f'Required environment variable \'{key}\' must be set')
-    return value
-
-Ty = TypeVar("Ty")
-
-
-def get_env(key: str, default: Ty = None) -> str | Ty:
-    """
-    Gets an environment variable.
-    :param default: default values if the environment variable is not set.
-    """
-    value = os.getenv(key, default)
-    return value
-
-def str_to_bool(val: str) -> bool:
-    low_val = val.lower()
-    if low_val in ('false', '0', 'no'):
-        return False
-    elif low_val in ('true', '1', 'yes'):
-        return True
-    return abort(f'Unexpected string to bool value {val}')
-
-def env_var_to_bool(name: str, default: str = 'false') -> bool:
-    val = get_env(name, default)
-    return str_to_bool(val)

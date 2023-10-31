@@ -25,23 +25,31 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-class TaskSequence(Task):  #pylint: disable=R0921
+from abc import abstractmethod
+from typing import Sequence
+
+from .task import Args, Dependency, Task
+
+__all__ = ["TaskSequence"]
+
+class TaskSequence(Task):
     """A Task that executes a sequence of subtasks."""
 
-    def __init__(self, subject, args):
+    def __init__(self, subject: Dependency, args: Args) -> None:
         super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
 
-    def __str__(self):
+    def __str__(self) -> str:
         def indent(s, padding='  '):
             return padding + s.replace('\n', '\n' + padding)
 
         return self.__class__.__name__ + '[\n' + indent('\n'.join(map(str, self.subtasks))) + '\n]'
 
-    @abstractproperty
-    def subtasks(self):
-        """:rtype: typing.Sequence[Task]"""
+    @property
+    @abstractmethod
+    def subtasks(self) -> Sequence[Task]:
+        pass
 
-    def execute(self):
+    def execute(self) -> None:
         for subtask in self.subtasks:
             assert subtask.subject == self.subject
             subtask.deps += self.deps

@@ -131,7 +131,6 @@ __all__ = [
     "JavacLikeCompiler",
     "JavacCompiler",
     "JavacDaemonCompiler",
-    "Daemon",
     "CompilerDaemon",
     "JavacDaemon",
     "ECJCompiler",
@@ -313,7 +312,7 @@ __all__ = [
 
 import sys
 import uuid
-from abc import ABCMeta, abstractmethod, abstractproperty
+from abc import ABCMeta, abstractmethod
 from typing import Callable, IO, AnyStr, Union, Iterable
 
 if __name__ == '__main__':
@@ -343,9 +342,9 @@ import filecmp
 import json
 import threading
 from collections import OrderedDict, namedtuple, deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
+from argparse import ArgumentParser, PARSER, REMAINDER, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO, StringIO, open as io_open
@@ -356,6 +355,18 @@ from stat import S_IWRITE
 from .mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
 import posixpath
+
+from .build.suite import Dependency, SuiteConstituent
+from .build.tasks import BuildTask, NoOpTask
+from .build.daemons import Daemon
+from .support.comparable import compare, Comparable
+from .support.envvars import env_var_to_bool, get_env
+from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn
+from .support.options import _opts, _opts_parsed_deferrables
+from .support.path import _safe_path, lstat
+from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
+from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
+from .support.timestampfile import TimeStampFile
 
 _mx_commands = MxCommands("mx")
 
@@ -3928,23 +3939,24 @@ def cpu_count():
     else:
         return cpus
 
-
 def _send_sigquit():
     try:
         from psutil import Process, NoSuchProcess
 
-        def _get_args(p):
+        def _get_args_impl(p):
             try:
                 proc = Process(p.pid)
                 return proc.cmdline()
             except NoSuchProcess:
                 return None
+        _get_args = _get_args_impl
     except ImportError:
 
-        def _get_args(p):
+        def _get_args_fallback(p):
             if isinstance(p, subprocess.Popen):
                 return p.args
             return None
+        _get_args = _get_args_fallback
 
     for p, args in _currentSubprocesses:
         if p is None or not _is_process_alive(p):
@@ -14044,7 +14056,6 @@ class JDKConfig(Comparable):
         :rtype: list
         """
         return [jmd for jmd in self.get_modules() if jmd.boot]
-
 
 ### ~~~~~~~~~~~~~ Project
 

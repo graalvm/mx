@@ -24,7 +24,14 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-_opts = Namespace()
+__all__ = [
+    "_opts",
+    "_opts_parsed_deferrables"
+]
+
+from ..build.args import ArgsNamespace
+
+_opts = ArgsNamespace()
 
 # List of functions to run after options have been parsed
 _opts_parsed_deferrables = []

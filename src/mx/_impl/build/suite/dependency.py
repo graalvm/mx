@@ -25,12 +25,28 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import annotations
+
+import os
+import os.path
+from typing import Any, Iterable, Optional, Sequence
+
+from ...support.logging import abort, logvv, nyi, warn
+from .constituent import SuiteConstituent
+
+# TODO [GR-52725]: Replace with Suite class
+Suite = Any
+
 class Dependency(SuiteConstituent):
+
+    subDir: Optional[os.PathLike]
+    theLicense: Sequence[str]
+
     """
     A dependency is a library, distribution or project specified in a suite.
     The name must be unique across all Dependency instances.
     """
-    def __init__(self, suite, name, theLicense, **kwArgs):
+    def __init__(self, suite: Suite, name: str, theLicense: str | Sequence[str], **kwArgs):
         SuiteConstituent.__init__(self, suite, name)
         if isinstance(theLicense, str):
             theLicense = [theLicense]
@@ -38,60 +54,79 @@ class Dependency(SuiteConstituent):
         self.__dict__.update(kwArgs)
 
     def isBaseLibrary(self):
+        from ...mx import BaseLibrary
         return isinstance(self, BaseLibrary)
 
     def isLibrary(self):
+        from ...mx import Library
         return isinstance(self, Library)
 
     def isResourceLibrary(self):
+        from ...mx import ResourceLibrary
         return isinstance(self, ResourceLibrary)
 
     def isPackedResourceLibrary(self):
+        from ...mx import PackedResourceLibrary
         return isinstance(self, PackedResourceLibrary)
 
     def isJreLibrary(self):
+        from ...mx import JreLibrary
         return isinstance(self, JreLibrary)
 
     def isJdkLibrary(self):
+        from ...mx import JdkLibrary
         return isinstance(self, JdkLibrary)
 
     def isProject(self):
+        from ...mx import Project
         return isinstance(self, Project)
 
     def isJavaProject(self):
+        from ...mx import JavaProject
         return isinstance(self, JavaProject)
 
     def isNativeProject(self):
+        from ...mx import AbstractNativeProject
         return isinstance(self, AbstractNativeProject)
 
     def isArchivableProject(self):
+        from ...mx import ArchivableProject
         return isinstance(self, ArchivableProject)
 
     def isDistribution(self):
+        from ...mx import Distribution
         return isinstance(self, Distribution)
 
     def isJARDistribution(self):
+        from ...mx import JARDistribution
         return isinstance(self, JARDistribution)
 
     def isPOMDistribution(self):
+        from ...mx import POMDistribution
         return isinstance(self, POMDistribution)
 
     def isLayoutJARDistribution(self):
+        from ...mx import LayoutJARDistribution
         return isinstance(self, LayoutJARDistribution)
 
     def isLayoutDirDistribution(self):
+        from ...mx import LayoutDirDistribution
         return isinstance(self, LayoutDirDistribution)
 
     def isClasspathDependency(self):
+        from ...mx import ClasspathDependency
         return isinstance(self, ClasspathDependency)
 
     def isTARDistribution(self):
+        from ...mx import AbstractTARDistribution
         return isinstance(self, AbstractTARDistribution)
 
     def isZIPDistribution(self):
+        from ...mx import AbstractZIPDistribution
         return isinstance(self, AbstractZIPDistribution)
 
     def isLayoutDistribution(self):
+        from ...mx import LayoutDistribution
         return isinstance(self, LayoutDistribution)
 
     def isProjectOrLibrary(self):
@@ -104,6 +139,7 @@ class Dependency(SuiteConstituent):
         return None
 
     def getGlobalRegistry(self):
+        from ...mx import _dists, _jdkLibs, _jreLibs, _libs, _projects
         if self.isProject():
             return _projects
         if self.isLibrary() or self.isResourceLibrary():
@@ -116,6 +152,7 @@ class Dependency(SuiteConstituent):
         return _jdkLibs
 
     def getGlobalRemovedRegistry(self):
+        from ...mx import _removed_dists, _removed_jdkLibs, _removed_jreLibs, _removed_libs, _removed_projects
         if self.isProject():
             return _removed_projects
         if self.isLibrary() or self.isResourceLibrary():
@@ -173,7 +210,7 @@ class Dependency(SuiteConstituent):
         """
         warn(msg, context=self)
 
-    def qualifiedName(self):
+    def qualifiedName(self) -> str:
         return f'{self.suite.name}:{self.name}'
 
     def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None, visitEdge=None):
@@ -181,6 +218,7 @@ class Dependency(SuiteConstituent):
         Walk the dependency graph rooted at this object.
         See documentation for mx.walk_deps for more info.
         """
+        from ...mx import DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED, DEP_BUILD
         if visited is not None:
             if self in visited:
                 return
@@ -192,6 +230,7 @@ class Dependency(SuiteConstituent):
         self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
 
     def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        from ...mx import _debug_walk_deps_helper
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         if not preVisit or preVisit(self, edge):
@@ -204,6 +243,7 @@ class Dependency(SuiteConstituent):
         nyi('_walk_deps_visit_edges', self)
 
     def _walk_deps_visit_edges_helper(self, deps, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        from ...mx import DepEdge, _is_edge_ignored
         for dep_type, dep_list in deps:
             if not _is_edge_ignored(dep_type, ignoredEdges):
                 for dst in dep_list:
@@ -213,7 +253,7 @@ class Dependency(SuiteConstituent):
                     if dst not in visited:
                         dst._walk_deps_helper(visited, out_edge, preVisit, visit, ignoredEdges, visitEdge)
 
-    def getArchivableResults(self, use_relpath=True, single=False):
+    def getArchivableResults(self, use_relpath=True, single=False) -> Iterable[tuple[str, str]]:
         """
         Generates (file_path, archive_path) tuples for all the build results of this dependency.
         :param use_relpath: When `False` flattens all the results to the root of the archive
@@ -223,11 +263,12 @@ class Dependency(SuiteConstituent):
         """
         nyi('getArchivableResults', self)
 
-    def contains_dep(self, dep, includeAnnotationProcessors=False):
+    def contains_dep(self, dep: Dependency, includeAnnotationProcessors: bool=False):
         """
         Determines if the dependency graph rooted at this object contains 'dep'.
         Returns the path from this object to 'dep' if so, otherwise returns None.
         """
+        from ...mx import DEP_EXCLUDED
         if dep == self:
             return [self]
         class FoundPath(StopIteration):
@@ -251,11 +292,10 @@ class Dependency(SuiteConstituent):
     def mismatched_imports(self):
         return {}
 
-    def _extra_artifact_discriminant(self):
+    def _extra_artifact_discriminant(self) -> str:
         """
         An extra string to help identify the current build configuration. It will be used in the generated path for the
         built artifacts and will avoid unnecessary rebuilds when frequently changing this build configuration.
-        :rtype : str
         """
         return ''
 
@@ -264,6 +304,7 @@ class Dependency(SuiteConstituent):
         Resolves any string entries in 'deps' to the Dependency objects named
         by the strings. The 'deps' list is updated in place.
         """
+        from ...mx import splitqualname, dependency, _jdkProvidedSuites
         if deps:
             assert all((isinstance(d, (str, Dependency)) for d in deps))
             if isinstance(deps[0], str):
@@ -286,7 +327,7 @@ class Dependency(SuiteConstituent):
                     if s is None and self.suite is not dep.suite:
                         current_suite_dep = self.suite.dependency(dep.name, fatalIfMissing=False)
                         if dep != current_suite_dep:
-                            raise abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                            return abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                         dep = current_suite_dep  # prefer our version
                     if self.suite is not dep.suite and dep.internal:
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
@@ -305,14 +346,16 @@ class Dependency(SuiteConstituent):
         dependency such as class files and annotation generated sources should be placed.
         """
         if self.suite._output_root_includes_config():
-            return join(self.get_output_base(), self.name)
+            return os.path.join(self.get_output_base(), self.name)
 
         # Legacy code
         assert self.isProject(), self
         if not self.subDir:
-            return join(self.get_output_base(), self.name)
+            return os.path.join(self.get_output_base(), self.name)
+        if not isinstance(self.subDir, str):
+            return abort(f"Expected self.subDir={self.subDir} to be a string")
         names = self.subDir.split(os.sep)
         parents = len([n for n in names if n == os.pardir])
         if parents != 0:
             return os.sep.join([self.get_output_base(), f'{self.suite}-parent-{parents}'] + names[parents:] + [self.name])
-        return join(self.get_output_base(), self.subDir, self.name)
+        return os.path.join(self.get_output_base(), self.subDir, self.name)

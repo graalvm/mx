@@ -27,10 +27,17 @@ r"""
 helper functions for dealing with paths
 """
 
+import os
+import os.path as ospath
+
+from .system import is_windows
+from .options import _opts
+from .logging import warn
 from .. import mx
 
+Path = str
 
-def _safe_path(path):
+def _safe_path(path: Path):
     """
     If not on Windows, this function returns `path`.
     Otherwise, it return a potentially transformed path that is safe for file operations.
@@ -42,10 +49,10 @@ def _safe_path(path):
             warn(f"Forward slash in path on windows: {path}")
             import traceback
             traceback.print_stack()
-        path = normpath(path)
+        path = ospath.normpath(path)
         MAX_PATH = 260 # pylint: disable=invalid-name
         path_len = len(path) + 1 # account for trailing NUL
-        if isabs(path) and path_len >= MAX_PATH:
+        if ospath.isabs(path) and path_len >= MAX_PATH:
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):
                     # if it already has a \\?\ don't do the prefix
@@ -66,16 +73,16 @@ def _safe_path(path):
         path = str(path)
     return path
 
-def lstat(name):
+def lstat(name: Path):
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
     return os.lstat(_safe_path(name))
 
-def canonicalize(p):
+def canonicalize(p: Path):
     if mx.is_windows() and p.startswith("\\\\?\\"):
         return p[4:]
     return p
 
-def equal(p1, p2):
+def equal(p1: Path, p2: Path):
     return canonicalize(p1) == canonicalize(p2)

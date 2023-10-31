@@ -25,28 +25,38 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import annotations
+from abc import ABCMeta
+import os.path
+from typing import Any, Optional
+
+from ...support.comparable import ComparisonResult, compare, Comparable
+
+# TODO: Replace with actual type
+Suite = Any
 
 class SuiteConstituent(Comparable, metaclass=ABCMeta):
-    def __init__(self, suite, name, build_time=1):
-        """
-        :type name: str
-        :type suite: Suite
-        :type build_time: Expected build time in minutes (Used to schedule parallel jobs efficient)
-        """
+    name: str
+    suite: Suite
+    build_time: int
+    """Expected build time in minutes (Used to schedule parallel jobs efficiently)"""
+
+    internal: bool
+    """Should this constituent be visible outside its suite"""
+
+    def __init__(self, suite: Suite, name: str, build_time: int = 1):
         self.name = name
         self.suite = suite
         self.build_time = build_time
-
-        # Should this constituent be visible outside its suite
         self.internal = False
 
-    def origin(self):
+    def origin(self) -> Optional[tuple[Suite, int]]:
         """
         Gets a 2-tuple (file, line) describing the source file where this constituent
         is defined or None if the location cannot be determined.
         """
         suitepy = self.suite.suite_py()
-        if exists(suitepy):
+        if os.path.exists(suitepy):
             import tokenize
             with open(suitepy) as fp:
                 candidate = None
@@ -61,7 +71,7 @@ class SuiteConstituent(Comparable, metaclass=ABCMeta):
                         else:
                             candidate = None
 
-    def __abort_context__(self):
+    def __abort_context__(self) -> str:
         """
         Gets a description of where this constituent was defined in terms of source file
         and line number. If no such description can be generated, None is returned.
@@ -72,10 +82,10 @@ class SuiteConstituent(Comparable, metaclass=ABCMeta):
             return f'  File "{path}", line {lineNo} in definition of {self.name}'
         return f'  {self.name}'
 
-    def _comparison_key(self):
+    def _comparison_key(self) -> tuple[str, Suite]:
         return self.name, self.suite
 
-    def __cmp__(self, other):
+    def __cmp__(self, other) -> ComparisonResult:
         if not isinstance(other, self.__class__):
             return NotImplemented
         return compare(self._comparison_key(), other._comparison_key())

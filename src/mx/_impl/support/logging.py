@@ -23,7 +23,25 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
-#
+
+from __future__ import annotations
+import sys, signal, threading
+from typing import Any, NoReturn, Optional
+
+from .options import _opts, _opts_parsed_deferrables
+
+__all__ = [
+    "abort",
+    "abort_or_warn",
+    "log",
+    "logv",
+    "logvv",
+    "log_error",
+    "log_deprecation",
+    "nyi",
+    "colorize",
+    "warn",
+]
 
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 _ansi_color_table = {
@@ -36,7 +54,7 @@ _ansi_color_table = {
     'cyan' : '36'
     }
 
-def log(msg=None, end='\n'):
+def log(msg: Optional[str] = None, end: Optional[str] = '\n'):
     """
     Write a message to the console.
     All script output goes through this method thus allowing a subclass
@@ -62,7 +80,7 @@ def log(msg=None, end='\n'):
         # atomically, but still prints the newline.
         print(str(msg), end=end)
 
-def logv(msg=None, end='\n'):
+def logv(msg: Optional[str] = None, end='\n') -> None:
     if vars(_opts).get('verbose') is None:
         def _deferrable():
             logv(msg, end=end)
@@ -72,7 +90,7 @@ def logv(msg=None, end='\n'):
     if _opts.verbose:
         log(msg, end=end)
 
-def logvv(msg=None, end='\n'):
+def logvv(msg: Optional[str] = None, end='\n') -> None:
     if vars(_opts).get('very_verbose') is None:
         def _deferrable():
             logvv(msg, end=end)
@@ -82,7 +100,7 @@ def logvv(msg=None, end='\n'):
     if _opts.very_verbose:
         log(msg, end=end)
 
-def log_error(msg=None):
+def log_error(msg: Optional[str] = None) -> None:
     """
     Write an error message to the console.
     All script output goes through this method thus allowing a subclass
@@ -93,7 +111,8 @@ def log_error(msg=None):
     else:
         print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
 
-def log_deprecation(msg=None):
+
+def log_deprecation(msg: Optional[str] = None) -> None:
     """
     Write an deprecation warning to the console.
     """
@@ -102,7 +121,7 @@ def log_deprecation(msg=None):
     else:
         print(colorize(str(f"[MX DEPRECATED] {msg}"), color='yellow', stream=sys.stderr), file=sys.stderr)
 
-def colorize(msg, color='red', bright=True, stream=sys.stderr):
+def colorize(msg: Optional[str], color='red', bright=True, stream=sys.stderr) -> Optional[str]:
     """
     Wraps `msg` in ANSI escape sequences to make it print to `stream` with foreground font color
     `color` and brightness `bright`. This method returns `msg` unchanged if it is None,
@@ -113,7 +132,7 @@ def colorize(msg, color='red', bright=True, stream=sys.stderr):
         return None
     code = _ansi_color_table.get(color, None)
     if code is None:
-        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.keys()))
+        return abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.keys()))
     if bright:
         code += ';1'
     color_on = '\033[' + code + 'm'
@@ -123,7 +142,7 @@ def colorize(msg, color='red', bright=True, stream=sys.stderr):
             return color_on + msg + '\033[0m'
     return msg
 
-def warn(msg, context=None):
+def warn(msg: str, context=None) -> None:
     if _opts.warn and not _opts.quiet:
         if context is not None:
             if callable(context):
@@ -135,7 +154,7 @@ def warn(msg, context=None):
             msg = contextMsg + ":\n" + msg
         print(colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr), file=sys.stderr)
 
-def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
+def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoReturn:
     """
     Aborts the program with a SystemExit exception.
     If `codeOrMessage` is a plain integer, it specifies the system exit status;
@@ -147,27 +166,16 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     If `context` defines a __abort_context__ method, the latter is called and
     its return value is printed. Otherwise str(context) is printed.
     """
+    from .system import is_continuous_integration
+    from .processes import terminate_subprocesses
+
     if threading.current_thread() is threading.main_thread():
         if is_continuous_integration() or _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
+            from ..mx import _send_sigquit
             logv('sending SIGQUIT to subprocesses on abort')
             _send_sigquit()
 
-        for p, args in _currentSubprocesses:
-            if _is_process_alive(p):
-                if is_windows():
-                    p.terminate()
-                else:
-                    _kill_process(p.pid, killsig)
-                time.sleep(0.1)
-            if _is_process_alive(p):
-                try:
-                    if is_windows():
-                        p.terminate()
-                    else:
-                        _kill_process(p.pid, signal.SIGKILL)
-                except BaseException as e:
-                    if _is_process_alive(p):
-                        log_error(f"error while killing subprocess {p.pid} \"{' '.join(args)}\": {e}")
+        terminate_subprocesses(killsig)
 
     sys.stdout.flush()
     if is_continuous_integration() or (_opts and hasattr(_opts, 'verbose') and _opts.verbose):
@@ -197,12 +205,13 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     log_error(error_message)
     raise SystemExit(error_code)
 
-def abort_or_warn(message, should_abort, context=None):
+def abort_or_warn(message: str, should_abort: bool, context=None) -> Optional[NoReturn]:
     if should_abort:
         abort(message, context)
     else:
         warn(message, context)
 
-def nyi(name, obj):
+def nyi(name: str, obj: Any) -> NoReturn:
+    """Throw a not yet implemented error."""
     abort(f'{name} is not implemented for {obj.__class__.__name__}')
     raise NotImplementedError()

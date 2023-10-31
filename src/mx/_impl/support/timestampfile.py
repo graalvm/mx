@@ -25,43 +25,55 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import annotations
+from typing import Optional, Sequence, Union
+import os, time
+import os.path as ospath
+
+from . import path as mxpath
+from .path import Path
+from ..mx_util import ensure_dir_exists
+
+
+TimeStampComparable = Union[int, 'TimeStampFile', float, str, Sequence[str]]
+
 """
 Represents a file and its modification time stamp at the time the TimeStampFile is created.
 """
 class TimeStampFile:
-    def __init__(self, path, followSymlinks=True):
-        """
-        :type path: str
-        :type followSymlinks: bool | str
-        """
+
+    path: Path
+    timestamp: Optional[float]
+
+    def __init__(self, path: Path, followSymlinks: bool | str=True):
         assert isinstance(path, str), path + ' # type=' + str(type(path))
         self.path = path
-        if exists(path):
+        if ospath.exists(path):
             if followSymlinks == 'newest':
-                self.timestamp = max(getmtime(path), lstat(path).st_mtime)
+                self.timestamp = max(ospath.getmtime(path), mxpath.lstat(path).st_mtime)
             elif followSymlinks:
-                self.timestamp = getmtime(path)
+                self.timestamp = ospath.getmtime(path)
             else:
-                self.timestamp = lstat(path).st_mtime
+                self.timestamp = mxpath.lstat(path).st_mtime
         else:
             self.timestamp = None
 
     @staticmethod
-    def newest(paths):
+    def newest(paths: Sequence[Path]) -> Optional[TimeStampFile]:
         """
         Creates a TimeStampFile for the file in `paths` with the most recent modification time.
         Entries in `paths` that do not correspond to an existing file are ignored.
         """
         ts = None
         for path in paths:
-            if exists(path):
+            if ospath.exists(path):
                 if not ts:
                     ts = TimeStampFile(path)
                 elif ts.isOlderThan(path):
                     ts = TimeStampFile(path)
         return ts
 
-    def isOlderThan(self, arg):
+    def isOlderThan(self, arg: TimeStampComparable) -> bool:
         if not self.timestamp:
             return True
         if isinstance(arg, (int, float)):
@@ -76,13 +88,13 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if not os.path.exists(f):
+            if not ospath.exists(f):
                 return True
-            if getmtime(f) > self.timestamp:
+            if ospath.getmtime(f) > self.timestamp:
                 return True
         return False
 
-    def isNewerThan(self, arg):
+    def isNewerThan(self, arg: TimeStampComparable) -> bool:
         """
         Returns True if self represents an existing file whose modification time
         is more recent than the modification time(s) represented by `arg`. If `arg`
@@ -102,24 +114,24 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if self.timestamp < getmtime(f):
+            if self.timestamp < ospath.getmtime(f):
                 return False
         return True
 
-    def exists(self):
-        return exists(self.path)
+    def exists(self) -> bool:
+        return ospath.exists(self.path)
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.timestamp:
             ts = time.strftime('[%Y-%m-%d %H:%M:%S]', time.localtime(self.timestamp))
         else:
             ts = '[does not exist]'
         return self.path + ts
 
-    def touch(self):
-        if exists(self.path):
+    def touch(self) -> None:
+        if ospath.exists(self.path):
             os.utime(self.path, None)
         else:
-            ensure_dir_exists(dirname(self.path))
+            ensure_dir_exists(ospath.dirname(self.path))
             open(self.path, 'a')
-        self.timestamp = getmtime(self.path)
+        self.timestamp = ospath.getmtime(self.path)

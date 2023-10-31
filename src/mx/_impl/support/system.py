@@ -25,6 +25,23 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+__all__ = [
+    "get_os",
+    "get_os_variant",
+    "is_continuous_integration",
+    "is_darwin",
+    "is_linux",
+    "is_openbsd",
+    "is_sunos",
+    "is_windows",
+    "is_cygwin"
+]
+
+import subprocess, sys
+
+from .envvars import env_var_to_bool
+from .logging import abort, logv
+
 def is_continuous_integration() -> bool:
     return env_var_to_bool("CONTINUOUS_INTEGRATION")
 

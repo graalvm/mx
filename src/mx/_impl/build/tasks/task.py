@@ -25,49 +25,68 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import annotations
+from abc import ABCMeta, abstractmethod
+from argparse import Namespace
+from typing import Dict, Optional, MutableSequence
+
+from ..daemons import Daemon
+from ..suite import Dependency
+from ...support.logging import nyi
+from ...support.processes import Process
+
+__all__ = ["Task"]
+
+Args = Namespace
+
 class Task(object, metaclass=ABCMeta):
-    """A task executed during a build.
+    """A task executed during a build."""
 
-    :type deps: list[Task]
-    :param Dependency subject: the dependency for which this task is executed
-    :param list[str] args: arguments of the build command
-    :param int parallelism: the number of CPUs used when executing this task
-    """
+    subject: Dependency
+    deps: MutableSequence[Task]
+    args: Args
+    parallelism: int
+    proc: Optional[Process]
 
-    def __init__(self, subject, args, parallelism):
+    def __init__(self, subject: Dependency, args: Args, parallelism: int):
+        """
+        :param subject: the dependency for which this task is executed
+        :param args: arguments of the build command
+        :param parallelism: the number of CPUs used when executing this task
+        """
         self.subject = subject
         self.args = args
         self.parallelism = parallelism
         self.deps = []
         self.proc = None
 
-    def __str__(self):
-        nyi('__str__', self)
+    def __str__(self) -> str:
+        return nyi('__str__', self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.subject.name
 
     @property
     def build_time(self):
         return getattr(self.subject, "build_time", 1)
 
-    def initSharedMemoryState(self):
+    def initSharedMemoryState(self) -> None:
         pass
 
-    def pushSharedMemoryState(self):
+    def pushSharedMemoryState(self) -> None:
         pass
 
-    def pullSharedMemoryState(self):
+    def pullSharedMemoryState(self) -> None:
         pass
 
-    def cleanSharedMemoryState(self):
+    def cleanSharedMemoryState(self) -> None:
         pass
 
-    def prepare(self, daemons):
+    def prepare(self, daemons: Dict[str, Daemon]):
         """
         Perform any task initialization that must be done in the main process.
         This will be called just before the task is launched.
@@ -76,5 +95,5 @@ class Task(object, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def execute(self):
+    def execute(self) -> None:
         """Executes this task."""

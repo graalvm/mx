@@ -36,12 +36,15 @@ See docs/package-structure.md for more details.
 # mx exports its own open symbol which redefines a builtin
 from ._impl.mx import *  # pylint: disable=redefined-builtin
 
+# import the symbols that have been moved already
+from ._impl.legacy import *
+
 # For some reason these private symbols are used externally
+from ._impl.support.processes import _addSubprocess, _removeSubprocess
 from ._impl.mx import (
     _mx_path,
     _opts,
     _replaceResultsVar,
-    _addSubprocess,
     _cache_dir,
     _check_global_structures,
     _chunk_files_for_command_line,
@@ -52,16 +55,18 @@ from ._impl.mx import (
     _mx_home,
     _mx_suite,
     _needsUpdate,
-    _removeSubprocess,
     # Only used by tests
     _primary_suite_init,
 )
 
 from mx._legacy.oldnames import redirect as _redirect
 
+from ._impl import legacy as _legacy
 import mx._impl.mx as _orig
 
-__all__ = _orig.__all__
+__all__ = []
+__all__ += _legacy.__all__
+__all__ += _orig.__all__
 
 # Unlike all the modules in oldnames, this module is used for both the legacy
 # access and access in the package system to the `mx` module because there is

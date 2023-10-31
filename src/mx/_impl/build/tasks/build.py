@@ -25,40 +25,65 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import annotations
+
+__all__ = [
+    "Buildable",
+    "BuildTask"
+]
+
+import datetime, time, os, sys
+import multiprocessing.dummy as multiprocessing
+from abc import abstractmethod
+from os import path
+from typing import Optional, Tuple
+
+from mx._impl.support.timestampfile import TimeStampFile
+
+from .task import Args, Dependency, Task
+from ...mx_util import SafeFileCreation
+from ...support.envvars import get_env
+from ...support.logging import abort, log, logv, logvv, nyi, warn
+from ...support.options import _opts
+
 class Buildable(object):
     """A mixin for Task subclasses that can be built."""
-    built = False
+    built: bool = False
+    _builtBox: Optional[multiprocessing.Value] = None
 
-    def initSharedMemoryState(self):
+    def initSharedMemoryState(self) -> None:
         self._builtBox = multiprocessing.Value('b', 1 if self.built else 0)
 
-    def pushSharedMemoryState(self):
+    def pushSharedMemoryState(self) -> None:
+        if self._builtBox is None:
+            return abort("Shared memory state not initialized")
         self._builtBox.value = 1 if self.built else 0
 
-    def pullSharedMemoryState(self):
+    def pullSharedMemoryState(self) -> None:
+        if self._builtBox is None:
+            return abort("Shared memory state not initialized")
         self.built = bool(self._builtBox.value)
 
-    def cleanSharedMemoryState(self):
+    def cleanSharedMemoryState(self) -> None:
         self._builtBox = None
 
     # @abstractmethod should be abstract but subclasses in some suites miss this method
-    def newestOutput(self):
+    def newestOutput(self) -> TimeStampFile | None:
         """
         Gets a TimeStampFile representing the build output file for this task
         with the newest modification time or None if no build output file exists.
         """
         nyi('newestOutput', self)
 
-
 class BuildTask(Buildable, Task):
     """A Task used to build a dependency."""
 
-    def __init__(self, subject, args, parallelism):
+    def __init__(self, subject: Dependency, args: Args, parallelism: int):
         super(BuildTask, self).__init__(subject, args, parallelism)
-        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                     subject._extra_artifact_discriminant(), self.name)
+        self._saved_deps_path = path.join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
+                                          subject._extra_artifact_discriminant(), self.name)
 
-    def _persist_deps(self):
+    def _persist_deps(self) -> None:
         """
         Saves the dependencies for this task's subject to a file.
         """
@@ -67,15 +92,15 @@ class BuildTask(Buildable, Task):
                 with open(sfc.tmpPath, 'w') as f:
                     for d in self.deps:
                         print(d.subject.name, file=f)
-        elif exists(self._saved_deps_path):
+        elif path.exists(self._saved_deps_path):
             os.remove(self._saved_deps_path)
 
-    def _deps_changed(self):
+    def _deps_changed(self) -> bool:
         """
         Returns True if there are saved dependencies for this task's subject and
         they have changed since the last time it was built.
         """
-        if exists(self._saved_deps_path):
+        if path.exists(self._saved_deps_path):
             with open(self._saved_deps_path) as f:
                 last_deps = f.read().splitlines()
                 curr_deps = [d.subject.name for d in self.deps]
@@ -91,6 +116,7 @@ class BuildTask(Buildable, Task):
             self.logSkip()
             return
         buildNeeded = False
+        reason = "unknown"
         if self.args.clean and not self.cleanForbidden():
             self.logClean()
             self.clean()
@@ -149,36 +175,36 @@ class BuildTask(Buildable, Task):
         else:
             self.logSkip(reason)
 
-    def _timestamp(self):
+    def _timestamp(self) -> str:
         if self.args.print_timing:
             return time.strftime('[%H:%M:%S] ')
         return ''
 
-    def logBuild(self, reason=None):
+    def logBuild(self, reason: Optional[str] = None) -> None:
         if reason:
             log(self._timestamp() + f'{self}... [{reason}]')
         else:
             log(self._timestamp() + f'{self}...')
 
-    def logBuildDone(self, duration):
+    def logBuildDone(self, duration: float) -> None:
         timestamp = self._timestamp()
         if timestamp:
-            duration = str(timedelta(seconds=duration))
+            durationStr = str(datetime.timedelta(seconds=duration))
             # Strip hours if 0
-            if duration.startswith('0:'):
-                duration = duration[2:]
+            if durationStr.startswith('0:'):
+                durationStr = durationStr[2:]
             log(timestamp + f'{self} [duration: {duration}]')
 
-    def logClean(self):
+    def logClean(self) -> None:
         log(f'Cleaning {self.name}...')
 
-    def logSkip(self, reason=None):
+    def logSkip(self, reason: Optional[str] = None) -> None:
         if reason:
             logv(f'[{reason} - skipping {self.name}]')
         else:
             logv(f'[skipping {self.name}]')
 
-    def needsBuild(self, newestInput):
+    def needsBuild(self, newestInput: None | float | TimeStampFile) -> Tuple[bool, str]:
         """
         Returns True if the current artifacts of this task are out dated.
         The 'newestInput' argument is either None or a TimeStampFile
@@ -189,24 +215,24 @@ class BuildTask(Buildable, Task):
             return (True, 'forced build')
         return (False, 'unimplemented')
 
-    def buildForbidden(self):
+    def buildForbidden(self) -> bool:
         if not self.args.only:
             return False
         projectNames = self.args.only.split(',')
         return self.subject.name not in projectNames
 
-    def cleanForbidden(self):
+    def cleanForbidden(self) -> bool:
         return False
 
     @abstractmethod
-    def build(self):
+    def build(self) -> Optional[bool]:
         """
         Build the artifacts.
         """
         nyi('build', self)
 
     @abstractmethod
-    def clean(self, forBuild=False):
+    def clean(self, forBuild: bool = False) -> Optional[bool]:
         """
         Clean the build artifacts.
         """
