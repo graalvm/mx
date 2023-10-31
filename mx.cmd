@@ -11,4 +11,4 @@ if defined MX_PYTHON (
 )
 
 :: local variables can be used after endlocal if on the same line
-endlocal & "%python_exe%" -u "%~dp0mx_enter.py" %*
+endlocal & "%python_exe%" -u "%~dp0mx.py" %*

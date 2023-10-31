@@ -3,10 +3,10 @@ import os
 import re
 import sys
 
-file_dir = dirname(realpath(__file__))
-sys.path.append(file_dir + sep + "..")
+from mx._impl import mx
 
-import mx
+file_dir = dirname(realpath(__file__))
+
 
 # Test basic JMH benchmark listing functionality. This exercises JMH command line parsing via the FilterJMHFlags Java
 # helper class.

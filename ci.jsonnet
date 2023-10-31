@@ -99,6 +99,7 @@ local with(platform, java_release, timelimit="15:00") = {
         ],
         run: [
             [mx, "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
+            ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
             ["python3", path("tests/jmh_filtering_tests.py")],
         ]
     },
@@ -183,11 +184,9 @@ local with(platform, java_release, timelimit="15:00") = {
     },
 
     mx_unit_test:: self.with_name("unit-tests") + {
-        environment+: {
-            __MX_MODULE__: path("tests/benchmark_tests.py")
-        },
         run: [
-            [mx]
+            ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
+            ['python3', path('tests/benchmark_tests.py')]
         ],
     },
 

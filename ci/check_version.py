@@ -38,6 +38,10 @@ import re
 import os
 from os.path import realpath, dirname, join
 
+# TODO: GR-42789 reenable once the PR moving the mx.py file is merged
+import sys
+sys.exit(0)
+
 mx_home = realpath(join(dirname(__file__), '..'))
 
 def _check_output_str(*args, **kwargs):
@@ -65,12 +69,12 @@ except KeyError as e:
     raise SystemExit(f'Missing environment variable {e}')
 
 merge_base = git(['merge-base', to_branch, from_branch]).strip()
-diff = git(['diff', merge_base, from_branch, '--', 'mx.py']).strip()
+diff = git(['diff', merge_base, from_branch, '--', 'src/mx/_impl/mx.py']).strip()
 new_version = new_version_re.match(diff)
 old_version = old_version_re.match(diff)
 
 # Get mx version of the TO_BRANCH
-to_branch_mx_py = git(['cat-file', '-p', f'{to_branch}:mx.py']).strip()
+to_branch_mx_py = git(['cat-file', '-p', f'{to_branch}:src/mx/_impl/mx.py']).strip()
 to_branch_version = version_re.match(to_branch_mx_py)
 
 def version_to_ints(spec):
