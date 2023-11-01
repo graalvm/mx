@@ -9,6 +9,20 @@ but new code submitted to `mx` should nevertheless follow the guidelines.
 
 ## Python
 
+### Code Style
+
+Code is formatted using [*Black*](https://github.com/psf/black).
+Formatting can be done manually using `mx pyformat`; this will format all eligible python files in this repository.
+It is recommended to set up auto-formatting in your [IDE](./IDE.md) to avoid formatting-only commits.
+
+Only new python files are formatted; which files are excluded is specified in [`pyproject.toml`](../pyproject.toml)
+under `force-exclude`.
+
+To ensure a consistent style, the major version of *Black* is fixed in [`pyproject.toml`](../pyproject.toml).
+Other major versions (newer or older) cannot be used as they could lead to slightly different formatting, failing the
+code format check in the CI.
+See also [*Black*'s Stability Policy](https://black.readthedocs.io/en/stable/the_black_code_style/index.html).
+
 ### Doc comments
 
 Doc comments for modules, classes and methods should use the

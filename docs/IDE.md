@@ -33,7 +33,7 @@ Recommended _Format on Save_ configuration (**IntelliJ IDEA > Preferences > Tool
 2. Check "Optimize imports" (Files:Java)
 3. Check "Run code cleanup". This removes unused imports.
 
-##### Making IntelliJ Feel Similar to Eclipse (Optional)
+#### Making IntelliJ Feel Similar to Eclipse (Optional)
 
 Set IntelliJ to use the Eclipse compiler by going to *IntelliJ IDEA > Preferences > Build, Execution, Deployment > Java Compiler*
 To make IntelliJ work the same way as Eclipse with respect to Problems View and recompilation you need to:
@@ -42,6 +42,31 @@ To make IntelliJ work the same way as Eclipse with respect to Problems View and 
 2. Open the problems view:  View > Tool Windows > Problems
 3. Navigate the problems with Cmd ⌥ ↑ and Cmd ⌥ ↓
 
+#### Mx Development
+
+Developing mx itself can also be done using IntelliJ with the python plugin (or PyCharm) and `mx intellijinit` (in the
+mx repository or any other mx suite) as described above is sufficient to add projects for the mx sources.
+
+The main source code is generated as an IntelliJ project named `mx`. In the *Project* view, it will appear
+as `src [mx]` (similarly there is the `mx_tests` project that appears as `tests [mx_tests]`).
+
+##### Formatting
+
+Since 2023.2, IntelliJ with the python plugin (and PyCharm) have built-in support for the *Black* formatter.
+It can be enabled under `Settings > Tools > Black` and it is recommended to turn on both `On code reformat`
+and `On save`.
+In the same setting window, a `black` executable with the correct version should be configured, see
+the [Style Guide](./Styleguide.md) for more information.
+
+By default, this will produce a notification popup everytime *Black* fails to format a file, including when the file is
+ignored by the formatter.
+This can become annoying and can be turned off under:
+
+```
+Settings > Appearance & Behavior > Notifications > Black > Popup type: No popup
+```
+
+As of 2023.2, there is no way to separately configure the different popup severities (error vs. informational).
 
 ### Eclipse
 This section describes how to set up Eclipse for development. For convenience, `$GRAAL` denotes your local repository.

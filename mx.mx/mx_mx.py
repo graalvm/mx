@@ -41,7 +41,7 @@ def find_black() -> str | None:
 @mx.command(suite.name, "pyformat")
 @mx.no_suite_loading
 def pyformat(arg_list: [str]):
-    parser = argparse.ArgumentParser(prog="mx pyformat", description="TODO document")
+    parser = argparse.ArgumentParser(prog="mx pyformat", description="Format python code using the black formatter")
     parser.add_argument(
         "-n",
         "--dry-run",
