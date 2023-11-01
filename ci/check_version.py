@@ -38,58 +38,67 @@ import re
 import os
 from os.path import realpath, dirname, join
 
-mx_home = realpath(join(dirname(__file__), '..'))
+mx_home = realpath(join(dirname(__file__), ".."))
+
 
 def _check_output_str(*args, **kwargs):
     return subprocess.check_output(*args, **kwargs).decode()
 
+
 def git(args):
-    return _check_output_str(['git'] + args, cwd=mx_home)
+    return _check_output_str(["git"] + args, cwd=mx_home)
+
 
 version_re = re.compile(r'.*version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 new_version_re = re.compile(r'.*\+version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 old_version_re = re.compile(r'.*\-version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 
+
 def find_remote_branch(local_branch):
-    all_branches = frozenset((e.strip() for e in git(['branch', '-a']).split()))
-    for remote in git(['remote']).split():
-        remote_branch = f'remotes/{remote}/{local_branch}'
+    all_branches = frozenset((e.strip() for e in git(["branch", "-a"]).split()))
+    for remote in git(["remote"]).split():
+        remote_branch = f"remotes/{remote}/{local_branch}"
         if remote_branch in all_branches:
             return remote_branch
-    raise SystemExit(f'Could not find remote branch corresponding to {local_branch}')
+    raise SystemExit(f"Could not find remote branch corresponding to {local_branch}")
+
 
 try:
-    from_branch = find_remote_branch(os.environ['FROM_BRANCH'])
-    to_branch = find_remote_branch(os.environ['TO_BRANCH'])
+    from_branch = find_remote_branch(os.environ["FROM_BRANCH"])
+    to_branch = find_remote_branch(os.environ["TO_BRANCH"])
 except KeyError as e:
-    raise SystemExit(f'Missing environment variable {e}')
+    raise SystemExit(f"Missing environment variable {e}")
 
-merge_base = git(['merge-base', to_branch, from_branch]).strip()
-diff = git(['diff', merge_base, from_branch, '--', 'src/mx/_impl/mx.py']).strip()
+merge_base = git(["merge-base", to_branch, from_branch]).strip()
+diff = git(["diff", merge_base, from_branch, "--", "src/mx/_impl/mx.py"]).strip()
 new_version = new_version_re.match(diff)
 old_version = old_version_re.match(diff)
 
 # Get mx version of the TO_BRANCH
-to_branch_mx_py = git(['cat-file', '-p', f'{to_branch}:src/mx/_impl/mx.py']).strip()
+to_branch_mx_py = git(["cat-file", "-p", f"{to_branch}:src/mx/_impl/mx.py"]).strip()
 to_branch_version = version_re.match(to_branch_mx_py)
+
 
 def version_to_ints(spec):
     try:
-        return [int(e) for e in spec.split('.')]
+        return [int(e) for e in spec.split(".")]
     except ValueError as e:
-        raise SystemExit(f'{spec} is not a valid mx version string: {e}')
+        raise SystemExit(f"{spec} is not a valid mx version string: {e}")
+
 
 if new_version and old_version:
     new_tag = new_version.group(1)
     old_tag = old_version.group(1)
-    print(f'Found update of mx version from {old_tag} to {new_tag}')
+    print(f"Found update of mx version from {old_tag} to {new_tag}")
     old = version_to_ints(old_tag)
     new = version_to_ints(new_tag)
     if old >= new:
-        raise SystemExit(f'Version update does not go forward ({new_tag} < {old_tag})')
+        raise SystemExit(f"Version update does not go forward ({new_tag} < {old_tag})")
     to_branch_tag = to_branch_version.group(1)
     to_branch_val = version_to_ints(to_branch_tag)
     if to_branch_val >= new:
-        raise SystemExit(f'Version update does not go forward ({new_tag} < {to_branch_tag})')
+        raise SystemExit(f"Version update does not go forward ({new_tag} < {to_branch_tag})")
 else:
-    raise SystemExit(f'Could not find mx version update in the PR (based on `git diff {merge_base}..{from_branch}`).\n\nPlease bump the value of the `version` field near the bottom of mx.py.')
+    raise SystemExit(
+        f"Could not find mx version update in the PR (based on `git diff {merge_base}..{from_branch}`).\n\nPlease bump the value of the `version` field near the bottom of mx.py."
+    )

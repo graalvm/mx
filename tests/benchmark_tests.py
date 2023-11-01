@@ -9,7 +9,15 @@ import mx_benchmark
 from mx_benchmark import gate_mx_benchmark
 
 # setup the primary suite
-_suite = mx.Suite(mxDir=file_dir + sep + 'mx.benchmarks', primary=True, internal=True, importing_suite=None, load=False, vc=None, vc_dir='.')
+_suite = mx.Suite(
+    mxDir=file_dir + sep + "mx.benchmarks",
+    primary=True,
+    internal=True,
+    importing_suite=None,
+    load=False,
+    vc=None,
+    vc_dir=".",
+)
 mx._primary_suite_init(_suite)
 
 # Ensure attribute existence for test
@@ -19,9 +27,10 @@ mx._primary_suite_init(_suite)
 # argument parser. In unit tests, the attribute is thus missing.
 setattr(mx._opts, "cpu_count", None)
 
-_test_vm_registry = mx_benchmark.VmRegistry('TestBench', 'testbench-vm')
+_test_vm_registry = mx_benchmark.VmRegistry("TestBench", "testbench-vm")
 
 benchmark_list = ["a", "b", "bbb", "123", "hello-world", "A", "X-Y", "meta, tests"]
+
 
 class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
     def group(self):
@@ -42,10 +51,11 @@ class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
     def run(self, benchmarks, bmSuiteArgs):
         return [{"benchmark": benchmark, "arguments": bmSuiteArgs} for benchmark in benchmarks]
 
+
 def check(command, included, excluded):
     mx.log("mx benchmark " + command)
 
-    exit_code, _, results = gate_mx_benchmark([command, '--tracker', 'none'], nonZeroIsFatal=False)
+    exit_code, _, results = gate_mx_benchmark([command, "--tracker", "none"], nonZeroIsFatal=False)
 
     if exit_code != 0:
         mx.abort("{} exit code was {}".format(command, exit_code))
@@ -73,16 +83,16 @@ mx_benchmark.add_bm_suite(TestBenchBenchmarkSuite())
 
 checkIncluded("benchSuite:a", ["a"])
 checkIncluded("benchSuite:*[a,X-Y,123]", ["a", "X-Y", "123"])
-checkIncluded("benchSuite:*[a , X-Y , 123]", ["a", "X-Y", "123"]) # space allowed around comma
+checkIncluded("benchSuite:*[a , X-Y , 123]", ["a", "X-Y", "123"])  # space allowed around comma
 checkIncluded("benchSuite:r[[ah].*]", ["a", "hello-world"])
-checkIncluded("benchSuite:r[b]", ["b"]) # does not contain bbb, since we use fullmatch
-checkIncluded("benchSuite:r[.*, .*]", ["meta, tests"]) # comma and space are interpreted correctly
+checkIncluded("benchSuite:r[b]", ["b"])  # does not contain bbb, since we use fullmatch
+checkIncluded("benchSuite:r[.*, .*]", ["meta, tests"])  # comma and space are interpreted correctly
 checkExcluded("benchSuite:*", [])
 checkExcluded("benchSuite:~a", ["a"])
 checkExcluded("benchSuite:~a,b", ["a", "b"])
-checkExcluded("benchSuite:~a , b", ["a", "b"])   # space allowed around comma
+checkExcluded("benchSuite:~a , b", ["a", "b"])  # space allowed around comma
 checkExcluded("benchSuite:~[a,b]", ["a", "b"])
-checkExcluded("benchSuite:~[a , b]", ["a", "b"]) # space allowed around comma
+checkExcluded("benchSuite:~[a , b]", ["a", "b"])  # space allowed around comma
 checkExcluded("benchSuite:~r[[ah].*]", ["a", "hello-world"])
 checkExcluded("benchSuite:~r[.*, .*]", ["meta, tests"])  # comma and space are interpreted correctly
 
