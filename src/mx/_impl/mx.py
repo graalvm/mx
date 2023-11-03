@@ -11721,6 +11721,16 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     groupId = dist.maven_group_id()
     artifactId = dist.maven_artifact_id()
     version = versionGetter(dist.suite)
+
+    if hasattr(dist, "generate_deployment_pom"):
+        if validateMetadata == 'full':
+            cb = abort
+        elif validateMetadata != 'none':
+            cb = None
+        else:
+            cb = warn
+        return dist.generate_deployment_pom(version, validation_callback=cb)
+
     pom = XMLDoc()
     pom.open('project', attributes={
         'xmlns': "http://maven.apache.org/POM/4.0.0",
@@ -19250,7 +19260,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.3.3") # Minor improvements in mx intellijinit: option for max java compliance, etc.
+version = VersionSpec("7.4.0")  # GR-49665 expanded support for MavenProjects in mx
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

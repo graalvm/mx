@@ -193,9 +193,9 @@ def fsckprojects(args):
             else:
                 maybe_project = basename(dirpath)
                 if not mx._removedDeps.get(maybe_project):
-                    projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', maybe_project + '.iml'])
+                    projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', maybe_project + '.iml', 'pom.xml'])
                     indicators = projectConfigFiles.intersection(files)
-                    if len(indicators) != 0:
+                    if len(indicators) != 0 and "pom.xml" not in indicators:
                         indicators = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in indicators]
                         indicatorsInVC = suite.vc.locate(suite.vc_dir, indicators)
                         # Only proceed if there are indicator files that are not under VC

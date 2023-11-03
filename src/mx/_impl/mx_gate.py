@@ -589,6 +589,9 @@ def _run_mx_suite_tests():
     from tests import os_arch_tests
     os_arch_tests.tests()
 
+    from tests import test_maven_projects
+    test_maven_projects.tests()
+
     mx.checkmarkdownlinks(['--no-external', './**/*.md'])
 
     # (JDK, project_compliance, javaPreviewNeeded) -> expected javac args
