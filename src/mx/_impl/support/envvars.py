@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -23,19 +23,47 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+#
 
-from .. import mx
+def check_get_env(key):
+    """
+    Gets an environment variable, aborting with a useful message if it is not set.
+    """
+    value = get_env(key)
+    if value is None:
+        abort('Required environment variable ' + key + ' must be set')
+    return value
 
+def get_env(key, default=None):
+    """
+    Gets an environment variable.
+    :param default: default values if the environment variable is not set.
+    :type default: str | None
+    """
+    value = os.getenv(key, default)
+    return value
 
-def iter_projects(suite, fn):
-    processed_suites = {suite.name}
+def str_to_bool(val):
+    """
+    :type val: str
+    :rtype: str | bool
+    """
+    low_val = val.lower()
+    if low_val in ('false', '0', 'no'):
+        return False
+    elif low_val in ('true', '1', 'yes'):
+        return True
+    return val
 
-    def _mx_projects_suite(_, suite_import):
-        if suite_import.name in processed_suites:
-            return
-        processed_suites.add(suite_import.name)
-        dep_suite = mx.suite(suite_import.name)
-        fn(dep_suite, suite_import.name)
-        dep_suite.visit_imports(_mx_projects_suite)
-
-    suite.visit_imports(_mx_projects_suite)
+def env_var_to_bool(name, default='false'):
+    """
+    :type name: str
+    :type default: str
+    :rtype: bool
+    """
+    val = get_env(name, default)
+    b = str_to_bool(val)
+    if isinstance(b, bool):
+        return b
+    else:
+        raise abort(f"Invalid boolean env var value {name}={val}; expected: <true | false>")

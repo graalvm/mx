@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -23,19 +23,31 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+#
 
-from .. import mx
 
+# Support for comparing objects given removal of `cmp` function in Python 3.
+# https://portingguide.readthedocs.io/en/latest/comparisons.html
+def compare(a, b):
+    return (a > b) - (a < b)
 
-def iter_projects(suite, fn):
-    processed_suites = {suite.name}
+class Comparable(object):
+    def _checked_cmp(self, other, f):
+        compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
+        return f(compar, 0) if compar is not NotImplemented else compare(id(self), id(other))
 
-    def _mx_projects_suite(_, suite_import):
-        if suite_import.name in processed_suites:
-            return
-        processed_suites.add(suite_import.name)
-        dep_suite = mx.suite(suite_import.name)
-        fn(dep_suite, suite_import.name)
-        dep_suite.visit_imports(_mx_projects_suite)
+    def __lt__(self, other):
+        return self._checked_cmp(other, lambda a, b: a < b)
+    def __gt__(self, other):
+        return self._checked_cmp(other, lambda a, b: a > b)
+    def __eq__(self, other):
+        return self._checked_cmp(other, lambda a, b: a == b)
+    def __le__(self, other):
+        return self._checked_cmp(other, lambda a, b: a <= b)
+    def __ge__(self, other):
+        return self._checked_cmp(other, lambda a, b: a >= b)
+    def __ne__(self, other):
+        return self._checked_cmp(other, lambda a, b: a != b)
 
-    suite.visit_imports(_mx_projects_suite)
+    def __cmp__(self, other): # to override
+        raise TypeError("No override for compare")

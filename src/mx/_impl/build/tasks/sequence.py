@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -23,19 +23,26 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+#
 
-from .. import mx
+class TaskSequence(Task):  #pylint: disable=R0921
+    """A Task that executes a sequence of subtasks."""
 
+    def __init__(self, subject, args):
+        super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
 
-def iter_projects(suite, fn):
-    processed_suites = {suite.name}
+    def __str__(self):
+        def indent(s, padding='  '):
+            return padding + s.replace('\n', '\n' + padding)
 
-    def _mx_projects_suite(_, suite_import):
-        if suite_import.name in processed_suites:
-            return
-        processed_suites.add(suite_import.name)
-        dep_suite = mx.suite(suite_import.name)
-        fn(dep_suite, suite_import.name)
-        dep_suite.visit_imports(_mx_projects_suite)
+        return self.__class__.__name__ + '[\n' + indent('\n'.join(map(str, self.subtasks))) + '\n]'
 
-    suite.visit_imports(_mx_projects_suite)
+    @abstractproperty
+    def subtasks(self):
+        """:rtype: typing.Sequence[Task]"""
+
+    def execute(self):
+        for subtask in self.subtasks:
+            assert subtask.subject == self.subject
+            subtask.deps += self.deps
+            subtask.execute()
