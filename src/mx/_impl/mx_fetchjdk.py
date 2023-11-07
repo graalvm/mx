@@ -77,8 +77,6 @@ def fetch_jdk(args):
             mx.warn("The --keep-archive option is ignored when the JDK is already installed.")
         mx.log(f"Requested JDK is already installed at {final_path}")
     else:
-        if settings["digest-check"] and exists(final_path):
-            mx.rmtree(final_path)
         # Try to extract on the same file system as the target to be able to atomically move the result.
         with mx.TempDir(parent_dir=jdks_dir) as temp_dir:
             part = 1
@@ -118,6 +116,9 @@ def fetch_jdk(args):
                     mx.log(f"Archive is located at {archive_target_location}")
                 part += 1
 
+            if settings["digest-check"] and exists(final_path):
+                mx.log(f"Deleting stale {final_path}...")
+                mx.rmtree(final_path)
             atomic_file_move_with_fallback(join(extracted_path, jdk_root_folder), final_path)
 
     curr_path = final_path
