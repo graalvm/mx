@@ -395,12 +395,16 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             prefixArgs.append('-XX:-DisableExplicitGC')
 
         unittestConfigSet = set()
+
+        def _lookup_unittest_config(dep, edge):
+            if dep.isDistribution() and hasattr(dep, 'unittestConfig'):
+                config_name = dep.unittestConfig
+                if config_name not in _unittest_configs:
+                    mx.abort(f"Unknown unittest config {config_name} in dependency {dep}!")
+                unittestConfigSet.add(config_name)
+
         for d in unittestDeps:
-            if hasattr(d, 'unittestConfig'):
-                name = d.unittestConfig
-                if name not in _unittest_configs:
-                    mx.abort(f"Unknown unittest config {name} in dependency {d}!")
-                unittestConfigSet.add(name)
+            d.walk_deps(visit=_lookup_unittest_config)
 
         unittestConfigs = []
         for name in sorted(unittestConfigSet):

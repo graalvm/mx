@@ -19247,7 +19247,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.0.2")  # GR-49778 code owners logging
+version = VersionSpec("7.0.3")  # GR-48571 Unittest configs are composed with configs from dependencies
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
