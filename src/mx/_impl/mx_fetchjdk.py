@@ -337,7 +337,7 @@ def _parse_args(args):
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
     parser.add_argument('--skip-digest-check', dest='digest_check', action='store_false', help='''
-        Only check for existence of the destination directory but skip digest check of downloaded archive.
+        Only check for existence of the destination directory and skip verifying the digest of the downloaded archive.
         This is useful to avoid redownloading when the download cache has been deleted.
         ''')
     args = parser.parse_args(args)
