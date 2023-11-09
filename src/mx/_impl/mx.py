@@ -4135,6 +4135,7 @@ from . import mx_codeowners # pylint: disable=unused-import
 from . import mx_ideconfig # pylint: disable=unused-import
 from . import mx_ide_eclipse
 from . import mx_compdb
+from .pyformat import pyformat
 
 from .mx_javamodules import make_java_module # pylint: disable=unused-import
 from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
@@ -18883,6 +18884,7 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 update_commands("mx", {
     'autopep8': [autopep8, '[options]'],
+    'pyformat': [pyformat, '[options]'],
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],

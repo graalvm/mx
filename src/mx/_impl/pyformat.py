@@ -27,18 +27,13 @@ from __future__ import annotations
 import argparse
 import shutil
 
-import mx
-import mx_gate
-from mx_gate import Tags, Task
-
-suite = mx.suite("mx")
+from . import mx
 
 
 def find_black() -> str | None:
     return shutil.which("black")
 
 
-@mx.command(suite.name, "pyformat")
 @mx.no_suite_loading
 def pyformat(arg_list: [str]):
     parser = argparse.ArgumentParser(prog="mx pyformat", description="Format python code using the black formatter")
@@ -67,9 +62,9 @@ def pyformat(arg_list: [str]):
     source_files: [str] = args.source_files
 
     if not source_files:
-        # By default, we just pass the location of the mx suite and let black do the file discovery
+        # By default, we just pass the location of the primary suite and let black do the file discovery
         # Exclude rules can be added to pyproject.toml
-        source_files = [suite.dir]
+        source_files = [mx.primary_suite().dir]
 
     black_args: [str] = []
 
@@ -83,13 +78,3 @@ def pyformat(arg_list: [str]):
     mx.run([black_exe] + black_args + ["--"] + source_files)
 
     return 0
-
-
-def gate_runner(args, tasks):
-    with Task("Format python code", tasks, tags=[Tags.style]) as t:
-        if t:
-            if pyformat(["--dry-run"]) != 0:
-                mx.abort_or_warn("Python formatting tools not configured correctly", args.strict_mode)
-
-
-mx_gate.add_gate_runner(suite, gate_runner)

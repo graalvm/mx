@@ -701,6 +701,12 @@ def _run_gate(cleanArgs, args, tasks):
         if args.all_suites or suite is mx.primary_suite():
             runner(args, tasks)
 
+    if mx.primary_suite().getMxCompatibility().gate_run_pyformat():
+        with Task("Format python code", tasks, tags=[Tags.style]) as t:
+            if t:
+                if mx.command_function("pyformat")(["--dry-run"]) != 0:
+                    mx.abort_or_warn("Python formatting tools not configured correctly", args.strict_mode)
+
     with Task('Pylint', tasks, tags=[Tags.style]) as t:
         if t:
             if mx.command_function('pylint')(['--primary']) != 0:
