@@ -23,6 +23,23 @@ Other major versions (newer or older) cannot be used as they could lead to sligh
 code format check in the CI.
 See also [*Black*'s Stability Policy](https://black.readthedocs.io/en/stable/the_black_code_style/index.html).
 
+#### In Suite Code
+
+`mx pyformat` is also available to suites and is run in the style gate (guarded by `mx_compat`).
+
+Not all suites may be ready/want to format all their python files (because it would cause large diffs, making looking at
+git history difficult).
+This especially applies to auto-formatting done in the IDE.
+
+Formatting can be disabled for entire folders by creating a `pyproject.toml` with the following content:
+
+```toml
+[tool.black]
+force-exclude = '.*'
+```
+
+This is a regex pattern and can also be tweaked to only exclude certain files.
+
 ### Doc comments
 
 Doc comments for modules, classes and methods should use the

@@ -47,7 +47,7 @@ def pyformat(arg_list: [str]):
         "source_files",
         metavar="FILE",
         nargs="*",
-        help="Source files to format (formats all by default)",
+        help="Source files to format (formats the entire primary suite by default)",
     )
     args = parser.parse_args(arg_list)
 

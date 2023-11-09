@@ -42,12 +42,13 @@ To make IntelliJ work the same way as Eclipse with respect to Problems View and 
 2. Open the problems view:  View > Tool Windows > Problems
 3. Navigate the problems with Cmd ⌥ ↑ and Cmd ⌥ ↓
 
-#### Mx Development
+#### Mx and Suite Development
 
-Developing mx itself can also be done using IntelliJ with the python plugin (or PyCharm) and `mx intellijinit` (in the
-mx repository or any other mx suite) as described above is sufficient to add projects for the mx sources.
+Developing mx itself and downstream can also be done using IntelliJ with the python plugin (or PyCharm)
+and `mx intellijinit` (in the mx repository or any other mx suite) as described above is sufficient to add projects for
+the mx sources and all reachable mx suites.
 
-The main source code is generated as an IntelliJ project named `mx`. In the *Project* view, it will appear
+The mx source code is generated as an IntelliJ project named `mx`. In the *Project* view, it will appear
 as `src [mx]` (similarly there is the `mx_tests` project that appears as `tests [mx_tests]`).
 
 ##### Formatting
