@@ -72,7 +72,7 @@ def fetch_jdk(args):
     if not is_quiet():
         if not mx.ask_yes_no(f"Install {artifact} to {final_path}", default='y'):
             mx.abort("JDK installation canceled")
-    if exists(final_path):
+    if (not settings["digest-check"] or settings["keep-archive"]) and exists(final_path):
         if settings["keep-archive"]:
             mx.warn("The --keep-archive option is ignored when the JDK is already installed.")
         mx.log(f"Requested JDK is already installed at {final_path}")
@@ -116,6 +116,9 @@ def fetch_jdk(args):
                     mx.log(f"Archive is located at {archive_target_location}")
                 part += 1
 
+            if settings["digest-check"] and exists(final_path):
+                mx.log(f"Deleting stale {final_path}...")
+                mx.rmtree(final_path)
             atomic_file_move_with_fallback(join(extracted_path, jdk_root_folder), final_path)
 
     curr_path = final_path
@@ -333,6 +336,10 @@ def _parse_args(args):
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
+    parser.add_argument('--skip-digest-check', dest='digest_check', action='store_false', help='''
+        Only check for existence of the destination directory and skip verifying the digest of the downloaded archive.
+        This is useful to avoid redownloading when the download cache has been deleted.
+        ''')
     args = parser.parse_args(args)
 
     if args.to is not None:
@@ -378,6 +385,7 @@ def _parse_args(args):
         settings["keep-archive"] = args.keep_archive
 
     settings["strip-contents-home"] = args.strip_contents_home
+    settings["digest-check"] = args.digest_check
 
     return settings
 
