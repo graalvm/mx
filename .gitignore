@@ -3,6 +3,8 @@
 *.iml
 /mx.mx/env
 /workingsets.xml
+/.project
+/.pydevproject
 /.idea
 /mxbuild
 /docs/api/build

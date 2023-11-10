@@ -987,17 +987,22 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         files.append(projectFile)
 
     if pythonProjects:
-        project_loc = s.dir if s is mx._mx_suite else s.mxDir
+        # Whether this is the suite in the mx repo
+        is_mx_suite = s is mx._mx_suite
+
+        # In the mx suite, the files go into the repo root
+        # Otherwise they are stored in the suite's mx dir
+        project_loc = s.dir if is_mx_suite else s.mxDir
 
         linked_resources = []
-        source_path = _eclipse_project_rel(project_loc, s.name if s is mx._mx_suite else s.mxDir, linked_resources)
+        source_path = _eclipse_project_rel(project_loc, s.name if is_mx_suite else s.mxDir, linked_resources)
 
         projectXml = mx.XMLDoc()
         projectXml.open('projectDescription')
-        projectXml.element('name', data=s.name if s is mx._mx_suite else 'mx.' + s.name)
+        projectXml.element('name', data=s.name if is_mx_suite else 'mx.' + s.name)
         projectXml.element('comment')
         projectXml.open('projects')
-        if s is not mx._mx_suite:
+        if not is_mx_suite:
             projectXml.element('project', data=mx._mx_suite.name)
 
         project_processor.iter_projects(s, lambda _, suite_name: projectXml.element('project', data='mx.' + suite_name))
@@ -1044,14 +1049,21 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         mx.update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
         files.append(projectFile)
 
+        # Paths that should be added as source paths to the pydev project
+        # Is the mx dir for regular suites, and the src and mx.mx dirs for the mx suite
+        if is_mx_suite:
+            pydev_paths = ["/${PROJECT_DIR_NAME}/src", "/${PROJECT_DIR_NAME}/mx.mx"]
+        else:
+            pydev_paths = ["/${PROJECT_DIR_NAME}"]
+
         pydevProjectXml = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?eclipse-pydev version="1.0"?>
 <pydev_project>
-<pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
-<pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 3.7</pydev_property>
-<pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
-<path>/{source_path}</path>
-</pydev_pathproperty>
+    <pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
+    <pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 3.8</pydev_property>
+    <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
+{os.linesep.join([f"        <path>{p}</path>" for p in pydev_paths])}
+    </pydev_pathproperty>
 </pydev_project>
 """
         pydevProjectFile = join(project_loc, '.pydevproject')
