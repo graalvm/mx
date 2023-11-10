@@ -122,3 +122,21 @@ A downside of this option is that Eclipse will no longer show when it is buildin
 However, it is typically enough to wait a few seconds before running other `mx` commands like `mx unittest` that expect the distributions to be built.
 
 It is planned to enable this feature by default in the future when more feedback has been collected.
+
+#### Mx and Suite Development
+
+Using the [PyDev](https://www.pydev.org/) plugin, eclipse can be made into a python IDE.
+
+The mx folders for the mx suites appear as their own projects (e.g. `mx.compiler`).
+The mx source code itself appears as a project called `mx`.
+
+##### Formatting
+
+The PyDev plugin has built-in support for the *Black* formatter since version 7.0.3.
+
+Under `Window > PyDev > Editor > Code Style > Code Formatter`, select `Black` for `Formatter style?` to use *Black* for formatting.
+
+In the same setting window, a `black` executable with the correct version should be configured, see
+the [Style Guide](./Styleguide.md) for more information.
+
+To auto-format on save, select `Auto-format editor contents before saving?` under `Window > PyDev > Editor > Save Actions`.
