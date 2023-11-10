@@ -34,7 +34,7 @@ def find_black() -> str | None:
     return shutil.which("black")
 
 
-@mx.no_suite_loading
+@mx.no_suite_discovery
 def pyformat(arg_list: [str]):
     parser = argparse.ArgumentParser(prog="mx pyformat", description="Format python code using the black formatter")
     parser.add_argument(
