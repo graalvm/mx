@@ -467,12 +467,12 @@ unittestHelpSuffix = """
 
     For example:
 
-       mx unittest -Dgraal.Dump= -Dgraal.MethodFilter=BC_aload -Dgraal.PrintCFG=true BC_aload
+       mx unittest -Djdk.graal.Dump= -Djdk.graal.MethodFilter=BC_aload -Djdk.graal.PrintCFG=true BC_aload
 
     will run all JUnit test classes that contain 'BC_aload' in their
     fully qualified name and will pass these options to the VM:
 
-        -Dgraal.Dump= -Dgraal.MethodFilter=BC_aload -Dgraal.PrintCFG=true
+        -Djdk.graal.Dump= -Djdk.graal.MethodFilter=BC_aload -Djdk.graal.PrintCFG=true
 
     To get around command line length limitations on some OSes, the
     JUnit class names to be executed are written to a file that a

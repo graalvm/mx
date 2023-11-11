@@ -1639,7 +1639,7 @@ def profrecord(args):
     if options.with_bb_info:
         if is_native_image or not vm_has_bb_dumping(options.command[0]):
             mx.abort('The given vm does not allow dumpling of basic block information!')
-        vm_extra_args = [f'-Dgraal.DumpPath={files.create_dump_dir()}', '-Dgraal.PrintBBInfo=true']
+        vm_extra_args = [f'-Djdk.graal.DumpPath={files.create_dump_dir()}', '-Djdk.graal.PrintBBInfo=true']
 
     if is_native_image:
         full_cmd = build_capture_args(files, options=options, is_native_image=True)[0] + options.command
@@ -1671,11 +1671,11 @@ def profrecord(args):
             top = assembly.top_methods(include=lambda x: not x.generated and x.total_period > 0)[:options.limit]
             dump_path = files.create_dump_dir()
             method_filter = ','.join([x.methods[0].method_filter_format() for x in top])
-            dump_arguments = [f'-Dgraal.Dump=:{options.dump_level}',
-                              '-Dgraal.MethodFilter=' + method_filter,
-                              '-Dgraal.DumpPath=' + dump_path]
+            dump_arguments = [f'-Djdk.graal.Dump=:{options.dump_level}',
+                              '-Djdk.graal.MethodFilter=' + method_filter,
+                              '-Djdk.graal.DumpPath=' + dump_path]
             if options.with_bb_info:
-                dump_arguments.append('-Dgraal.PrintBBInfo=true')
+                dump_arguments.append('-Djdk.graal.PrintBBInfo=true')
 
             # rerun the program with the new options capturing the dump in the experiment directory.
             # This overwrites the original profile information with a new profile that might be different
@@ -1742,7 +1742,7 @@ def build_capture_args(files, extra_vm_args=None, options=None, is_native_image=
     else:
         jvmti_asm_file = files.get_jvmti_asm_filename()
         vm_args = [f'-agentpath:{find_jvmti_asm_agent()}={jvmti_asm_file}', '-XX:+UnlockDiagnosticVMOptions',
-                   '-XX:+DebugNonSafepoints', '-Dgraal.TrackNodeSourcePosition=true', '-XX:+LogCompilation',
+                   '-XX:+DebugNonSafepoints', '-Djdk.graal.TrackNodeSourcePosition=true', '-XX:+LogCompilation',
                    f'-XX:LogFile={files.get_log_compilation_filename()}']
     if extra_vm_args:
         vm_args += extra_vm_args
@@ -2018,8 +2018,8 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
             files.create_native_image_tag()
             perf_cmd, vm_args = build_capture_args(files, is_native_image=True)
         else:
-            extra_vm_args = ["-Dgraal.PrintBBInfo=true",
-                             f"-Dgraal.DumpPath={files.create_dump_dir()}"] if self.with_bb_info else None
+            extra_vm_args = ["-Djdk.graal.PrintBBInfo=true",
+                             f"-Djdk.graal.DumpPath={files.create_dump_dir()}"] if self.with_bb_info else None
             perf_cmd, vm_args = build_capture_args(files, extra_vm_args=extra_vm_args)
 
         # reset the next item name since it has just been consumed
