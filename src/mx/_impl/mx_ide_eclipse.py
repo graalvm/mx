@@ -995,7 +995,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         project_loc = s.dir if is_mx_suite else s.mxDir
 
         linked_resources = []
-        source_path = _eclipse_project_rel(project_loc, s.name if is_mx_suite else s.mxDir, linked_resources)
+        _eclipse_project_rel(project_loc, s.name if is_mx_suite else s.mxDir, linked_resources)
 
         projectXml = mx.XMLDoc()
         projectXml.open('projectDescription')
