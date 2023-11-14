@@ -160,6 +160,7 @@ class FileOwners:
                     result["all"] = sorted(owners)
                 if "any" in modifiers:
                     result["any"] = sorted(owners)
+        logging.debug("File %s owned by %s (looked into %s)", filepath, result, owners_files)
         return result
 
 def _summarize_owners(all_owners):
