@@ -19249,7 +19249,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.1.3")  # GR-49632 Formatting of mx code
+version = VersionSpec("7.2.0")  # mx fetch-jdk provider://
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
