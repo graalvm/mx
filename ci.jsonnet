@@ -3,7 +3,6 @@ local versions = {
     gcc: "4.9.2",
     make: "3.83",
     capstone: "4.0.2",
-    black: "23.11.0",
 };
 local extra_catch_files = [
   "Cannot decode '(?P<filename>[^']+)'"
@@ -73,14 +72,10 @@ local with(platform, java_release, timelimit="15:00") = {
 
     # Specific gate builders are defined by the following functions
 
-    gate:: self.with_name("gate") + {
+    gate:: self.with_name("gate") + common.deps.black + {
         environment+: {
             MX_ALT_OUTPUT_ROOT: path("$BUILD_DIR/alt_output_root"),
             JDT: "builtin",
-        },
-        packages+: {
-            # black is used to format the source code in the mx repo
-            "pip:black": "==" + versions.black,
         },
         run: self.java_home_in_env(".", "mx") + [
             [mx, "--strict-compliance", "gate"]
