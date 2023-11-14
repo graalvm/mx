@@ -23,7 +23,7 @@ def patch_path():
     base_dir = Path(__file__).parent.absolute()
     # Include the sibling directory 'src' of this script in the python search
     # path, this allows loading of the mx module
-    sys.path.insert(0, str(base_dir / 'src'))
+    sys.path.insert(0, str(base_dir / "src"))
 
 
 if __name__ == "__main__":

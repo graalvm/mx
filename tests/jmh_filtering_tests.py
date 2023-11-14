@@ -17,8 +17,12 @@ def checkListingExclusions(exclusions, expected):
     env["MX_PRIMARY_SUITE_PATH"] = parent_dir
     mx_bin = os.path.normpath(parent_dir + sep + "mx")
     # we're parsing stdout, so we need to make sure that trackers are disabled such that no extra output is generated
-    mx.run([mx_bin, 'benchmark', 'jmh-dist:MX_MICRO_BENCHMARKS', '--tracker', 'none', '--', '--', '-l'] + exclusions,
-            out=out, env=env, cwd=parent_dir)
+    mx.run(
+        [mx_bin, "benchmark", "jmh-dist:MX_MICRO_BENCHMARKS", "--tracker", "none", "--", "--", "-l"] + exclusions,
+        out=out,
+        env=env,
+        cwd=parent_dir,
+    )
 
     # Extract benchmark names from the output.
     benchmarks = []
@@ -33,10 +37,11 @@ def checkListingExclusions(exclusions, expected):
             break
         elif collecting:
             # Collect unqualified name.
-            benchmarks.append(line.split('.')[-1])
+            benchmarks.append(line.split(".")[-1])
 
     if set(benchmarks) != set(expected):
         mx.abort(f"Filtering benchmarks with {exclusions} gave {benchmarks}, expected {expected}")
+
 
 # Ensure attribute existence for test
 setattr(mx._opts, "verbose", False)

@@ -4134,6 +4134,7 @@ from . import mx_codeowners # pylint: disable=unused-import
 from . import mx_ideconfig # pylint: disable=unused-import
 from . import mx_ide_eclipse
 from . import mx_compdb
+from .pyformat import pyformat
 
 from .mx_javamodules import make_java_module # pylint: disable=unused-import
 from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
@@ -16011,11 +16012,11 @@ def _find_pyfiles(find_all, primary, walk):
             if f.endswith('.py'):
                 pyfile = join(_src_path, f)
                 pyfiles.append(pyfile)
+
+    if walk:
+        findfiles_by_walk(pyfiles)
     else:
-        if walk:
-            findfiles_by_walk(pyfiles)
-        else:
-            findfiles_by_vc(pyfiles)
+        findfiles_by_vc(pyfiles)
     return pyfiles
 
 def _get_env_with_pythonpath():
@@ -18882,6 +18883,7 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 update_commands("mx", {
     'autopep8': [autopep8, '[options]'],
+    'pyformat': [pyformat, '[options]'],
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
@@ -19247,7 +19249,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.1.2")  # GR-42789 Fix python mx eclipse project
+version = VersionSpec("7.1.3")  # GR-49632 Formatting of mx code
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

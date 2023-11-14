@@ -1,0 +1,13 @@
+[tool.black]
+line-length = 120
+# Require black version 23 for formatting.
+# Black's code style can change for major versions (beginning of the calendar
+# year), to ensure a consistent code-style, the version is fixed to a major
+# version.
+required-version = '23'
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+# The original python files
+# Formatting those would lead to large diffs and break git history
+# In addition, formatting for some of these files takes too long to be practical
+# force-exclude is necessary because it prevents formatting even when explicitly requested (e.g. through IDE auto-formatting).
+force-exclude = '(select_jdk)|(remove_jdks.py)|(src/mx/_impl/(mx|mx_[^/]*|select_jdk).py)|(mx.mx/suite.py)'

@@ -1,4 +1,4 @@
 suite = {
-  "mxversion" : "5.0",
-  "name" : "mxbenchmarks",
+    "mxversion": "5.0",
+    "name": "mxbenchmarks",
 }

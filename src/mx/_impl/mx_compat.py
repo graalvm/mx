@@ -294,6 +294,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def gate_run_pyformat(self) -> bool:
+        """
+        True if mx gate should run pyformat under the style tag
+        """
+        return False
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -748,6 +754,15 @@ class MxCompatibility6271(MxCompatibility6270):
 
     def spotbugs_version(self):
         return "4.7.3_JDK21_BACKPORT"
+
+
+class MxCompatibility704(MxCompatibility6271):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.0.4")
+
+    def gate_run_pyformat(self) -> bool:
+        return True
 
 
 def minVersion():
