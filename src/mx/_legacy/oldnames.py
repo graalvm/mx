@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -29,10 +29,11 @@ Implements intercepting logic for proxy files.
 .. seealso:: :func:`redirect`
 """
 
+from __future__ import annotations
 import atexit
 import sys
 import traceback
-from typing import List
+from typing import Optional
 
 from .._impl import mx
 
@@ -51,7 +52,7 @@ class ModuleInterceptor:
         self.__dict__["_othermodule"] = sys.modules[targetname]
 
     def _get_target(self, name, is_set: bool):
-        if name.startswith("__"):
+        if name.startswith("__") or name in self.__dict__["_thismodule"].__dict__:
             return self.__dict__["_thismodule"]
 
         mem_name = f"{self.__dict__['_thisname']}.{name}"
@@ -67,6 +68,8 @@ class ModuleInterceptor:
 
         if is_set and name not in self.__dict__["_allowed_writes"]:
             mx.abort(f"Disallowed write to {mem_name}")
+        if name not in self.__dict__["_othermodule"].__all__:
+            mx.warn(f"Access to symbol '{mem_name}' which isn't exported")
 
         return self.__dict__["_othermodule"]
 
@@ -84,7 +87,7 @@ def _exit_handler():
         mx.logv(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
 
 
-def redirect(thisname: str, allowed_internal_reads: List[str] = None, allowed_writes: List[str] = None):
+def redirect(thisname: str, allowed_internal_reads: Optional[List[str]]=None, allowed_writes: Optional[List[str]]=None):
     """
     Redirects all attribute accesses on the ``thisname`` module to the
     ``mx._impl.{thisname}`` module.

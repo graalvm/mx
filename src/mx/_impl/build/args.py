@@ -26,8 +26,10 @@
 #
 
 from argparse import Namespace
+from dataclasses import dataclass
 from typing import Optional
 
+@dataclass(repr = False)
 class ArgsNamespace(Namespace):
     verbose: bool = False
     very_verbose: bool = False
