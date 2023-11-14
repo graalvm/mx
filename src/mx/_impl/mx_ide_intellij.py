@@ -39,6 +39,7 @@ import glob
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, dirname, exists, isdir, realpath
 from io import StringIO
+from dataclasses import dataclass, fields
 
 from . import mx
 from . import mx_ideconfig
@@ -53,6 +54,13 @@ intellij_python_sdk_type = 'Python SDK'
 intellij_ruby_sdk_type = 'RUBY_SDK'
 
 
+@dataclass
+class IntellijConfig:
+    import_inner_classes: bool = False
+    max_java_compliance: int = 16
+    on_save_actions: bool = False
+
+
 @mx.command('mx', 'intellijinit')
 def intellijinit_cli(args):
     """(re)generate Intellij project configurations"""
@@ -61,14 +69,27 @@ def intellijinit_cli(args):
     parser.add_argument('--no-external-projects', action='store_false', dest='externalProjects', help='Do not generate external projects.')
     parser.add_argument('--no-java-projects', '--mx-python-modules-only', action='store_false', dest='javaModules', help='Do not generate projects for the java projects.')
     parser.add_argument('--native-projects', action='store_true', dest='nativeProjects', help='Generate native projects.')
+    parser.add_argument('--max-java-compliance', dest='max_java_compliance', type=int, default=16, help='Cap the Java compliance at this value. IntelliJ requires an acceptance of a legal notice for beta Java specifications.')
+    parser.add_argument('--import-inner-classes', action='store_true', dest='import_inner_classes', help='Configure auto-import to insert inner class imports.')
+    parser.add_argument('--on-save-actions', action='store_true', dest='on_save_actions', help='Generate On Save Actions: checkstyle format and optimize imports.')
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
-    args = parser.parse_args(args)
+
+    extra_args = os.environ.get('MX_INTELLIJINIT_DEFAULTS', '').strip().split(' ')
+    if extra_args:
+        mx.log("Applying extra arguments from MX_INTELLIJINIT_DEFAULTS environment variable")
+    args = parser.parse_args(extra_args + args)
+
+    config = IntellijConfig()
+    for f in fields(IntellijConfig):
+        setattr(config, f.name, getattr(args, f.name))
+
     intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules,
-                 generate_external_projects=args.externalProjects, native_projects=args.nativeProjects)
+                 generate_external_projects=args.externalProjects, native_projects=args.nativeProjects,
+                 config=config)
 
 
 def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True,
-                 generate_external_projects=True, native_projects=False):
+                 generate_external_projects=True, native_projects=False, config=IntellijConfig()):
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
@@ -84,7 +105,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     for suite in suites:
         _intellij_suite(args, suite, declared_modules, referenced_modules, sdks, refreshOnly, mx_python_modules,
                         generate_external_projects, java_modules and not suite.isBinarySuite(), suite != mx.primary_suite(),
-                        generate_native_projects=native_projects)
+                        generate_native_projects=native_projects, config=config)
 
     if len(referenced_modules - declared_modules) != 0:
         mx.abort(f'Some referenced modules are missing from modules.xml: {referenced_modules - declared_modules}')
@@ -266,7 +287,8 @@ def _intellij_library_file_name(library_name, unique_library_file_names):
 
 
 def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refreshOnly=False, mx_python_modules=False,
-                    generate_external_projects=True, java_modules=True, module_files_only=False, generate_native_projects=False):
+                    generate_external_projects=True, java_modules=True, module_files_only=False, generate_native_projects=False,
+                    config=IntellijConfig()):
     libraries = set()
     jdk_libraries = set()
 
@@ -303,8 +325,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
     def _complianceToIntellijLanguageLevel(compliance):
         # they changed the name format starting with JDK_10
         if compliance.value >= 10:
-            # latest Idea 2021.2 requires the acceptance of a legal notice for beta Java specification to enable support for JDK17. Clamp at JDK16.
-            return 'JDK_' + str(min(compliance.value, 16))
+            # latest Idea 2021.2 requires the acceptance of a legal notice for beta Java specification to enable support for JDK17. Clamp at JDK16 by default
+            return 'JDK_' + str(min(compliance.value, config.max_java_compliance))
         return 'JDK_1_' + str(compliance.value)
 
     def _intellij_external_project(externalProjects, sdks, host):
@@ -717,6 +739,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         compilerXml.open('component', attributes={'name': 'CompilerConfiguration'})
 
         compilerXml.element('option', attributes={'name': "DEFAULT_COMPILER", 'value': 'Javac'})
+        compilerXml.element('option', attributes={'name': "BUILD_PROCESS_HEAP_SIZE", 'value': '2500'})
         # using the --release option with javac interferes with using --add-modules which is required for some projects
         compilerXml.element('option', attributes={'name': "USE_RELEASE_OPTION", 'value': 'false'})
         compilerXml.element('resourceExtensions')
@@ -866,6 +889,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             codeStyleProjectXml.open('code_scheme', attributes={'name': 'Project', 'version': '173'})
             codeStyleProjectXml.open('JavaCodeStyleSettings')
             # We cannot entirely disable wildcards import, but we can set the threshold to an insane number.
+            if config.import_inner_classes:
+                codeStyleProjectXml.element('option', attributes={'name': 'INSERT_INNER_CLASS_IMPORTS', 'value': 'true'})
             codeStyleProjectXml.element('option', attributes={'name': 'CLASS_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
             codeStyleProjectXml.element('option', attributes={'name': 'NAMES_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
             codeStyleProjectXml.close('JavaCodeStyleSettings')
@@ -901,6 +926,39 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             checkstyleXml.close('project')
             checkstyleFile = join(ideaProjectDirectory, 'checkstyle-idea.xml')
             mx.update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
+
+            # Write basic workspace.xml with Save actions and build in parallel option
+            workspaceXml = mx.XMLDoc()
+            workspaceXml.open('project', attributes={'version': '4'})
+
+            if config.on_save_actions:
+                workspaceXml.open('component', attributes={'name': 'FormatOnSaveOptions'})
+                workspaceXml.element('option', attributes={'name': 'myFormatOnlyChangedLines', 'value': 'false'})
+                workspaceXml.element('option', attributes={'name': 'myRunOnSave', 'value': 'true'})
+                workspaceXml.element('option', attributes={'name': 'myAllFileTypesSelected', 'value': 'false'})
+                workspaceXml.open('option', attributes={'name': 'mySelectedFileTypes'})
+                workspaceXml.open('set')
+                workspaceXml.element('option', attributes={'value': 'JAVA'})
+                workspaceXml.close('set')
+                workspaceXml.close('option')
+                workspaceXml.close('component')
+
+                workspaceXml.open('component', attributes={'name': 'OptimizeOnSaveOptions'})
+                workspaceXml.element('option', attributes={'name': 'myRunOnSave', 'value': 'true'})
+                workspaceXml.element('option', attributes={'name': 'myAllFileTypesSelected', 'value': 'false'})
+                workspaceXml.open('option', attributes={'name': 'mySelectedFileTypes'})
+                workspaceXml.open('set')
+                workspaceXml.element('option', attributes={'value': 'JAVA'})
+                workspaceXml.close('set')
+                workspaceXml.close('option')
+                workspaceXml.close('component')
+
+            workspaceXml.open('component', attributes={'name': 'CompilerWorkspaceConfiguration'})
+            workspaceXml.element('option', attributes={'name': 'PARALLEL_COMPILATION', 'value': 'true'})
+            workspaceXml.close('component')
+
+            workspaceXml.close('project')
+            mx.update_file(join(ideaProjectDirectory, 'workspace.xml'), workspaceXml.xml(indent='  ', newl='\n'))
 
             # mx integration
             def antTargetName(dist):
