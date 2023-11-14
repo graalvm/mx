@@ -19247,7 +19247,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.1.1")  # GR-49960 put Graal options under jdk.graal prefix
+version = VersionSpec("7.1.2")  # GR-42789 Fix python mx eclipse project
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
