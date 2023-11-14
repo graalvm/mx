@@ -148,7 +148,7 @@ class FileOwners:
         components = ([] if os.path.isabs(filepath) else ['.']) + list(self._get_path_components(filepath))
         filename = os.path.split(filepath)[1]
         owners_files = [
-            os.path.join(i, 'OWNERS.toml')
+            os.path.join(i, 'OWNERS.toml') if os.path.isabs(i) else os.path.join(self.src, i, 'OWNERS.toml')
             for i in components[:-1]
         ]
         owners_files = [i for i in owners_files if os.path.commonprefix([i, self.src]) == self.src]
