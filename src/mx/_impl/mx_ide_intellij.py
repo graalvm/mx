@@ -548,12 +548,14 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             moduleXml.close('component')
 
+            additional_options_override = {}
+
             if compilerXml and jdk.javaCompliance >= '9':
                 moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
+                args = []
                 if moduleDeps:
                     exports = sorted([(m, pkgs) for m, pkgs in moduleDeps.items() if dependencies_project_packages.isdisjoint(pkgs)])
                     if exports:
-                        args = []
                         exported_modules = set()
                         for m, pkgs in exports:
                             args += [f'--add-exports={m}/{pkg}=ALL-UNNAMED' for pkg in pkgs]
@@ -565,11 +567,31 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         extra_modules = module_graph - default_module_graph
                         if extra_modules:
                             args.append('--add-modules=' + ','.join((m.name for m in extra_modules)))
-                        if not additionalOptionsOverrides:
-                            additionalOptionsOverrides = True
-                            compilerXml.open('component', {'name': 'JavacSettings'})
-                            compilerXml.open('option', {'name': 'ADDITIONAL_OPTIONS_OVERRIDE'})
-                        compilerXml.element('module', {'name': p.name, 'options': ' '.join(args)})
+
+                if 'jdk.incubator.vector' in getattr(p, 'requires', []):
+                    args.append('--add-modules=jdk.incubator.vector')
+
+                if args:
+                    additional_options_override[p.name] = args
+
+            if compilerXml:
+                jni_gen_dir = p.jni_gen_dir()
+                if jni_gen_dir:
+                    javac_options = additional_options_override.setdefault(p.name, [])
+                    javac_options.append('-h ' + jni_gen_dir)
+
+                if getattr(p, "javaPreviewNeeded", None):
+                    javac_options = additional_options_override.setdefault(p.name, [])
+                    javac_options.append('--enable-preview')
+
+                if additional_options_override:
+                    if not additionalOptionsOverrides:
+                        additionalOptionsOverrides = True
+                        compilerXml.open('component', {'name': 'JavacSettings'})
+                        compilerXml.open('option', {'name': 'ADDITIONAL_OPTIONS_OVERRIDE'})
+                    for module_name, javac_options in additional_options_override.items():
+                        if javac_options:
+                            compilerXml.element('module', {'name': module_name, 'options': ' '.join(javac_options)})
 
             # Checkstyle
             csConfig, checkstyleVersion, checkstyleProj = p.get_checkstyle_config()
