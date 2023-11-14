@@ -522,7 +522,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             def process_dep(dep, edge):
                 if dep is proj:
                     return
-                if dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject():
+                if dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isLayoutDirDistribution():
                     libraries.add(dep)
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 elif dep.isJavaProject():
@@ -684,10 +684,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             libraryXml.open('component', attributes={'name': 'libraryTable'})
             libraryXml.open('library', attributes={'name': name})
-            libraryXml.open('CLASSES')
-            pathX = mx.relpath_or_absolute(path, suite_dir, prefix='$PROJECT_DIR$')
-            libraryXml.element('root', attributes={'url': 'jar://' + pathX + '!/'})
-            libraryXml.close('CLASSES')
+            if path:
+                libraryXml.open('CLASSES')
+                pathX = mx.relpath_or_absolute(path, suite_dir, prefix='$PROJECT_DIR$')
+                libraryXml.element('root', attributes={'url': 'jar://' + pathX + '!/'})
+                libraryXml.close('CLASSES')
             libraryXml.element('JAVADOC')
             if source_path:
                 libraryXml.open('SOURCES')
@@ -707,6 +708,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         # Setup the libraries that were used above
         for library in libraries:
+            path = None
             source_path = None
             if library.isLibrary():
                 path = library.get_path(True)
@@ -719,6 +721,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 path = library.path
                 # don't report the source path since the source already exists in the project
                 # and IntelliJ sometimes picks the source zip instead of the real source file
+            elif library.isLayoutDirDistribution():
+                # IntelliJ is somehow unhappy about directory being used as "classes", so we use
+                # it as "sources". This library is artificial anyway and is only used to express
+                # dependencies
+                source_path = library.classpath_repr()
             elif library.isClasspathDependency():
                 path = library.classpath_repr()
             else:
