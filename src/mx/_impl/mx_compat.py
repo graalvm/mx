@@ -756,10 +756,10 @@ class MxCompatibility6271(MxCompatibility6270):
         return "4.7.3_JDK21_BACKPORT"
 
 
-class MxCompatibility704(MxCompatibility6271):
+class MxCompatibility713(MxCompatibility6271):
     @staticmethod
     def version():
-        return mx.VersionSpec("7.0.4")
+        return mx.VersionSpec("7.1.3")
 
     def gate_run_pyformat(self) -> bool:
         return True
