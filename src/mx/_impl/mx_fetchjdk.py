@@ -35,6 +35,8 @@ import os, shutil, json, re, glob
 from os.path import join, exists, abspath, dirname, basename, isabs
 from argparse import ArgumentParser
 
+_PROVIDER_PREFIX = 'provider://'
+
 try:
     from urllib import quote
 except ImportError:
@@ -68,7 +70,7 @@ def fetch_jdk(args):
     jdks_dir = settings["jdks-dir"]
     artifact = jdk_binary._folder_name
     final_path = jdk_binary.get_final_path(jdks_dir)
-    urls = [mx_urlrewrites.rewriteurl(url) for url in jdk_binary._urls]
+    urls = [mx_urlrewrites.rewriteurl(url) for url in jdk_binary.urls()]
     if not is_quiet():
         if not mx.ask_yes_no(f"Install {artifact} to {final_path}", default='y'):
             mx.abort("JDK installation canceled")
@@ -332,6 +334,33 @@ def _parse_args(args):
            "labsjdk-ce-latest": {"name": "labsjdk", "version": "ce-22+22-jvmci-b01"}
         but not:
            "labsjdk-ce-latest": {"name": "oraclejdk", "version": "22+22"}
+
+        If "url" starts with "provider://<command name>", "mx <command name> <json-input> <output-file>" is invoked in
+        the current directory to determine the urls for a given jdk-id. A <json> file is passed as first parameter,
+        consisting of the jdk definition as specified in the --configuration file for the given "jdk-id", merged with
+        the keywords as specified above. Here is an example input:
+          {
+            "name": "jpg-jdk",
+            "version": "22",
+            "build_id": "jdk-22+23-1832",
+            "platformspecific": true,
+            "extrabundles": [
+              "static-libs"
+            ],
+            "platform": "linux-amd64",
+            "platform_jdk": "linux-x64",
+            "bundle": [
+              "",
+              "-static-libs"
+            ],
+            "filename": [
+              "jdk-22_linux-x64_bin",
+              "jdk-22_linux-x64_bin-static-libs"
+            ]
+          }
+        The entries up to "extrabundles" come from the --configuration file for the selected jdk-id, the remaining
+        entries are provided by the fetch-jdk command.
+        The command is expected to write the download urls to the file passed as second parameter, one url per line.
     """)
 
     jdk_id_group = parser.add_mutually_exclusive_group()
@@ -600,10 +629,29 @@ class _JdkBinary(object):
         version_suffix = _instantiate('{version|jvmci-tag}', keywords, source, jdk_def)[0]
         self._folder_name = f"{jdk_id}-{version_suffix}"
         if build_id: self._folder_name += '+' + build_id
-        self._urls = _instantiate(url, {k: _quote(v) for k, v in keywords.items()}, source, jdk_def)
+        self._keywords = keywords
+
+    def urls(self):
+        if self._url_template.startswith(_PROVIDER_PREFIX):
+            provider = self._url_template[len(_PROVIDER_PREFIX):]
+
+            merged_keywords = _merge_dicts(self._jdk_def, self._keywords)
+            json_input = json.dumps(merged_keywords)
+            with mx.TempDir() as temp_dir:
+                outfile = os.path.join(temp_dir, "fetch-jdk-provider-urls.txt")
+                infile = os.path.join(temp_dir, "fetch-jdk-provider-request.json")
+                with open(infile, "w") as in_fp:
+                    in_fp.write(json_input)
+                mx.run_mx([provider, infile, outfile], quiet=True)
+                with open(outfile) as out_fp:
+                    return out_fp.read().splitlines()
+
+        else:
+            return _instantiate(self._url_template, {k: _quote(v) for k, v in self._keywords.items()}, self._source,
+                                self._jdk_def)
 
     def __repr__(self):
-        return f'{self._jdk_id}: files={self._filenames}, urls={self._urls}'
+        return f'{self._jdk_id}: files={self._filenames}, urls={self._url_template}'
 
     SELECTOR_EXTRA_ATTRS = ("build_id",)
     def selector(self):
