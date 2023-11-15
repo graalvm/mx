@@ -487,7 +487,7 @@ def _parse_jdk_binaries(paths, jdk_defs, arch):
 
             jdk_id_pattern = m.group("jdk_id_pattern")
             qualifier = m.group("qualifier") or ""
-            jdk_def_guard = m.group("jdk_def_guard") or "True"
+            jdk_def_guard = m.group("jdk_def_guard")
 
             for jdk_id, jdk_def, keywords in _matching_jdk_defs(source, jdk_defs, jdk_id_pattern, jdk_def_guard):
                 if jdk_def:
@@ -505,6 +505,8 @@ def _eval_jdk_def_guard(source, jdk_def, jdk_def_guard):
     :param source: describes source location of jdk_def_guard
     :return: result of the evaluation, guaranteed to be True or False
     """
+    if not jdk_def_guard:
+        return True
     try:
         # create a copy because eval() will modify it (e.g., adds __builtins__)
         _globals = dict(jdk_def)
