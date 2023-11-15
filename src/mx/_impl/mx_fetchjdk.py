@@ -510,12 +510,14 @@ def _eval_jdk_def_guard(source, jdk_def, jdk_def_guard):
     try:
         # create a copy because eval() will modify it (e.g., adds __builtins__)
         _globals = dict(jdk_def)
-        res = eval(jdk_def_guard, _globals)
-        if type(res) is not bool:
-            mx.abort(f"{source}:\nProblem evaluating expression: {jdk_def_guard}\nResult is a {type(res)}, not a boolean: {res}")
-        return res
-    except Exception as e:
+        # disable builtins
+        _globals.update(__builtins__={})
+        res = eval(jdk_def_guard, _globals)  # pylint: disable=eval-used
+    except Exception as e:  # pylint: disable=broad-except
         mx.abort(f"{source}:\nProblem evaluating expression `{jdk_def_guard}` with locals `{jdk_def}`\n{e}")
+    if not isinstance(res, bool):
+        mx.abort(f"{source}:\nProblem evaluating expression: {jdk_def_guard}\nResult is a {type(res)}, not a boolean: {res}")
+    return res
 
 def _matching_jdk_defs(source, jdk_defs, jdk_id_selector, jdk_def_guard):
     """
