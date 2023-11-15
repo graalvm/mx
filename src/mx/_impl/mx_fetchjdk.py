@@ -506,7 +506,9 @@ def _eval_jdk_def_guard(source, jdk_def, jdk_def_guard):
     :return: result of the evaluation, guaranteed to be True or False
     """
     try:
-        res = eval(jdk_def_guard, jdk_def)
+        # create a copy because eval() will modify it (e.g., adds __builtins__)
+        _globals = dict(jdk_def)
+        res = eval(jdk_def_guard, _globals)
         if type(res) is not bool:
             mx.abort(f"{source}:\nProblem evaluating expression: {jdk_def_guard}\nResult is a {type(res)}, not a boolean: {res}")
         return res
