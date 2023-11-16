@@ -411,3 +411,95 @@ def codeowners(args):
     if args.json_dump:
         with open(args.json_dump, 'wt') as f:
             json.dump(repro_data, f, indent=4)
+
+
+class OwnerStats:
+    def __init__(self):
+        self.owned = {}
+        self.orphan_files_count = 0
+
+    def _add_owner(self, name, details = None):
+        if details is None:
+            details = {
+                'files': 1
+            }
+        if not name in self.owned:
+            self.owned[name] = {
+                'files': 0,
+            }
+        self.owned[name]['files'] = self.owned[name]['files'] + details['files']
+
+    def add_ownership(self, ownership):
+        if not ownership:
+            self.orphan_files_count = self.orphan_files_count + 1
+            return
+        for name in ownership.get('any', []):
+            self._add_owner(name)
+        for name in ownership.get('all', []):
+            self._add_owner(name)
+
+    def merge_with(self, other):
+        self.orphan_files_count = self.orphan_files_count + other.orphan_files_count
+        for name, details in other.owned.items():
+            self._add_owner(name, details)
+
+    def oneline_format(self):
+        owned = [
+            '{} = {} files'.format(owner, details['files'])
+            for owner, details in self.owned.items()
+        ]
+        return ', '.join(owned + ['no-one = {} files'.format(self.orphan_files_count)])
+
+
+def _compute_owned_stats(owners, top):
+    result = OwnerStats()
+    if not os.path.isdir(top):
+        result.add_ownership(owners.get_owners_of(top))
+    else:
+        for fname in os.listdir(top):
+            nested = _compute_owned_stats(owners, os.path.join(top, fname))
+            result.merge_with(nested)
+    return result
+
+
+def _show_non_owned(owners, current_dirname):
+    for filename in os.listdir(current_dirname):
+        if filename in ['.git', ]:
+            continue
+        filepath = os.path.join(current_dirname, filename)
+        if not os.path.isdir(filepath):
+            owner = owners.get_owners_of(filepath)
+            if not owner:
+                stats = _compute_owned_stats(owners, filepath)
+                print("{} (non-owned, {})".format(filepath, stats.oneline_format()))
+        else:
+            report_message = None
+            if not os.path.exists(os.path.join(filepath, 'OWNERS.toml')):
+                report_message = "no OWNERS.toml"
+            else:
+                owner = owners.get_owners_of(os.path.join(filepath, '.'))
+                if not owner:
+                    report_message = "non owned"
+            if report_message:
+                stats = _compute_owned_stats(owners, filepath)
+                print("{} ({}, {})".format(filepath, report_message, stats.oneline_format()))
+            else:
+                _show_non_owned(owners, filepath)
+
+_MX_NOCODEOWNERS_HELP = """Compute summaries of non-owned files via OWNERS.toml.
+
+
+The tool recursively searches the whole directory subtree and prints which
+files (directories) are not owned by anybody.
+
+"""
+
+@mx.command('mx', 'nocodeowners')
+def nocodeowners(args):
+    """Show files not ownered by anybody (via OWNERS.toml files)."""
+    parser = argparse.ArgumentParser(prog='mx nocodeowners', formatter_class=argparse.RawTextHelpFormatter, description=_MX_NOCODEOWNERS_HELP)
+    args = parser.parse_args(args)
+
+    root = '.' # _git_get_repo_root_or_cwd()
+    owners = FileOwners(root)
+    _show_non_owned(owners, root)
