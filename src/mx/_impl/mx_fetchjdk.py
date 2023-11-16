@@ -260,7 +260,7 @@ def _parse_args(args):
     parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id>]' + r"""
         Download and install JDKs.
 
-        The set of JDKS available for download are specified by the "jdks" field of the JSON
+        The set of JDKs available for download are specified by the "jdks" field of the JSON
         object loaded by --configuration. The "jdks" field is itself is an object whose field names
         are JDK identifiers and whose values are objects that must include "version". The JDK object
         fields "build_id" and "extrabundles" are also specially handled. For example:
@@ -287,6 +287,10 @@ def _parse_args(args):
             "labsjdk-ce-(P?<major>\\d+)": {
               "filename": "labsjdk-{version}-{platform}",
               "url": "https://github.com/graalvm/labs-openjdk-{major}/releases/download/{version|jvmci}/{filename}.tar.gz"
+            },
+            "labsjdk-ce-latest[name=='labsjdk']": {
+              "filename": "labsjdk-{version}-{platform}",
+              "url": "https://github.com/graalvm/labs-openjdk/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
             }
           }
         }
@@ -322,7 +326,14 @@ def _parse_args(args):
         will be additional keywords for the template string (e.g. "major" in the example above).
         
         If a template string uses a keyword whose value is a list, there will be one instantiated string
-        per unique entry in the list. 
+        per unique entry in the list.
+
+        If jdk-binaries.<id> ends with a string enclosed in "[" and "]", the string must be a Python boolean
+        expression. It is evaluated with locals in the expression bound to fields of a jdks.<id> object.
+        For example, "labsjdk-ce-latest[name=='labsjdk']" will select:
+           "labsjdk-ce-latest": {"name": "labsjdk", "version": "ce-22+22-jvmci-b01"}
+        but not:
+           "labsjdk-ce-latest": {"name": "oraclejdk", "version": "22+22"}
 
         If "url" starts with "provider://<command name>", "mx <command name> <json-input> <output-file>" is invoked in
         the current directory to determine the urls for a given jdk-id. A <json> file is passed as first parameter,
@@ -454,6 +465,7 @@ def _parse_jdk_defs(path):
 
 def _parse_jdk_binaries(paths, jdk_defs, arch):
     jdk_binaries = {}
+    qualified_jdk_id_re = re.compile(r"(?P<jdk_id_pattern>[^[:]+)(:(?P<qualifier>[^[]+))?(\[(?P<jdk_def_guard>.*)\])?")
     for path in paths:
         if not exists(path):
             mx.abort("File doesn't exist: " + path)
@@ -469,9 +481,15 @@ def _parse_jdk_binaries(paths, jdk_defs, arch):
                     mx.abort(f'{source} -> "{name}": value ({value}) must be a {str.__name__}, not a {value.__class__.__name__}')
                 return value
 
-            jdk_id_pattern, qualifier = qualified_jdk_id.split(':', 1) if ':' in qualified_jdk_id else (qualified_jdk_id, '')
+            m = qualified_jdk_id_re.fullmatch(qualified_jdk_id)
+            if not m:
+                mx.abort(f'{source}: does not match expected pattern: <jdk_id> [ ":" <qualifier> ] [ "[" <jdk_def_guard> "]" ]')
 
-            for jdk_id, jdk_def, keywords in _matching_jdk_defs(jdk_defs, jdk_id_pattern):
+            jdk_id_pattern = m.group("jdk_id_pattern")
+            qualifier = m.group("qualifier") or ""
+            jdk_def_guard = m.group("jdk_def_guard")
+
+            for jdk_id, jdk_def, keywords in _matching_jdk_defs(source, jdk_defs, jdk_id_pattern, jdk_def_guard):
                 if jdk_def:
                     jdk_binary_id = jdk_id + qualifier
                     if jdk_binary_id not in jdk_binaries:
@@ -479,10 +497,32 @@ def _parse_jdk_binaries(paths, jdk_defs, arch):
                         jdk_binaries[jdk_binary_id] = jdk_binary
     return jdk_binaries
 
-
-def _matching_jdk_defs(jdk_defs, jdk_id_selector):
+def _eval_jdk_def_guard(source, jdk_def, jdk_def_guard):
     """
-    Finds entries in `jdk_defs` whose name matches `jdk_id_selector`.
+    Evaluates the Python expression in `jdk_def_guard` using the `eval`
+    builtin and `jdk-def` as the `locals` parameter for `eval`.
+
+    :param source: describes source location of jdk_def_guard
+    :return: result of the evaluation, guaranteed to be True or False
+    """
+    if not jdk_def_guard:
+        return True
+    try:
+        # create a copy because eval() will modify it (e.g., adds __builtins__)
+        _globals = dict(jdk_def)
+        # disable builtins
+        _globals.update(__builtins__={})
+        res = eval(jdk_def_guard, _globals)  # pylint: disable=eval-used
+    except Exception as e:  # pylint: disable=broad-except
+        mx.abort(f"{source}:\nProblem evaluating expression `{jdk_def_guard}` with locals `{jdk_def}`\n{e}")
+    if not isinstance(res, bool):
+        mx.abort(f"{source}:\nProblem evaluating expression: {jdk_def_guard}\nResult is a {type(res)}, not a boolean: {res}")
+    return res
+
+def _matching_jdk_defs(source, jdk_defs, jdk_id_selector, jdk_def_guard):
+    """
+    Finds entries in `jdk_defs` whose name matches `jdk_id_selector`
+    and whose value, when evaluated against `jdk_def_guard`, returns True.
 
     :return: a generator of tuples with jdk_id, jdk_def, keywords
     """
@@ -490,9 +530,12 @@ def _matching_jdk_defs(jdk_defs, jdk_id_selector):
         jdk_id_re = re.compile(jdk_id_selector)
         for jdk_id, jdk_def in jdk_defs.items():
             m = jdk_id_re.fullmatch(jdk_id)
-            if m:
+            if m and _eval_jdk_def_guard(source, jdk_def, jdk_def_guard):
                 yield jdk_id, jdk_def, m.groupdict()
-    yield jdk_id_selector, jdk_defs.get(jdk_id_selector), {}
+    elif jdk_id_selector in jdk_defs:
+        jdk_def = jdk_defs.get(jdk_id_selector)
+        if _eval_jdk_def_guard(source, jdk_def, jdk_def_guard):
+            yield jdk_id_selector, jdk_def, {}
 
 
 def _default_system_jdks_dir():
