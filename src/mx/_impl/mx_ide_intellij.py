@@ -952,38 +952,45 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             checkstyleFile = join(ideaProjectDirectory, 'checkstyle-idea.xml')
             mx.update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
 
-            # Write basic workspace.xml with Save actions and build in parallel option
-            workspaceXml = mx.XMLDoc()
-            workspaceXml.open('project', attributes={'version': '4'})
+            # If it doesn't already exist: write basic workspace.xml with Save actions and build in parallel option
+            workspace_path = join(ideaProjectDirectory, 'workspace.xml')
+            if mx.exists(workspace_path):
+                if config.on_save_actions:
+                    mx.warn("File workspace.xml already exists. The flag `--on-save-actions` is ignored. "
+                            "Run `mx ideclean` and re-run `mx intellijinit` to get workspace.xml regenerated, "
+                            "but note that it will remove any customizations you may have in workspace.xml!")
+            else:
+                workspaceXml = mx.XMLDoc()
+                workspaceXml.open('project', attributes={'version': '4'})
 
-            if config.on_save_actions:
-                workspaceXml.open('component', attributes={'name': 'FormatOnSaveOptions'})
-                workspaceXml.element('option', attributes={'name': 'myFormatOnlyChangedLines', 'value': 'false'})
-                workspaceXml.element('option', attributes={'name': 'myRunOnSave', 'value': 'true'})
-                workspaceXml.element('option', attributes={'name': 'myAllFileTypesSelected', 'value': 'false'})
-                workspaceXml.open('option', attributes={'name': 'mySelectedFileTypes'})
-                workspaceXml.open('set')
-                workspaceXml.element('option', attributes={'value': 'JAVA'})
-                workspaceXml.close('set')
-                workspaceXml.close('option')
+                if config.on_save_actions:
+                    workspaceXml.open('component', attributes={'name': 'FormatOnSaveOptions'})
+                    workspaceXml.element('option', attributes={'name': 'myFormatOnlyChangedLines', 'value': 'false'})
+                    workspaceXml.element('option', attributes={'name': 'myRunOnSave', 'value': 'true'})
+                    workspaceXml.element('option', attributes={'name': 'myAllFileTypesSelected', 'value': 'false'})
+                    workspaceXml.open('option', attributes={'name': 'mySelectedFileTypes'})
+                    workspaceXml.open('set')
+                    workspaceXml.element('option', attributes={'value': 'JAVA'})
+                    workspaceXml.close('set')
+                    workspaceXml.close('option')
+                    workspaceXml.close('component')
+
+                    workspaceXml.open('component', attributes={'name': 'OptimizeOnSaveOptions'})
+                    workspaceXml.element('option', attributes={'name': 'myRunOnSave', 'value': 'true'})
+                    workspaceXml.element('option', attributes={'name': 'myAllFileTypesSelected', 'value': 'false'})
+                    workspaceXml.open('option', attributes={'name': 'mySelectedFileTypes'})
+                    workspaceXml.open('set')
+                    workspaceXml.element('option', attributes={'value': 'JAVA'})
+                    workspaceXml.close('set')
+                    workspaceXml.close('option')
+                    workspaceXml.close('component')
+
+                workspaceXml.open('component', attributes={'name': 'CompilerWorkspaceConfiguration'})
+                workspaceXml.element('option', attributes={'name': 'PARALLEL_COMPILATION', 'value': 'true'})
                 workspaceXml.close('component')
 
-                workspaceXml.open('component', attributes={'name': 'OptimizeOnSaveOptions'})
-                workspaceXml.element('option', attributes={'name': 'myRunOnSave', 'value': 'true'})
-                workspaceXml.element('option', attributes={'name': 'myAllFileTypesSelected', 'value': 'false'})
-                workspaceXml.open('option', attributes={'name': 'mySelectedFileTypes'})
-                workspaceXml.open('set')
-                workspaceXml.element('option', attributes={'value': 'JAVA'})
-                workspaceXml.close('set')
-                workspaceXml.close('option')
-                workspaceXml.close('component')
-
-            workspaceXml.open('component', attributes={'name': 'CompilerWorkspaceConfiguration'})
-            workspaceXml.element('option', attributes={'name': 'PARALLEL_COMPILATION', 'value': 'true'})
-            workspaceXml.close('component')
-
-            workspaceXml.close('project')
-            mx.update_file(join(ideaProjectDirectory, 'workspace.xml'), workspaceXml.xml(indent='  ', newl='\n'))
+                workspaceXml.close('project')
+                mx.update_file(workspace_path, workspaceXml.xml(indent='  ', newl='\n'))
 
             # mx integration
             def antTargetName(dist):
