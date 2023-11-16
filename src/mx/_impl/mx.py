@@ -148,6 +148,7 @@ __all__ = [
     "ProjectBuildTask",
     "ArchivableProject",
     "ArchivableBuildTask",
+    "MavenProject",
     "JavaProject",
     "JavaBuildTask",
     "JavaCompiler",
