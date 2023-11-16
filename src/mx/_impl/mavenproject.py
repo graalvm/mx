@@ -92,8 +92,8 @@ import pathlib
 from typing import cast, Callable
 from argparse import ArgumentParser
 
-from ._impl.mx_javacompliance import JavaCompliance
-from ._impl import mx
+from .mx_javacompliance import JavaCompliance
+from . import mx
 
 __all__ = [
     "MavenProject",

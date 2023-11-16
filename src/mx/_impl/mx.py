@@ -148,7 +148,6 @@ __all__ = [
     "ProjectBuildTask",
     "ArchivableProject",
     "ArchivableBuildTask",
-    "MavenProject",
     "JavaProject",
     "JavaBuildTask",
     "JavaCompiler",
@@ -7383,37 +7382,6 @@ class ArchivableBuildTask(BuildTask):
         pass
 
 #### ~~~~~~~~~~~~~ Project: Java / Maven
-
-class MavenProject(Project, ClasspathDependency):
-    """
-    A project producing a single jar file.
-    Users should subclass this class and implement getBuildTask().
-    Additional attributes:
-      jar: path to the jar
-      sourceDirs: list of directories containing the sources
-    """
-    def __init__(self, suite, name, deps, workingSets, theLicense=None, **args):
-        context = 'project ' + name
-        d = suite.dir
-        srcDirs = Suite._pop_list(args, 'sourceDirs', context)
-        Project.__init__(self, suite, name, "", srcDirs, deps, workingSets, d, theLicense, **args)
-        ClasspathDependency.__init__(self)
-        jar = args.pop('jar')
-        assert jar.endswith('.jar')
-        self.jar = jar
-
-    def classpath_repr(self, resolve=True):
-        jar = join(self.suite.dir, self.jar)
-        if resolve and not exists(jar):
-            abort(f'unbuilt Maven project {self} cannot be on a class path ({jar})')
-        return jar
-
-    def get_path(self, resolve):
-        return self.classpath_repr(resolve=resolve)
-
-    def get_source_path(self, resolve):
-        assert len(self.sourceDirs) == 1
-        return join(self.suite.dir, self.sourceDirs[0])
 
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, testProject=False, **kwArgs):

@@ -60,7 +60,9 @@ from ._impl.mx import (
 from mx._legacy.oldnames import redirect as _redirect
 
 import mx._impl.mx as _orig
-import mx.mavenproject as mavenproject
+
+from mx._impl.mavenproject import MavenProject
+_orig.MavenProject = MavenProject
 
 __all__ = _orig.__all__
 

@@ -3,10 +3,23 @@ import pathlib
 import re
 import tempfile
 
+from contextlib import contextmanager
 from typing import cast
 
-from mx._impl import mx
-from mx.mavenproject import ETMavenPOM, MavenProject
+import mx
+from mx._impl.mavenproject import ETMavenPOM
+
+
+@contextmanager
+def mx_monkeypatch(name, value):
+    from mx._impl import mx as orig_mx
+
+    previous = getattr(orig_mx, name)
+    setattr(orig_mx, name, value)
+    try:
+        yield value
+    finally:
+        setattr(orig_mx, name, previous)
 
 
 def test_pom_helper():
@@ -85,7 +98,7 @@ def test_maven_project():
             f.write(pomtext)
         suite = cast(mx.Suite, mx.primary_suite())
         lisense = [l.theLicense for l in suite.libs if l.theLicense is not None][0]
-        return MavenProject(
+        return mx.MavenProject(
             suite, os.path.basename(tmpdir), ["JUNIT", "JUNIT_TOOL"], [], False, lisense, subDir=os.path.dirname(tmpdir)
         )
 
@@ -133,19 +146,16 @@ def test_maven_project():
         assert not os.path.exists(default_path)
 
         assert not os.path.exists(os.path.join(project.get_output_root(), "pom.xml"))
-        run_maven = mx.run_maven
-        maven_deploy = mx.maven_deploy
         maven_runs = []
         maven_deployments = []
-        mx.run_maven = lambda *args, **kwargs: maven_runs.append([args, kwargs]) or defaultjarpath.touch()
-        mx.maven_deploy = lambda *args, **kwargs: maven_deployments.append([args, kwargs])
-        try:
-            bt.build()
-        except:
-            bt.clean()
-        finally:
-            mx.run_maven = run_maven
-            mx.maven_deploy = maven_deploy
+        mp_run_maven = lambda *args, **kwargs: maven_runs.append([args, kwargs]) or defaultjarpath.touch()
+        mp_maven_deploy = lambda *args, **kwargs: maven_deployments.append([args, kwargs])
+        with mx_monkeypatch("run_maven", mp_run_maven) as _:
+            with mx_monkeypatch("maven_deploy", mp_maven_deploy) as _:
+                try:
+                    bt.build()
+                except:
+                    bt.clean()
 
         try:
             buildpom = ETMavenPOM(os.path.join(project.get_output_root(), "pom.xml"))
