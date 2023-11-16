@@ -70,6 +70,8 @@ disable=attribute-defined-outside-init,
         bad-option-value,
         super-on-old-class,
         too-many-ancestors,
+        bad-whitespace, # C0326. Incompatible with the black formatter
+        bad-continuation, # C0330. Incompatible with the black formatter
 
 [REPORTS]
 

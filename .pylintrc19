@@ -83,6 +83,8 @@ disable=attribute-defined-outside-init,
         invalid-unary-operand-type,
         not-callable,
         unsubscriptable-object,
+        bad-whitespace, # C0326. Incompatible with the black formatter
+        bad-continuation, # C0330. Incompatible with the black formatter
 
 [REPORTS]
 

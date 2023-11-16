@@ -87,6 +87,8 @@ disable=attribute-defined-outside-init,
         assignment-from-none,
         consider-using-set-comprehension, # Not available on Python 2
         unnecessary-pass, # Does not allow marking abstract methods with pass if they have a docstring
+        bad-whitespace, # C0326. Incompatible with the black formatter
+        bad-continuation, # C0330. Incompatible with the black formatter
 
 [REPORTS]
 
