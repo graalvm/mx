@@ -954,7 +954,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
             # If it doesn't already exist: write basic workspace.xml with Save actions and build in parallel option
             workspace_path = join(ideaProjectDirectory, 'workspace.xml')
-            if mx.exists(workspace_path):
+            if exists(workspace_path):
                 if config.on_save_actions:
                     mx.warn("File workspace.xml already exists. The flag `--on-save-actions` is ignored. "
                             "Run `mx ideclean` and re-run `mx intellijinit` to get workspace.xml regenerated, "
