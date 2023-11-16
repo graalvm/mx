@@ -19249,7 +19249,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.2.2")  # GR-47795 Expose code owners
+version = VersionSpec("7.3.0")  # GR-50010 Support qualifying jdk-ids in mx fetch-jdk jdk-binaries.json
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
