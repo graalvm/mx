@@ -102,24 +102,24 @@ __all__ = [
     "DataPoints",
 ]
 
-import sys
 import json
 import os.path
 import platform
 import re
+import shlex
+import shutil
 import socket
+import sys
+import tempfile
 import time
 import traceback
 import uuid
-import tempfile
-import shutil
 import zipfile
-import shlex
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List
+from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List, Collection
 
 from . import mx
 
@@ -835,7 +835,7 @@ class BaseRule(Rule):
 
     def parse(self, text) -> Iterable[DataPoint]:
         datapoints: List[DataPoint] = []
-        capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
+        capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_.]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(self.parseResults(text)):
             datapoint = {}
@@ -864,8 +864,7 @@ class BaseRule(Rule):
                     # Convert to the requested type
                     inst = vtype(v)
                 if not isinstance(inst, (str, int, float, bool)):
-                    if type(inst).__name__ != 'long': # Python2: int(x) can result in a long
-                        raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
+                    raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
@@ -960,18 +959,46 @@ class CSVStdOutFileRule(CSVBaseRule):
 
 
 class JsonBaseRule(BaseRule):
-    """Parses JSON files and creates a measurement result using the replacement."""
+    """
+    Parses JSON files and creates a measurement result using the replacement.
 
-    def __init__(self, replacement, keys):
+    Keys in the JSON object containing periods ('.') cannot be matched. The period
+    is interpreted as indexing into the object.
+
+    TODO example of how nested elements can be accessed
+
+    :ivar keys: Only these keys are available in the replacement using ``<key>`` syntax
+    """
+    keys: Collection[str]
+
+    def __init__(self, replacement, keys : Collection[str]):
         super(JsonBaseRule, self).__init__(replacement)
         self.keys = keys
+        assert len(keys) == len(set(keys)), f"Duplicate keys in list {keys}"
 
     def parseResults(self, text):
+        """
+        TODO document
+        Creates one dictionary per file
+        :param text:
+        :return:
+        """
         l = []
         for f in self.getJsonFiles(text):
             mx.logv(f"Parsing results using '{self.__class__.__name__}' on file: {f}")
             with open(f) as fp:
-                l = l + [{k: str(v)} for k, v in json.load(fp).items() if k in self.keys]
+                json_obj = json.load(fp)
+                values = {}
+                for key in self.keys:
+                    components = key.split(".")
+                    current = json_obj
+                    for component in components:
+                        if component not in current:
+                            break
+                        current = current[component]
+                    else:
+                        values[key] = str(current)
+                l.append(values)
         return l
 
     def getJsonFiles(self, text):
