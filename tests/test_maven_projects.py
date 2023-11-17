@@ -23,19 +23,19 @@ def mx_monkeypatch(name, value):
 
 
 def test_pom_helper():
-    with tempfile.NamedTemporaryFile(mode="w", prefix="pom", suffix=".xml") as f:
-        pomtext = """
-        <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-        <modelVersion>4.0.0</modelVersion>
-        <groupId>org.graalvm.testpom</groupId>
-        <artifactId>testpom</artifactId>
-        <packaging>jar</packaging>
-        <version>1-SNAPSHOT</version>
-        <name>testpom</name>
-        </project>
-        """
-        f.write(pomtext)
-        f.flush()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "pom.xml"), "w") as f:
+            pomtext = """
+            <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>org.graalvm.testpom</groupId>
+            <artifactId>testpom</artifactId>
+            <packaging>jar</packaging>
+            <version>1-SNAPSHOT</version>
+            <name>testpom</name>
+            </project>
+            """
+            f.write(pomtext)
 
         # Test all the accessors and creating sections and such
         pom = ETMavenPOM(f.name)
