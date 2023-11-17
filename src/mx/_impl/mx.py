@@ -89,6 +89,7 @@ __all__ = [
     "open",
     "copytree",
     "copyfile",
+    "move",
     "rmtree",
     "clean",
     "show_envs",
@@ -4073,6 +4074,10 @@ def copytree(src, dst, symlinks=False, ignore=None):
 
 def copyfile(src, dst):
     shutil.copyfile(_safe_path(src), _safe_path(dst))
+
+
+def move(src, dst):
+    shutil.move(_safe_path(src), _safe_path(dst))
 
 
 def rmtree(path, ignore_errors=False):
