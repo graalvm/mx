@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
 __all__ = [
     "mx_benchmark_compatibility",
     "JVMProfiler",
@@ -115,7 +117,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Optional, NoReturn
+from typing import Collection, Callable, NoReturn, Optional, Sequence
 
 from . import mx
 
@@ -784,7 +786,7 @@ class Rule(object):
 
 
 class BaseRule(Rule):
-    """A rule parses a raw result and a prepares a structured measurement using a replacement
+    """A rule parses a raw result and prepares a structured measurement using a replacement
     template.
 
     A replacement template is a dictionary that describes how to create a measurement:
@@ -800,26 +802,33 @@ class BaseRule(Rule):
           "metric.iteration": ("$iteration", id),
         }
 
-    When `instantiate` is called, the tuples in the template shown above are
-    replaced with the corresponding named groups from the parsing pattern, and converted
-    to the specified type.
+    The tuples in the template shown above are replaced with a corresponding
+    value by looking up the keys surrounded with angled brackets (``<`` and ``>``)
+    in the dictionary returned by :func:`parseResults` and converting it using
+    the callable in the second element.
 
     Tuples can contain one of the following special variables, prefixed with a `$` sign:
         - `iteration` -- ordinal number of the match that produced the datapoint, among
           all the matches for that parsing rule.
     """
 
+    replacement: dict[str, str | int | float | bool | tuple[str, Callable]]
+    """
+    The replacement template used to produce datapoints.
+
+    The values are either JSON-compatible types or a tuple.
+    Tuples are replaced with parsed values. See the class documentation for more info.
+    """
+
     def __init__(self, replacement):
         self.replacement = replacement
 
-    def parseResults(self, text):
+    def parseResults(self, text: str) -> Sequence[dict]:
         """Parses the raw result of a benchmark and create a dictionary of variables
         for every measurement.
 
         :param text: The standard output of the benchmark.
-        :type text: str
         :return: Iterable of dictionaries with the matched variables.
-        :rtype: iterable
         """
         raise NotImplementedError()
 
@@ -833,30 +842,26 @@ class BaseRule(Rule):
                 inst = value
                 if isinstance(inst, tuple):
                     v, vtype = inst
-                    # Instantiate with named captured groups.
+
                     def var(name):
                         if name == "iteration":
                             return str(iteration)
                         else:
                             raise RuntimeError(f"Unknown var {name}")
+                    # Instantiate with variables
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
+                    # Instantiate with captured groups.
                     v = capturepat.sub(lambda vm: m[vm.group(1)], v)
-                    # Convert to a different type.
-                    if vtype is str:
-                        inst = str(v)
-                    elif vtype is int:
-                        inst = int(v)
-                    elif vtype is float:
-                        if isinstance(v, str) and ',' in v and '.' not in v:
-                            # accommodate different locale in float formatting
-                            v = v.replace(',', '.')
-                        inst = float(v)
-                    elif vtype is bool:
-                        inst = bool(v)
-                    elif hasattr(vtype, '__call__'):
-                        inst = vtype(v)
-                    else:
-                        raise RuntimeError(f"Cannot handle object '{v}' of expected type {vtype}")
+
+                    if not callable(vtype):
+                        raise RuntimeError(f"The entry {key}: {value} is not valid. The second element must be callable")
+
+                    if vtype is float and isinstance(v, str) and ',' in v and '.' not in v:
+                        # accommodate different locale in float formatting
+                        v = v.replace(',', '.')
+
+                    # Convert to the requested type
+                    inst = vtype(v)
                 if not isinstance(inst, (str, int, float, bool)):
                     if type(inst).__name__ != 'long': # Python2: int(x) can result in a long
                         raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
