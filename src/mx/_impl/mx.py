@@ -1763,9 +1763,6 @@ class Dependency(SuiteConstituent):
     def isArchivableProject(self):
         return isinstance(self, ArchivableProject)
 
-    def isMavenProject(self):
-        return isinstance(self, MavenProject)
-
     def isDistribution(self):
         return isinstance(self, Distribution)
 
@@ -17366,7 +17363,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 if dep.isJavaProject():
                     if dep not in projects:
                         classpath_deps.add(dep)
-                elif dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isJdkLibrary():
+                elif dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary():
                     classpath_deps.add(dep)
                 elif dep.isJreLibrary():
                     pass

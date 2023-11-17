@@ -518,7 +518,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             def process_dep(dep, edge):
                 if dep is proj:
                     return
-                if dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isLayoutDirDistribution():
+                if dep.isLibrary() or dep.isJARDistribution() or dep.isLayoutDirDistribution():
                     libraries.add(dep)
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 elif dep.isJavaProject():
@@ -732,9 +732,6 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
                 path = library.get_path(True)
                 if library.sourcePath:
                     source_path = library.get_source_path(True)
-            elif library.isMavenProject():
-                path = library.get_path(True)
-                source_path = library.get_source_path(True)
             elif library.isJARDistribution():
                 path = library.path
                 # don't report the source path since the source already exists in the project

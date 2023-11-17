@@ -690,7 +690,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     def processDep(dep, edge):
         if dep is p:
             return
-        if dep.isLibrary() or dep.isMavenProject():
+        if dep.isLibrary():
             processLibraryDep(dep)
         elif dep.isJavaProject():
             high_bound = dep.javaCompliance._high_bound()

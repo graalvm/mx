@@ -983,11 +983,6 @@ class _ArchiveStager(object):
                 self.add_jar(dep, jarPath)
             if jarSourcePath:
                 self.add_jar(dep, jarSourcePath, True)
-        elif dep.isMavenProject():
-            mx.logv('[' + original_path + ': adding jar from Maven project ' + dep.name + ']')
-            self.add_jar(dep, dep.classpath_repr())
-            for srcDir in dep.source_dirs():
-                self.add_java_sources(dep, srcDir)
         elif dep.isJavaProject():
             p = dep
             javaCompliance = dist.maxJavaCompliance()

@@ -222,7 +222,7 @@ def fsckprojects(args):
                 def processDep(dep, edge):
                     if dep is p:
                         return
-                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject() or dep.isClasspathDependency():
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isClasspathDependency():
                         neededLibraries.add(dep)
                 p.walk_deps(visit=processDep, ignoredEdges=[mx.DEP_EXCLUDED])
             neededLibraryFiles = frozenset([mx_ide_intellij._intellij_library_file_name(l.name, unique_library_file_names) for l in neededLibraries])
