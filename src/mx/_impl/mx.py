@@ -19250,7 +19250,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.3.1")  # GR-50256 ignore_errors in TempDir.__exit__()
+version = VersionSpec("7.3.2")  # GR-50202 Make unittest configs accessible outside of mx_unittest
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

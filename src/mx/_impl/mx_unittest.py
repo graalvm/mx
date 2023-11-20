@@ -34,6 +34,7 @@ __all__ = [
     "DefaultMxUnittestConfig",
     "register_unittest_config",
     "get_config_participants_copy",
+    "resolve_unittest_configs",
     "add_unittest_argument",
     "unittestHelpSuffix",
     "is_strictly_positive",
@@ -331,9 +332,18 @@ class MxUnittestConfig:
         self.name = name
 
     def apply(self, config):
+        """
+        Apply the unittest configuration to the given configuration tuple. A configuration tuple consists of VM
+        arguments, a main class and main class arguments. The function returns a tuple with potentially modified
+        elements. For example, a configuration might add an argument to the list of VM arguments.
+        """
         return config
 
     def processDeps(self, deps):
+        """
+        Process the list of dependencies. UnitTestConfigs are allowed to add or remove dependencies from the
+        list. In such a case the list is modified in place.
+        """
         pass
 
 # the default config that applies unittest participants
@@ -359,6 +369,8 @@ register_unittest_config(MxUnittestConfig(name="none"))
 
 def get_config_participants_copy():
     """
+    This method is deprecated and should be removed if add_config_participant is removed.
+
     Returns a copy of the currently registered config participants. A config participant is a
     function that receives a tuple (VM arguments, main class, main class arguments) and returns
     a potentially modified tuple. Other parts of mx can register config participants with
@@ -366,6 +378,46 @@ def get_config_participants_copy():
 
     """
     return _config_participants.copy()
+
+def resolve_unittest_configs(dependencies):
+    """
+    Resolves the applicable unittest configs for the given dependencies.
+
+    The result is a tuple consisting of the updated dependencies (i.e. dependencies processed by all the resolved
+    unittest configs) and a function that transforms configuration tuples. A configuration tuple consists of VM
+    arguments, a main class and main class arguments. See the arguments of set_vm_launcher for more details.
+
+    The unittestConfig attribute of distributions (if present) must reference a valid unittest config, or otherwise
+    the function will call mx.abort, as this is considered a fatal error.
+    """
+
+    unittest_configs = set()
+
+    def _lookup_unittest_config(dep, edge):
+        if dep.isDistribution() and hasattr(dep, 'unittestConfig'):
+            config_name = dep.unittestConfig
+            if config_name not in _unittest_configs:
+                mx.abort(f"Unknown unittest config {config_name} in dependency {dep}!")
+            unittest_configs.add(_unittest_configs[config_name])
+
+    for d in dependencies:
+        d.walk_deps(visit=_lookup_unittest_config)
+
+    if len(unittest_configs) == 0:
+        unittest_configs.add(DefaultMxUnittestConfig())
+
+    sorted_configs = list(sorted(unittest_configs, key=lambda c: c.name))
+    updated_dependencies = dependencies.copy()
+    for cfg in sorted_configs:
+        cfg.processDeps(updated_dependencies)
+
+    def config_transformer(config):
+        updated_config = config
+        for unittest_config in sorted_configs:
+            updated_config = unittest_config.apply(updated_config)
+        return updated_config
+
+    return updated_dependencies, config_transformer
 
 
 _extra_unittest_arguments = []
@@ -394,31 +446,11 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         if '-JUnitGCAfterTest' in junit_args:
             prefixArgs.append('-XX:-DisableExplicitGC')
 
-        unittestConfigSet = set()
-
-        def _lookup_unittest_config(dep, edge):
-            if dep.isDistribution() and hasattr(dep, 'unittestConfig'):
-                config_name = dep.unittestConfig
-                if config_name not in _unittest_configs:
-                    mx.abort(f"Unknown unittest config {config_name} in dependency {dep}!")
-                unittestConfigSet.add(config_name)
-
-        for d in unittestDeps:
-            d.walk_deps(visit=_lookup_unittest_config)
-
-        unittestConfigs = []
-        for name in sorted(unittestConfigSet):
-            unittestConfigs.append(_unittest_configs[name])
-
-        if len(unittestConfigs) == 0:
-            unittestConfigs.append(DefaultMxUnittestConfig())
-
-        for cfg in unittestConfigs:
-            cfg.processDeps(unittestDeps)
-
         jdk = vmLauncher.jdk()
         force_cp = '-JUnitForceClassPath' in junit_args
-        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk, force_cp=force_cp)
+        (updated_deps, config_transformer) = resolve_unittest_configs(unittestDeps)
+
+        vmArgs += mx.get_runtime_jvm_args(updated_deps, cp_prefix=prefixCp+coreCp, jdk=jdk, force_cp=force_cp)
 
         # suppress menubar and dock when running on Mac
         vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs
@@ -443,8 +475,7 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             mainClassArgs = junit_args + ['@' + mx._cygpathU2W(testfile)]
 
         config = (vmArgs, mainClass, mainClassArgs)
-        for cfg in unittestConfigs:
-            config = cfg.apply(config)
+        config = config_transformer(config)
         vmLauncher.launcher(*config)
 
     vmLauncher = _vm_launcher
