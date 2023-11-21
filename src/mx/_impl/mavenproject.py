@@ -262,6 +262,14 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
         """
         self.getBuildTask([]).create_ide_pom()
 
+    def source_dirs(self):
+        """
+        Because we are a kind of JavaProject, mx asks for our source_dirs in various locations.
+        This is used for things like scanning defined packages or generating javadoc.
+        """
+        srcdir = self.pom.setdefault("build").get_text("sourceDirectory", "src/main/java")
+        return [os.path.join(self.maven_directory, srcdir)]
+
     def classpath_repr(self, resolve=True) -> str | None:
         """
         Returns this project's output jar if it has <packaging>jar</packaging>
