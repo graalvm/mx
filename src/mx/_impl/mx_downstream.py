@@ -245,7 +245,7 @@ def checkout_downstream(args):
         candidates = '\n- '.join(downstream_branch_candidates)
         mx.log(f"The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{upstream_commit}', which is part of the following branches:\n- {candidates}")
         if not _checkout_upstream_revision(upstream_commit, downstream_branch_candidates, upstream_suite, downstream_suite):
-            mx.abort(f"Cannot find a revision of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}")
+            mx.abort(f"Cannot find a revision of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}'")
 
 
 def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
