@@ -29,6 +29,8 @@ mx is a command line tool for managing the development of Java code organized as
 
 """
 
+from __future__ import annotations
+
 __all__ = [
     "Digest",
     "get_path_in_cache",
@@ -348,6 +350,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod, abstractproperty
+from typing import Callable, IO, AnyStr, Union
 
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
@@ -14178,15 +14181,36 @@ def _list2cmdline(seq):
 
 _subprocess_start_time = None
 
-def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, on_timeout=None, **kwargs):
+RedirectStream = Union[None, Callable[[str], None], IO[AnyStr]]
+"""
+Type alias for the redirected streams in :meth:`run`.
+"""
+
+def run(
+    args: list[str],
+    nonZeroIsFatal=True,
+    out: RedirectStream = None,
+    err: RedirectStream = None,
+    cwd=None,
+    timeout=None,
+    env=None,
+    stdin: str | None = None,
+    cmdlinefile=None,
+    on_timeout=None,
+    **kwargs
+):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
     If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
     is false, otherwise it kills all subprocesses and raises a SystemExit exception.
     If the exit status of the command is non-zero, mx is exited with the same exit status if
     `nonZeroIsFatal` is true, otherwise the exit status is returned.
-    Each line of the standard output and error streams of the subprocess are redirected to
-    out and err if they are callable objects.
+
+    :param out: Callable or any value accepted by :meth:`subprocess.Popen`. For callables, output is redirected (in a
+                separate thread) calling it once per output line.
+                Other values are passed on as-is.
+    :param err: See out parameter
+    :param kwargs: Directly passed to :meth:`subprocess.Popen`
     """
     assert stdin is None or isinstance(stdin, str), "'stdin' must be a string: " + str(stdin)
     assert isinstance(args, list), "'args' must be a list: " + str(args)
@@ -14267,7 +14291,8 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         stdin_pipe = None if stdin is None else subprocess.PIPE
         global _subprocess_start_time
         _subprocess_start_time = datetime.now()
-        p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, start_new_session=start_new_session, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
+
+        p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, start_new_session=start_new_session, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs)
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
