@@ -16039,15 +16039,16 @@ class NoOpContext(object):
 
 
 class TempDir(object):
-    def __init__(self, parent_dir=None):
+    def __init__(self, parent_dir=None, ignore_errors=False):
         self.parent_dir = parent_dir
+        self.ignore_errors = ignore_errors
 
     def __enter__(self):
         self.tmp_dir = mkdtemp(dir=self.parent_dir)
         return self.tmp_dir
 
     def __exit__(self, exc_type, exc_value, traceback):
-        shutil.rmtree(self.tmp_dir)
+        rmtree(self.tmp_dir, ignore_errors=self.ignore_errors)
 
 
 class TempDirCwd(TempDir):
@@ -19249,7 +19250,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.3.0")  # GR-50010 Support qualifying jdk-ids in mx fetch-jdk jdk-binaries.json
+version = VersionSpec("7.3.1")  # GR-50256 ignore_errors in TempDir.__exit__()
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
