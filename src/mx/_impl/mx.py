@@ -14698,14 +14698,16 @@ class JDKConfig(Comparable):
             return self.debug_args
 
         def add_coverage_args(args):
-            agent_path = mx_gate.get_jacoco_agent_path(False)
-            if any(arg.startswith('-javaagent') and agent_path in arg for arg in args):
-                return []
-            # jacoco flags might change in-process -> do not cache
-            jacaco_args = mx_gate.get_jacoco_agent_args() or []
-            if jacaco_args and self.javaCompliance.value < 9:
-                abort('Using jacoco agent only supported on JDK 9+ as it requires Java Command-Line argument files')
-            return jacaco_args
+            if mx_gate.jacoco_library() is not None:
+                agent_path = mx_gate.get_jacoco_agent_path(False)
+                if any(arg.startswith('-javaagent') and agent_path in arg for arg in args):
+                    return []
+                # jacoco flags might change in-process -> do not cache
+                jacaco_args = mx_gate.get_jacoco_agent_args() or []
+                if jacaco_args and self.javaCompliance.value < 9:
+                    abort('Using jacoco agent only supported on JDK 9+ as it requires Java Command-Line argument files')
+                return jacaco_args
+            return []
 
         if addDefaultArgs:
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args

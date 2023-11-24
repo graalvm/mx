@@ -922,8 +922,15 @@ def _jacoco_excludes_includes():
 def get_jacoco_dest_file():
     return JACOCO_EXEC or mx.get_opts().jacoco_dest_file
 
+def jacoco_library():
+    # Might be not available in source bundles
+    return mx.library('JACOCOAGENT_0.8.10', fatalIfMissing=False)
+
 def get_jacoco_agent_path(resolve):
-    return mx.library('JACOCOAGENT_0.8.10').get_path(resolve)
+    jacoco_lib = jacoco_library()
+    if jacoco_lib is None:
+        mx.abort("The JaCoCo library is not defined")
+    return jacoco_lib.get_path(resolve)
 
 def get_jacoco_agent_args(jacoco=None, agent_option_prefix=''):
     '''
