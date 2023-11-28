@@ -166,7 +166,9 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
         self, suite: mx.Suite, name: str, deps, excludedLibs, platformDependent=None, theLicense=None, **args
     ):  # pylint: disable=too-many-arguments
         if platformDependent is not False:
-            mx.abort("MavenProjects must be in the 'distributions' section of a suite.py and platformDependent cannot be True")
+            mx.abort(
+                "MavenProjects must be in the 'distributions' section of a suite.py and platformDependent cannot be True"
+            )
         super().__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **args)
 
         self.maven_directory = os.path.join(suite.dir, args.get("subDir", ""), name)
