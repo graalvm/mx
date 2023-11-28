@@ -14069,11 +14069,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
         ensure_dir_exists(custom_local_repo)
         extra_args += ['-Dmaven.repo.local=' + custom_local_repo]
 
-    mavenCommand = get_env('MAVEN_COMMAND')
-    if not mavenCommand:
-        mavenCommand = 'mvn'
-        if is_windows():
-            mavenCommand += '.cmd'
+    mavenCommand = cmd_suffix(get_env('MAVEN_COMMAND', 'mvn'))
 
     if is_windows():
         extra_args += ['--batch-mode'] # prevent maven to color output
