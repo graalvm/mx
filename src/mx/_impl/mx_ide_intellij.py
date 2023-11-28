@@ -39,7 +39,7 @@ import glob
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, dirname, exists, isdir, realpath
 from io import StringIO
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 
 from . import mx
 from . import mx_ideconfig
@@ -60,11 +60,11 @@ class IntellijConfig:
     external_projects: bool = True
     java_modules: bool = True
     native_projects: bool = False
-    max_java_compliance: int = 16
+    max_java_compliance: int = 21
     import_inner_classes: bool = False
     on_save_actions: bool = False
-    refresh_only: bool = False,
-    do_fsck_projects: bool = True,
+    refresh_only: bool = False
+    do_fsck_projects: bool = True
     args: ... = None
 
 
