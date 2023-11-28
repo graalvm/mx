@@ -941,7 +941,8 @@ environment variables:
         self.add_argument('--strip-jars', action='store_true', default=env_var_to_bool('MX_STRIP_JARS'), help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
-        self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
+        from .mx_native import TargetSelection
+        self.add_argument('--multitarget', action='append', help=TargetSelection.__doc__)
         self.add_argument('--dump-task-stats', help='Dump CSV formatted start/end timestamps for each build task. If set to \'-\' it will print it to stdout, otherwise the CSV will be written to <path>', metavar='<path>', default=None)
         self.add_argument('--compdb', action='store', metavar='<file>', help="generate a JSON compilation database for native "
                                 "projects and store it in the given <file>. If <file> is 'default', the compilation database will "
@@ -5685,6 +5686,9 @@ class Distribution(Dependency):
             self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
         else:
             self.testDistribution = testDistribution
+        if hasattr(self, 'native_toolchain'):
+            from .mx_native import Toolchain
+            Toolchain.register(self)
 
     def is_test_distribution(self):
         return self.testDistribution
@@ -19121,6 +19125,15 @@ def main():
             additional_env = _opts.additional_env or get_env('MX_ENV_PATH')
             if additional_env:
                 SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=additional_env, abort_if_missing=True)
+
+            # We need to do this here, after the env files are parsed to pick up MULTITARGET
+            # setting from env files, but before the suites are initialized because these
+            # args influence build dependencies.
+            # Using _opts here instead of get_opts() since we're not finished parsing opts
+            # yet, we only did the first round of parsing, the second round happens after
+            # suite initialization.
+            from .mx_native import TargetSelection
+            TargetSelection.parse_args(_opts)
 
             _setup_binary_suites()
             if should_discover_suites:
