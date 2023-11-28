@@ -7381,6 +7381,10 @@ class ArchivableBuildTask(BuildTask):
 
 #### ~~~~~~~~~~~~~ Project: Java / Maven
 
+# Make the MavenProject symbol available in this module
+from . import mavenproject
+MavenProject = mavenproject.MavenProject
+
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, testProject=False, **kwArgs):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=testProject, **kwArgs)

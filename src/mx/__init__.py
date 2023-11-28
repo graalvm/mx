@@ -33,12 +33,6 @@ DO NOT WRITE IMPLEMENTATION CODE HERE.
 See docs/package-structure.md for more details.
 """
 
-import mx._impl.mx as _orig
-
-from mx._impl.mavenproject import MavenProject
-
-_orig.MavenProject = MavenProject
-
 # mx exports its own open symbol which redefines a builtin
 from ._impl.mx import *  # pylint: disable=redefined-builtin
 
@@ -64,6 +58,8 @@ from ._impl.mx import (
 )
 
 from mx._legacy.oldnames import redirect as _redirect
+
+import mx._impl.mx as _orig
 
 __all__ = _orig.__all__
 
