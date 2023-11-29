@@ -6,6 +6,7 @@ This avoids the headache of matching the behavior of the appropriate maven devel
 ## How to make maven projects known to mx
 
 A distribution in a suite.py can be of `class: MavenProject`.
+To use it, `from mx import MavenProject` into your "mx_suitename.py" file so the mx mechanism picks it up.
 A MavenProject is both a Java project as well as a Jar distribution from the point of view of mx - it is a single, self-contained source tree that goes all the way to a distribution.
 As such, it can be built with `mx build` and be deployed with `mx maven-deploy`.
 It needs to be in the `distributions` section of the `suite.py`, since it can be deployed directly.
