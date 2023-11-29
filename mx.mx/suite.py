@@ -865,7 +865,7 @@ suite = {
       "javaCompliance" : "1.8+",
       "annotationProcessors" : ["JMH_1_21"],
       "spotbugsIgnoresGenerated" : True,
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "com.oracle.mxtool.junit" : {
@@ -876,7 +876,7 @@ suite = {
       ],
       "javaCompliance" : "1.8+",
       "checkstyleVersion" : "8.36.1",
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "com.oracle.mxtool.junit.jdk9" : {
@@ -895,7 +895,7 @@ suite = {
       "checkPackagePrefix" : False,
       "javaCompliance" : "9+",
       "checkstyle" : "com.oracle.mxtool.junit",
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "com.oracle.mxtool.compilerserver" : {
@@ -910,7 +910,7 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "com.oracle.mxtool.jacoco" : {
@@ -922,7 +922,7 @@ suite = {
         "JACOCOREPORT_0.8.10",
         "JOPTSIMPLE_4_6",
       ],
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "com.oracle.mxtool.webserver" : {
@@ -930,7 +930,7 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     # Native library for HotSpot assembly capture
@@ -962,7 +962,7 @@ suite = {
             },
         },
       },
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
    },
 
@@ -979,20 +979,20 @@ suite = {
       "moduleInfo" : {
         "name" : "com.oracle.mxtool.junit",
       },
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "MX_JACOCO_REPORT" : {
       "subDir" : "java",
       "mainClass" : "com.oracle.mxtool.jacoco.JacocoReport",
       "dependencies" : ["com.oracle.mxtool.jacoco"],
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "MX_MICRO_BENCHMARKS" : {
       "subDir" : "java",
       "dependencies" : ["com.oracle.mxtool.jmh_1_21"],
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "GCC_NINJA_TOOLCHAIN": {
@@ -1003,7 +1003,7 @@ suite = {
         "toolchain.ninja": "file:ninja-toolchains/gcc.ninja",
       },
       "maven": False,
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "MSVC_NINJA_TOOLCHAIN": {
@@ -1014,7 +1014,7 @@ suite = {
         "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
       },
       "maven": False,
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
 
     "DEFAULT_NINJA_TOOLCHAIN": {
@@ -1040,7 +1040,7 @@ suite = {
         },
       },
       "maven": False,
-      "libGraalSourceEdition": "ignore",
+      "graalCompilerSourceEdition": "ignore",
     },
   },
 }
