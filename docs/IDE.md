@@ -6,8 +6,6 @@ Download and install the latest IntelliJ IDEA Community Edition: [https://www.je
 
 Change the IntelliJ maximum memory to 2 GB or more. As per the [instructions](https://www.jetbrains.com/idea/help/increasing-memory-heap.html#d1366197e127), from the main menu choose **Help | Edit Custom VM Options** and modify the **-Xmx** and **-Xms** options.
 
-Enable parallel builds in **Preferences > Build, Execution, Deployment > Compiler > Compile independent modules in parallel**.
-
 Open IntelliJ and go to **Preferences > Plugins > Browse Repositories**. Install the following plugins:
 
 * [Eclipse Code Formatter](https://plugins.jetbrains.com/plugin/6546): formats code according to Eclipse
@@ -32,6 +30,14 @@ Recommended _Format on Save_ configuration (**IntelliJ IDEA > Preferences > Tool
 1. Check "Reformat code" (Files:Java, Changed lines only)
 2. Check "Optimize imports" (Files:Java)
 3. Check "Run code cleanup". This removes unused imports.
+
+At the moment, points 1 and 2 can be automatically configured by passing `--on-save-actions` to `mx intellijinit`.
+
+Use `MX_INTELLIJINIT_DEFAULTS` environment variable to set default options and flags for the `mx intellijinit` command.
+The value is split using spaces as delimiter and prepended to the arguments passed on the command line.
+
+Use `mx intellijinit --help` to view all the options and flags that allow further customization
+of the IntelliJ projects generation.
 
 #### Making IntelliJ Feel Similar to Eclipse (Optional)
 

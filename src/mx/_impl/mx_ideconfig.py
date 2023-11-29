@@ -160,7 +160,7 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     if all_ides or mx_ide == 'netbeans':
         mx_ide_netbeans.netbeansinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'intellij':
-        mx_ide_intellij.intellijinit(args.remainder, refreshOnly=refreshOnly, doFsckProjects=False, mx_python_modules=args.pythonProjects)
+        mx_ide_intellij.intellijinit(mx_ide_intellij.IntellijConfig(args=args.remainder, refresh_only=refreshOnly, do_fsck_projects=False, python_projects=args.pythonProjects))
     if not refreshOnly:
         fsckprojects([])
 
