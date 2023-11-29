@@ -38,20 +38,53 @@ load-plugins=
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=attribute-defined-outside-init,arguments-differ,
-        bare-except,global-statement,protected-access,redefined-outer-name,
-        unused-argument,star-args,pointless-string-statement,old-style-class,
-        too-many-lines,missing-docstring,no-init,no-self-use,too-many-statements,
-        too-many-locals,too-few-public-methods,too-many-instance-attributes,
-        too-many-arguments,too-many-branches,too-many-public-methods, too-many-return-statements,
-        multiple-statements,abstract-method,F0401,no-member,non-parent-init-called,
-        maybe-no-member,abstract-class-little-used,bad-option-value,bad-continuation,
-        wrong-import-position,len-as-condition,wrong-import-order,ungrouped-imports,
-        multiple-imports,no-else-return,cell-var-from-loop,inconsistent-return-statements,
-        too-many-nested-blocks,consider-using-enumerate,too-many-ancestors,
-        invalid-unary-operand-type,not-callable,unsubscriptable-object
-
-# F0401: http://www.logilab.org/ticket/9386
+disable=attribute-defined-outside-init,
+        arguments-differ,
+        bare-except,
+        global-statement,
+        protected-access,
+        redefined-outer-name,
+        unused-argument,
+        star-args,
+        pointless-string-statement,
+        old-style-class,
+        too-many-lines,
+        missing-docstring,
+        no-init,
+        no-self-use,
+        too-many-statements,
+        too-many-locals,
+        too-few-public-methods,
+        too-many-instance-attributes,
+        too-many-arguments,
+        too-many-branches,
+        too-many-public-methods,
+        too-many-return-statements,
+        multiple-statements,
+        abstract-method,
+        F0401, # http://www.logilab.org/ticket/9386
+        no-member,
+        non-parent-init-called,
+        maybe-no-member,
+        abstract-class-little-used,
+        bad-option-value,
+        bad-continuation,
+        wrong-import-position,
+        len-as-condition,
+        wrong-import-order,
+        ungrouped-imports,
+        multiple-imports,
+        no-else-return,
+        cell-var-from-loop,
+        inconsistent-return-statements,
+        too-many-nested-blocks,
+        consider-using-enumerate,
+        too-many-ancestors,
+        invalid-unary-operand-type,
+        not-callable,
+        unsubscriptable-object,
+        bad-whitespace, # C0326. Incompatible with the black formatter
+        bad-continuation, # C0330. Incompatible with the black formatter
 
 [REPORTS]
 

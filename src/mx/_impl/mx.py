@@ -1763,9 +1763,6 @@ class Dependency(SuiteConstituent):
     def isArchivableProject(self):
         return isinstance(self, ArchivableProject)
 
-    def isMavenProject(self):
-        return isinstance(self, MavenProject)
-
     def isDistribution(self):
         return isinstance(self, Distribution)
 
@@ -7384,36 +7381,9 @@ class ArchivableBuildTask(BuildTask):
 
 #### ~~~~~~~~~~~~~ Project: Java / Maven
 
-class MavenProject(Project, ClasspathDependency):
-    """
-    A project producing a single jar file.
-    Users should subclass this class and implement getBuildTask().
-    Additional attributes:
-      jar: path to the jar
-      sourceDirs: list of directories containing the sources
-    """
-    def __init__(self, suite, name, deps, workingSets, theLicense=None, **args):
-        context = 'project ' + name
-        d = suite.dir
-        srcDirs = Suite._pop_list(args, 'sourceDirs', context)
-        Project.__init__(self, suite, name, "", srcDirs, deps, workingSets, d, theLicense, **args)
-        ClasspathDependency.__init__(self)
-        jar = args.pop('jar')
-        assert jar.endswith('.jar')
-        self.jar = jar
-
-    def classpath_repr(self, resolve=True):
-        jar = join(self.suite.dir, self.jar)
-        if resolve and not exists(jar):
-            abort(f'unbuilt Maven project {self} cannot be on a class path ({jar})')
-        return jar
-
-    def get_path(self, resolve):
-        return self.classpath_repr(resolve=resolve)
-
-    def get_source_path(self, resolve):
-        assert len(self.sourceDirs) == 1
-        return join(self.suite.dir, self.sourceDirs[0])
+# Make the MavenProject symbol available in this module
+from . import mavenproject
+MavenProject = mavenproject.MavenProject
 
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, testProject=False, **kwArgs):
@@ -11721,6 +11691,16 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     groupId = dist.maven_group_id()
     artifactId = dist.maven_artifact_id()
     version = versionGetter(dist.suite)
+
+    if hasattr(dist, "generate_deployment_pom"):
+        if validateMetadata == 'full':
+            cb = abort
+        elif validateMetadata != 'none':
+            cb = None
+        else:
+            cb = warn
+        return dist.generate_deployment_pom(version, validation_callback=cb)
+
     pom = XMLDoc()
     pom.open('project', attributes={
         'xmlns': "http://maven.apache.org/POM/4.0.0",
@@ -14089,10 +14069,11 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
         ensure_dir_exists(custom_local_repo)
         extra_args += ['-Dmaven.repo.local=' + custom_local_repo]
 
-    mavenCommand = 'mvn'
+    mavenCommand = cmd_suffix(get_env('MAVEN_COMMAND', 'mvn'))
+
     if is_windows():
-        mavenCommand += '.cmd'
         extra_args += ['--batch-mode'] # prevent maven to color output
+
     mavenHome = get_env('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
@@ -17387,7 +17368,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 if dep.isJavaProject():
                     if dep not in projects:
                         classpath_deps.add(dep)
-                elif dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isJdkLibrary():
+                elif dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary():
                     classpath_deps.add(dep)
                 elif dep.isJreLibrary():
                     pass
@@ -19250,7 +19231,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.3.3") # Minor improvements in mx intellijinit: option for max java compliance, etc.
+version = VersionSpec("7.4.0")  # GR-49665 expanded support for MavenProjects in mx
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

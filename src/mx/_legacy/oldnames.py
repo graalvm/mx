@@ -29,10 +29,12 @@ Implements intercepting logic for proxy files.
 .. seealso:: :func:`redirect`
 """
 
-from .._impl import mx
+import atexit
 import sys
 import traceback
-import atexit
+from typing import List
+
+from .._impl import mx
 
 # Stores accesses to internal symbols
 _internal_accesses = set()
@@ -82,7 +84,7 @@ def _exit_handler():
         mx.logv(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
 
 
-def redirect(thisname: str, allowed_internal_reads: [str] = None, allowed_writes: [str] = None):
+def redirect(thisname: str, allowed_internal_reads: List[str] = None, allowed_writes: List[str] = None):
     """
     Redirects all attribute accesses on the ``thisname`` module to the
     ``mx._impl.{thisname}`` module.
