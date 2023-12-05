@@ -4123,6 +4123,7 @@ from . import mx_codeowners # pylint: disable=unused-import
 from . import mx_ideconfig # pylint: disable=unused-import
 from . import mx_ide_eclipse
 from . import mx_compdb
+from . import mergetool
 from .pyformat import pyformat
 
 from .mx_javamodules import make_java_module # pylint: disable=unused-import
@@ -18902,6 +18903,7 @@ update_commands("mx", {
     'maven-deploy' : [maven_deploy, ''],
     'maven-install' : [maven_install, ''],
     'maven-url': [maven_url, '<repository id> <distribution name>'],
+    'mergetool-suite-import': [mergetool.mergetool_suite_import, ''],
     'minheap' : [run_java_min_heap, ''],
     'projectgraph': [projectgraph, ''],
     'projects': [show_projects, ''],
