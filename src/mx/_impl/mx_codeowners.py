@@ -222,6 +222,15 @@ Can be executed in three modes.
   modified with comparison to given BRANCH (or to master with -a
   only). In other words, it prints possible reviewers for the whole
   pull request.
+
+Any of these modes can be accompanied by -s that enables reviewers suggestions.
+When reviewer suggestions are turned on, the tool also prints a concrete list
+of people that should review the modifications.
+
+It is possible to specify existing reviewers with -r (and author of the changes
+with -p): in that case the tool checks that the existing list of reviewers is
+complete and if not, suggests further reviewers to cover the modified files
+(-s is implied when -r or -p are used).
 """
 
 _MX_CODEOWNERS_HELP2 = """The ownership is read from OWNERS.toml files that can be added to any
@@ -267,6 +276,9 @@ def codeowners(args):
     parser.add_argument('files', metavar='FILENAME', nargs='*', help='File names to list owners of (relative to current work dir).')
     parser.add_argument('-a', dest='all_changes', action='store_true', default=False, help='Print reviewers for this branch against master.')
     parser.add_argument('-b', dest='upstream_branch', metavar='BRANCH', default=None, help='Print reviewers for this branch against BRANCH.')
+    parser.add_argument('-r', dest='existing_reviewers', metavar='PR-REVIEWER', default=[], action='append', help='Existing reviewer (can be specified multiple times).')
+    parser.add_argument('-p', dest='author', metavar='PR-AUTHOR', default=None, help='Author of the pull-request')
+    parser.add_argument('-s', dest='suggest_reviewers', default=False, action='store_true', help='Suggest reviewers for pull-request')
     args = parser.parse_args(args)
 
     if args.upstream_branch:
@@ -276,6 +288,9 @@ def codeowners(args):
 
     if args.all_changes and args.files:
         mx.abort("Do not specify list of files with -b or -a")
+
+    if args.author or args.existing_reviewers:
+        args.suggest_reviewers = True
 
     owners = FileOwners(_git_get_repo_root_or_cwd())
 
@@ -292,14 +307,60 @@ def codeowners(args):
     if reviewers['all']:
         print("Mandatory reviewers (all of these must review):")
         for i in reviewers['all']:
-            mx.log(" o " + i)
+            if i in args.existing_reviewers:
+                print(" o " + i + " (already reviews)")
+            else:
+                print(" o " + i)
     if reviewers['any']:
         print("Any-of reviewers (at least one from each line):")
         for i in reviewers['any']:
-            mx.log(" o " + ' or '.join(i))
+            if _is_some_item_in_set(args.existing_reviewers, set(i)):
+                print(" o " + ' or '.join(i) + ' (already reviews)')
+            else:
+                print(" o " + ' or '.join(i))
 
     if len(reviewers["all"]) == 0 and len(reviewers["any"]) == 0:
         mx.log("No specific reviewer requested by OWNERS.toml files for the given changeset.")
+
+
+    if args.suggest_reviewers:
+        print("")
+        print("Reviewers summary for this pull-request")
+        print(" o Mandatory reviewers")
+        missing_mandatory = []
+        for i in reviewers['all']:
+            if not (i in args.existing_reviewers):
+                missing_mandatory.append(i)
+        if missing_mandatory:
+            print("   - Add following reviewers: " + ' and '.join(missing_mandatory))
+        else:
+            print("   - All mandatory reviewers already assigned.")
+
+        suggested_optional = []
+        for gr in reviewers['any']:
+            gr_set = set(gr)
+            gr_set.discard(args.author)
+            if not gr_set:
+                continue
+
+            covered_by_mandatory = _is_some_item_in_set(missing_mandatory, gr_set)
+            covered_by_existing = _is_some_item_in_set(args.existing_reviewers, gr_set)
+            covered_by_suggestions = _is_some_item_in_set(suggested_optional, gr_set)
+            if covered_by_mandatory or covered_by_existing or covered_by_suggestions:
+                continue
+            suggested_optional.append(gr[0])
+        print(" o Any-of reviewers")
+        if suggested_optional:
+            print("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
+        else:
+            print("   - All are already assigned or are among the mandatory ones.")
+        if suggested_optional or missing_mandatory:
+            print(" o Suggested modifications: add the following reviewers")
+            for i in sorted(suggested_optional + missing_mandatory):
+                print("   - " + i)
+        else:
+            print(" o Looks like all reviewers are already assigned.")
+
 
     num_files_changed = len(file_owners.keys())
     num_owned_files = len([f for f, o in file_owners.items() if o])
