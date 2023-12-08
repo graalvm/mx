@@ -2811,11 +2811,102 @@ class PsrecordMaxrssTracker(Tracker):
     def get_rules(self, bmSuiteArgs):
         return self.rss.get_rules(bmSuiteArgs) + self.psrecord.get_rules(bmSuiteArgs)
 
+# Fulfills the same purpose as PsrecordTracker (except for plotting), but without any dependencies and error propagation
+# issues.
+class RssPercentilesTracker(Tracker):
+    # rss metric will be calculated for these percentiles
+    interesting_percentiles = [100, 99, 95, 90, 75, 50, 25]
+    # the time period between two polls, in seconds
+    poll_interval = 0.1
+
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.most_recent_text_output = None
+
+    def map_command(self, cmd):
+        if not _use_tracker:
+            self.most_recent_text_output = None
+            return cmd
+
+        if mx.get_os() != "linux" and mx.get_os() != "darwin":
+            mx.log(f"Ignoring the 'rsspercentiles' tracker since it is not supported on {mx.get_os()}")
+            self.most_recent_text_output = None
+            return cmd
+
+        import datetime
+        bench_name = self.bmSuite.currently_running_benchmark() if self.bmSuite else "benchmark"
+        if self.bmSuite:
+            bench_name = f"{self.bmSuite.name()}-{bench_name}"
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        text_output = os.path.join(os.getcwd(), f"ps_{bench_name}_{ts}.txt")
+
+        self.most_recent_text_output = text_output
+        pspoller_script_path = mx._mx_suite.dir + "/src/mx/_impl/pspoller.py"
+        return ["python3", pspoller_script_path, text_output, str(RssPercentilesTracker.poll_interval)] + cmd
+
+    def get_rules(self, bmSuiteArgs):
+        return [RssPercentilesTracker.RssPercentilesRule(self, bmSuiteArgs)]
+
+    class RssPercentilesRule(CSVBaseRule):
+        def __init__(self, tracker, bmSuiteArgs, **kwargs):
+            replacement = {
+                "benchmark": tracker.bmSuite.currently_running_benchmark(),
+                "bench-suite": tracker.bmSuite.benchSuiteName(bmSuiteArgs) if mx_benchmark_compatibility().bench_suite_needs_suite_args() else tracker.bmSuite.benchSuiteName(),
+                "config.vm-flags": ' '.join(tracker.bmSuite.vmArgs(bmSuiteArgs)),
+                "metric.name": "rss",
+                "metric.value": ("<metric_value>", int),
+                "metric.unit": "MB",
+                "metric.type": "numeric",
+                "metric.score-function": "id",
+                "metric.better": "lower",
+                "metric.percentile": ("<metric_percentile>", int),
+                "metric.iteration": 0
+            }
+            super().__init__(["rss_kb"], replacement, delimiter=' ', skipinitialspace=True, **kwargs)
+            self.tracker = tracker
+
+        def getCSVFiles(self, text):
+            file = self.tracker.most_recent_text_output
+            return [file] if file else []
+
+        def parseResults(self, text):
+            rows = super().parseResults(text)
+            if not rows:
+                return []
+            values = sorted(float(r["rss_kb"]) for r in rows)
+
+            def pc(k): # k-percentile with linear interpolation between closest ranks
+                x = (len(values) - 1) * k / 100
+                fr = int(x)
+                cl = int(x + 0.5)
+                v = values[fr] if fr == cl else values[fr] * (cl - x) + values[cl] * (x - fr)
+                v = v / 1024 # convert to MB
+                return {"metric_percentile": str(k), "metric_value": str(int(v))}
+
+            return [pc(perc) for perc in RssPercentilesTracker.interesting_percentiles]
+
+
+class RssPercentilesAndMaxTracker(Tracker):
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.rss = RssTracker(bmSuite)
+        self.rssperc = RssPercentilesTracker(bmSuite)
+
+    def map_command(self, cmd):
+        # Note that pspoller tracks the metrics of the `time` tool as well, which adds 1-2M of RSS.
+        # Vice versa, `time` would track pspoller's Python interpreter, which adds more than 10M.
+        return self.rssperc.map_command(self.rss.map_command(cmd))
+
+    def get_rules(self, bmSuiteArgs):
+        return self.rss.get_rules(bmSuiteArgs) + self.rssperc.get_rules(bmSuiteArgs)
+
 
 _available_trackers = {
     "rss": RssTracker,
     "psrecord": PsrecordTracker,
     "psrecord+maxrss": PsrecordMaxrssTracker,
+    "rsspercentiles": RssPercentilesTracker,
+    "rsspercentiles+maxrss": RssPercentilesAndMaxTracker,
 }
 
 
