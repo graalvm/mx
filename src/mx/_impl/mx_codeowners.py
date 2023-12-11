@@ -347,7 +347,7 @@ def codeowners(args):
 
         missing_mandatory = []
         for i in reviewers['all']:
-            if (not (i in args.existing_reviewers)) and (i != args.author):
+            if (not i in args.existing_reviewers) and (i != args.author):
                 missing_mandatory.append(i)
 
         mx.log(" o Mandatory reviewers")
