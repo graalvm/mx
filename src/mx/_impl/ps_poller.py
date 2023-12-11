@@ -51,11 +51,29 @@ def _start_target_process(target_cmd):
     print(f"Starting and attaching to command: \"{' '.join(target_cmd)}\"")
     return subprocess.Popen(target_cmd, start_new_session=True)
 
+def _wait_for_processes(processes):
+    return_code = 0
+    # Wait for every process and make sure it didn't fail, kill other processes if one fails (made for piped commands)
+    for proc in processes:
+        if return_code == 0:
+            return_code = proc.wait()
+            if return_code != 0:
+                print(f"Command {proc.args} failed with return code {return_code}!")
+        else:
+            proc.kill()
+    return return_code
+
 def _poll_session(sid, out_file):
     # Get RSS for every process with sid, and then calculate sum
     ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "rss="], stdout=subprocess.PIPE) # gets rss of every process in session
-    paste_proc = subprocess.Popen(["paste", "-sd+"], stdin=ps_proc.stdout, stdout=subprocess.PIPE) # constructs <rssp1>+<rssp2>+...+<rsspN> string
+    paste_proc = subprocess.Popen(["paste", "-sd+", "-"], stdin=ps_proc.stdout, stdout=subprocess.PIPE) # constructs <rssp1>+<rssp2>+...+<rsspN> string
     bc_proc = subprocess.Popen(["bc"], stdin=paste_proc.stdout, stdout=out_file) # calculates the sum string
+    return _wait_for_processes([ps_proc, paste_proc, bc_proc])
+
+def _kill_session(sid):
+    ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "pid="], stdout=subprocess.PIPE) # gets pid of every process in session
+    xargs_proc = subprocess.Popen(["xargs", "kill"], stdin=ps_proc.stdout) # kills every piped process pid
+    return _wait_for_processes([ps_proc, xargs_proc])
 
 def main(args):
     output_file, poll_interval, target_cmd = _parse_args(args)
@@ -66,11 +84,21 @@ def main(args):
 
         start_time = time.time()
         target_status = target_proc.poll()
-        while target_status == None: # target process not terminated
+        poll_return_code = 0
+        while target_status == None and poll_return_code == 0: # target process not terminated
             time.sleep(poll_interval)
-            _poll_session(target_pid, f)
+            poll_return_code = _poll_session(target_pid, f)
             target_status = target_proc.poll()
         end_time = time.time()
+
+    if poll_return_code != 0:
+        print("Polling for RSS failed! Killing the target process...")
+        kill_return_code = _kill_session(target_pid)
+        if kill_return_code != 0:
+            print("Killing target process failed!")
+        else:
+            print("Target process successfully killed.")
+        return poll_return_code
 
     print(f"Target process return code: {target_status}")
     print(f"Rss samples saved in file: {output_file}")
