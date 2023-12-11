@@ -393,6 +393,8 @@ def codeowners(args):
             mx.log(" o Looks like all reviewers are already assigned.")
 
 
+    repro_data['pull_request']['suggestion']['add'] = list(sorted(repro_data['pull_request']['suggestion']['add']))
+
     num_files_changed = len(file_owners.keys())
     num_owned_files = len([f for f, o in file_owners.items() if o])
 
