@@ -293,8 +293,11 @@ def codeowners(args):
             'reviewers': args.existing_reviewers,
             'author': args.author,
             'suggestion': {
-                'all': [],
-                'any': [],
+                'add': [],
+                'details': {
+                    'all': [],
+                    'any': [],
+                },
             }
         }
     }
@@ -350,11 +353,12 @@ def codeowners(args):
 
         missing_mandatory = []
         for i in reviewers['all']:
-            if not (i in args.existing_reviewers):
+            if (not (i in args.existing_reviewers)) and (i != args.author):
                 missing_mandatory.append(i)
 
         mx.log(" o Mandatory reviewers")
-        repro_data['pull_request']['suggestion']['all'] = missing_mandatory
+        repro_data['pull_request']['suggestion']['details']['all'] = missing_mandatory
+        repro_data['pull_request']['suggestion']['add'].extend(missing_mandatory)
         if missing_mandatory:
             mx.log("   - Add following reviewers: " + ' and '.join(missing_mandatory))
         else:
@@ -372,10 +376,11 @@ def codeowners(args):
             covered_by_suggestions = _is_some_item_in_set(suggested_optional, gr_set)
             if covered_by_mandatory or covered_by_existing or covered_by_suggestions:
                 continue
-            suggested_optional.append(gr[0])
+            suggested_optional.append(list(gr_set)[0])
 
         mx.log(" o Any-of reviewers")
-        repro_data['pull_request']['suggestion']['any'] = suggested_optional
+        repro_data['pull_request']['suggestion']['details']['any'] = suggested_optional
+        repro_data['pull_request']['suggestion']['add'].extend(suggested_optional)
         if suggested_optional:
             mx.log("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
         else:
