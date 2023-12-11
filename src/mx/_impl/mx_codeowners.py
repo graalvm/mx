@@ -31,6 +31,7 @@ __all__ = [
 
 import argparse
 import fnmatch
+import json
 import logging
 import os
 
@@ -279,7 +280,24 @@ def codeowners(args):
     parser.add_argument('-r', dest='existing_reviewers', metavar='PR-REVIEWER', default=[], action='append', help='Existing reviewer (can be specified multiple times).')
     parser.add_argument('-p', dest='author', metavar='PR-AUTHOR', default=None, help='Author of the pull-request')
     parser.add_argument('-s', dest='suggest_reviewers', default=False, action='store_true', help='Suggest reviewers for pull-request')
+    parser.add_argument('-j', dest='json_dump', default=None, metavar='FILENAME.json', help='Store details in JSON file.')
     args = parser.parse_args(args)
+
+    repro_data = {
+        'version': 1,
+        'mx_version': str(mx.version),
+        'files': [],
+        'owners': {},
+        'branch': None,
+        'pull_request': {
+            'reviewers': args.existing_reviewers,
+            'author': args.author,
+            'suggestion': {
+                'all': [],
+                'any': [],
+            }
+        }
+    }
 
     if args.upstream_branch:
         args.all_changes = True
@@ -300,8 +318,11 @@ def codeowners(args):
     elif not args.files:
         # No arguments, query list of currently modified files
         args.files = _git_diff_name_only()
+    repro_data['files'] = args.files
 
     file_owners = {f: owners.get_owners_of(os.path.abspath(f)) for f in args.files}
+    repro_data['owners'] = file_owners
+
     reviewers = _summarize_owners(file_owners.values())
 
     if reviewers['all']:
@@ -326,11 +347,14 @@ def codeowners(args):
     if args.suggest_reviewers:
         mx.log("")
         mx.log("Reviewers summary for this pull-request")
-        mx.log(" o Mandatory reviewers")
+
         missing_mandatory = []
         for i in reviewers['all']:
             if not (i in args.existing_reviewers):
                 missing_mandatory.append(i)
+
+        mx.log(" o Mandatory reviewers")
+        repro_data['pull_request']['suggestion']['all'] = missing_mandatory
         if missing_mandatory:
             mx.log("   - Add following reviewers: " + ' and '.join(missing_mandatory))
         else:
@@ -349,7 +373,9 @@ def codeowners(args):
             if covered_by_mandatory or covered_by_existing or covered_by_suggestions:
                 continue
             suggested_optional.append(gr[0])
+
         mx.log(" o Any-of reviewers")
+        repro_data['pull_request']['suggestion']['any'] = suggested_optional
         if suggested_optional:
             mx.log("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
         else:
@@ -375,3 +401,7 @@ def codeowners(args):
         import pprint
         mx.logv("Ownership of each file:")
         mx.logv(pprint.pformat(file_owners, indent=2))
+
+    if args.json_dump:
+        with open(args.json_dump, 'wt') as f:
+            json.dump(repro_data, f, indent=4)
