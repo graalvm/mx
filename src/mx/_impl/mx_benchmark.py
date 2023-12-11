@@ -2828,7 +2828,7 @@ class RssPercentilesTracker(Tracker):
             return cmd
 
         if mx.get_os() != "linux" and mx.get_os() != "darwin":
-            mx.log(f"Ignoring the '{self.__class__.__name__}' tracker since it is not supported on {mx.get_os()}")
+            mx.warn(f"Ignoring the '{self.__class__.__name__}' tracker since it is not supported on {mx.get_os()}")
             self.most_recent_text_output = None
             return cmd
 
@@ -2874,10 +2874,10 @@ class RssPercentilesTracker(Tracker):
             temp_text_output = self.tracker.most_recent_text_output
             if temp_text_output != None:
                 os.remove(temp_text_output)
-                print(f"Temporary output file {temp_text_output} deleted.")
+                mx.log(f"Temporary output file {temp_text_output} deleted.")
 
             if not rows:
-                print("\tDidn't get any RSS samples.")
+                mx.log("\tDidn't get any RSS samples.")
                 return []
             values = sorted(float(r["rss_kb"]) for r in rows)
 
@@ -2891,7 +2891,7 @@ class RssPercentilesTracker(Tracker):
 
             percentiles = [pc(perc) for perc in RssPercentilesTracker.interesting_percentiles]
             for rss_percentile in percentiles:
-                print(f"\t{rss_percentile['metric_percentile']}th RSS percentile (MB): {rss_percentile['metric_value']}")
+                mx.log(f"\t{rss_percentile['metric_percentile']}th RSS percentile (MB): {rss_percentile['metric_value']}")
             return percentiles
 
 
