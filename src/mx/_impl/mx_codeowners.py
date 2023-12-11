@@ -32,19 +32,13 @@ __all__ = [
 import argparse
 import fnmatch
 import json
-import logging
 import os
 
 from . import mx
 from . import mx_stoml
 
 class _TomlParsingException(Exception):
-    def __init__(self, cause):
-        Exception.__init__()
-        self.cause = cause
-
-    def __str__(self):
-        return str(self.cause)
+    pass
 
 def _load_toml_from_fd(fd):
     try:
@@ -110,13 +104,13 @@ class FileOwners:
     def _parse_ownership(self, fd, name):
         try:
             tree = _load_toml_from_fd(fd)
-            logging.debug("Tree is %s", tree)
+            mx.logv(f"Tree is {tree}")
             for rule in tree.get('rule', []):
                 if not 'files' in rule:
-                    logging.warning("Ignoring rule %s in %s as it contains no files", rule, name)
+                    mx.log_error(f"Ignoring rule {rule} in {name} as it contains no files")
                     continue
                 if (not 'any' in rule) and (not 'all' in rule):
-                    logging.warning("Ignoring rule %s in %s as it contains no owner specification", rule, name)
+                    mx.log_error(f"Ignoring rule {rule} in {name} as it contains no owner specification")
                     continue
 
                 rule['files'] = _whitespace_split(rule['files'])
@@ -130,7 +124,7 @@ class FileOwners:
                         yield pat, mandatory_owners, "all"
 
         except _TomlParsingException as e:
-            logging.warning("Ignoring invalid input from %s: %s", name, e)
+            mx.abort(f"Invalid input from {name}: {e}")
 
     def _parse_ownership_from_files(self, files):
         for fo in files:
@@ -161,7 +155,7 @@ class FileOwners:
                     result["all"] = sorted(owners)
                 if "any" in modifiers:
                     result["any"] = sorted(owners)
-        logging.debug("File %s owned by %s (looked into %s)", filepath, result, owners_files)
+        mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
 
 def _summarize_owners(all_owners):
