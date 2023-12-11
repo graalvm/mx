@@ -24,49 +24,58 @@
 # ----------------------------------------------------------------------------------------------------
 
 import argparse
+import datetime
+import os
 import subprocess
 import sys
 import time
 
-def parse_args(args):
-    parser = argparse.ArgumentParser(prog="pspoller", description="Run bench_cmd and periodically poll it for RSS using ps", usage="pspoller <output_file_name> <poll_interval> bench_cmd", epilog="The bench_cmd process is ran in a new session, and the RSS data of every process in that session is summed up for each poll")
+def _parse_args(args):
+    parser = argparse.ArgumentParser(prog="ps_poller", description="Run target_cmd and periodically poll it for RSS using ps", usage="ps_poller [OPTIONS] <target_cmd>", epilog="The target_cmd process is ran in a new session, and the RSS data of every process in that session is summed up for each poll")
 
-    parser.add_argument("output_file_name", help="File to which to write the polled RSS data (in KB)")
-    parser.add_argument("poll_interval", type=float, help="Interval between subsequent polling, in seconds")
-    parser.add_argument("bench_cmd", nargs=argparse.REMAINDER, help="Command to run")
+    parser.add_argument("-f", "--output-file", help="File to which to write the polled RSS data (in KB)")
+    parser.add_argument("-i", "--poll-interval", type=float, help="Interval between subsequent polling, in seconds", default=0.1)
+    parser.add_argument("target_cmd", nargs=argparse.REMAINDER, help="Command to run and poll for RSS data")
 
     args = parser.parse_args()
-    return args.output_file_name, args.poll_interval, args.bench_cmd
+
+    output_file = args.output_file
+    if output_file == None:
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_file = os.path.join(os.getcwd(), f"ps_poller_rss_samples_{ts}.txt")
+
+    return output_file, args.poll_interval, args.target_cmd
 
 
-def start_bench(cmd):
-    print("Starting and attaching to command: \"{}\"".format(" ".join(cmd)))
-    return subprocess.Popen(cmd, start_new_session=True)
+def _start_target_process(target_cmd):
+    print(f"Starting and attaching to command: \"{' '.join(target_cmd)}\"")
+    return subprocess.Popen(target_cmd, start_new_session=True)
 
-def poll_session(sid, out_file):
+def _poll_session(sid, out_file):
     # Get RSS for every process with sid, and then calculate sum
     ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "rss="], stdout=subprocess.PIPE) # gets rss of every process in session
     paste_proc = subprocess.Popen(["paste", "-sd+"], stdin=ps_proc.stdout, stdout=subprocess.PIPE) # constructs <rssp1>+<rssp2>+...+<rsspN> string
     bc_proc = subprocess.Popen(["bc"], stdin=paste_proc.stdout, stdout=out_file) # calculates the sum string
 
 def main(args):
-    output_file_name, poll_interval, bench_cmd = parse_args(args)
+    output_file, poll_interval, target_cmd = _parse_args(args)
 
-    with open(output_file_name, "w") as f:
-        bench_proc = start_bench(bench_cmd)
-        bench_pid = bench_proc.pid
+    with open(output_file, "w") as f:
+        target_proc = _start_target_process(target_cmd)
+        target_pid = target_proc.pid
 
         start_time = time.time()
-        bench_status = bench_proc.poll()
-        while bench_status == None: # bench process not terminated
+        target_status = target_proc.poll()
+        while target_status == None: # target process not terminated
             time.sleep(poll_interval)
-            poll_session(bench_pid, f)
-            bench_status = bench_proc.poll()
+            _poll_session(target_pid, f)
+            target_status = target_proc.poll()
         end_time = time.time()
 
-    print("Final bench status: {}".format(bench_status))
-    print("Elapsed time: {:.2f}s".format(end_time - start_time))
-    return bench_status # Propagate bench process exit code
+    print(f"Target process return code: {target_status}")
+    print(f"Rss samples saved in file: {output_file}")
+    print(f"Elapsed time: {end_time - start_time:.2f}s")
+    return target_status # Propagate target process exit code
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))

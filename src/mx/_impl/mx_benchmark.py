@@ -2811,8 +2811,7 @@ class PsrecordMaxrssTracker(Tracker):
     def get_rules(self, bmSuiteArgs):
         return self.rss.get_rules(bmSuiteArgs) + self.psrecord.get_rules(bmSuiteArgs)
 
-# Fulfills the same purpose as PsrecordTracker (except for plotting), but without any dependencies and error propagation
-# issues.
+# Calculates percentile rss metrics from the rss samples gathered by ps_poller.
 class RssPercentilesTracker(Tracker):
     # rss metric will be calculated for these percentiles
     interesting_percentiles = [100, 99, 95, 90, 75, 50, 25]
@@ -2829,7 +2828,7 @@ class RssPercentilesTracker(Tracker):
             return cmd
 
         if mx.get_os() != "linux" and mx.get_os() != "darwin":
-            mx.log(f"Ignoring the 'rsspercentiles' tracker since it is not supported on {mx.get_os()}")
+            mx.log(f"Ignoring the '{self.__class__.__name__}' tracker since it is not supported on {mx.get_os()}")
             self.most_recent_text_output = None
             return cmd
 
@@ -2841,8 +2840,8 @@ class RssPercentilesTracker(Tracker):
         text_output = os.path.join(os.getcwd(), f"ps_{bench_name}_{ts}.txt")
 
         self.most_recent_text_output = text_output
-        pspoller_script_path = mx._mx_suite.dir + "/src/mx/_impl/pspoller.py"
-        return ["python3", pspoller_script_path, text_output, str(RssPercentilesTracker.poll_interval)] + cmd
+        ps_poller_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ps_poller.py")
+        return ["python3", ps_poller_script_path, "-f", text_output, "-i", str(RssPercentilesTracker.poll_interval)] + cmd
 
     def get_rules(self, bmSuiteArgs):
         return [RssPercentilesTracker.RssPercentilesRule(self, bmSuiteArgs)]
@@ -2871,7 +2870,14 @@ class RssPercentilesTracker(Tracker):
 
         def parseResults(self, text):
             rows = super().parseResults(text)
+
+            temp_text_output = self.tracker.most_recent_text_output
+            if temp_text_output != None:
+                os.remove(temp_text_output)
+                print(f"Temporary output file {temp_text_output} deleted.")
+
             if not rows:
+                print("\tDidn't get any RSS samples.")
                 return []
             values = sorted(float(r["rss_kb"]) for r in rows)
 
@@ -2883,22 +2889,25 @@ class RssPercentilesTracker(Tracker):
                 v = v / 1024 # convert to MB
                 return {"metric_percentile": str(k), "metric_value": str(int(v))}
 
-            return [pc(perc) for perc in RssPercentilesTracker.interesting_percentiles]
+            percentiles = [pc(perc) for perc in RssPercentilesTracker.interesting_percentiles]
+            for rss_percentile in percentiles:
+                print(f"\t{rss_percentile['metric_percentile']}th RSS percentile (MB): {rss_percentile['metric_value']}")
+            return percentiles
 
 
 class RssPercentilesAndMaxTracker(Tracker):
     def __init__(self, bmSuite):
         super().__init__(bmSuite)
-        self.rss = RssTracker(bmSuite)
-        self.rssperc = RssPercentilesTracker(bmSuite)
+        self.rss_max_tracker = RssTracker(bmSuite)
+        self.rss_percentiles_tracker = RssPercentilesTracker(bmSuite)
 
     def map_command(self, cmd):
-        # Note that pspoller tracks the metrics of the `time` tool as well, which adds 1-2M of RSS.
-        # Vice versa, `time` would track pspoller's Python interpreter, which adds more than 10M.
-        return self.rssperc.map_command(self.rss.map_command(cmd))
+        # Note that ps_poller tracks the metrics of the `time` tool as well, which adds 1-2M of RSS.
+        # Vice versa, `time` would track ps_poller's Python interpreter, which adds more than 10M.
+        return self.rss_percentiles_tracker.map_command(self.rss_max_tracker.map_command(cmd))
 
     def get_rules(self, bmSuiteArgs):
-        return self.rss.get_rules(bmSuiteArgs) + self.rssperc.get_rules(bmSuiteArgs)
+        return self.rss_max_tracker.get_rules(bmSuiteArgs) + self.rss_percentiles_tracker.get_rules(bmSuiteArgs)
 
 
 _available_trackers = {
