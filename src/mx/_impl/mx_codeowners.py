@@ -339,7 +339,7 @@ def codeowners(args):
         mx.log("Any-of reviewers (at least one from each line):")
         for i in reviewers['any']:
             if _is_some_item_in_set(args.existing_reviewers, set(i)):
-                mx.log(" o " + ' or '.join(i) + ' (already reviews)')
+                mx.log(" o " + ' or '.join(i) + ' (one already reviews)')
             else:
                 mx.log(" o " + ' or '.join(i))
 
