@@ -305,36 +305,36 @@ def codeowners(args):
     reviewers = _summarize_owners(file_owners.values())
 
     if reviewers['all']:
-        print("Mandatory reviewers (all of these must review):")
+        mx.log("Mandatory reviewers (all of these must review):")
         for i in reviewers['all']:
             if i in args.existing_reviewers:
-                print(" o " + i + " (already reviews)")
+                mx.log(" o " + i + " (already reviews)")
             else:
-                print(" o " + i)
+                mx.log(" o " + i)
     if reviewers['any']:
-        print("Any-of reviewers (at least one from each line):")
+        mx.log("Any-of reviewers (at least one from each line):")
         for i in reviewers['any']:
             if _is_some_item_in_set(args.existing_reviewers, set(i)):
-                print(" o " + ' or '.join(i) + ' (already reviews)')
+                mx.log(" o " + ' or '.join(i) + ' (already reviews)')
             else:
-                print(" o " + ' or '.join(i))
+                mx.log(" o " + ' or '.join(i))
 
     if len(reviewers["all"]) == 0 and len(reviewers["any"]) == 0:
         mx.log("No specific reviewer requested by OWNERS.toml files for the given changeset.")
 
 
     if args.suggest_reviewers:
-        print("")
-        print("Reviewers summary for this pull-request")
-        print(" o Mandatory reviewers")
+        mx.log("")
+        mx.log("Reviewers summary for this pull-request")
+        mx.log(" o Mandatory reviewers")
         missing_mandatory = []
         for i in reviewers['all']:
             if not (i in args.existing_reviewers):
                 missing_mandatory.append(i)
         if missing_mandatory:
-            print("   - Add following reviewers: " + ' and '.join(missing_mandatory))
+            mx.log("   - Add following reviewers: " + ' and '.join(missing_mandatory))
         else:
-            print("   - All mandatory reviewers already assigned.")
+            mx.log("   - All mandatory reviewers already assigned.")
 
         suggested_optional = []
         for gr in reviewers['any']:
@@ -349,17 +349,17 @@ def codeowners(args):
             if covered_by_mandatory or covered_by_existing or covered_by_suggestions:
                 continue
             suggested_optional.append(gr[0])
-        print(" o Any-of reviewers")
+        mx.log(" o Any-of reviewers")
         if suggested_optional:
-            print("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
+            mx.log("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
         else:
-            print("   - All are already assigned or are among the mandatory ones.")
+            mx.log("   - All are already assigned or are among the mandatory ones.")
         if suggested_optional or missing_mandatory:
-            print(" o Suggested modifications: add the following reviewers")
+            mx.log(" o Suggested modifications: add the following reviewers")
             for i in sorted(suggested_optional + missing_mandatory):
-                print("   - " + i)
+                mx.log("   - " + i)
         else:
-            print(" o Looks like all reviewers are already assigned.")
+            mx.log(" o Looks like all reviewers are already assigned.")
 
 
     num_files_changed = len(file_owners.keys())
@@ -368,7 +368,7 @@ def codeowners(args):
     if num_files_changed == 0:
         mx.warn("The changeset is empty!")
     else:
-        print(f"\n{num_owned_files}/{num_files_changed} of the files have ownership defined by one or more OWNERS.toml file(s)")
+        mx.log(f"\n{num_owned_files}/{num_files_changed} of the files have ownership defined by one or more OWNERS.toml file(s)")
         if num_owned_files < num_files_changed:
             mx.log("Consider adding ownership for the files with no ownership! (mx verbose mode shows details)")
 
