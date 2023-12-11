@@ -198,7 +198,7 @@ def _git_diff_name_only(extra_args=None):
     return list(filter(lambda x: x != '', out.split('\0')))
 
 def _git_get_repo_root_or_cwd():
-    rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'])
+    rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'], False)
     if rc != 0:
         return '.'
     else:
