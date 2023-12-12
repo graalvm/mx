@@ -2818,9 +2818,10 @@ class RssPercentilesTracker(Tracker):
     # the time period between two polls, in seconds
     poll_interval = 0.1
 
-    def __init__(self, bmSuite):
+    def __init__(self, bmSuite, skip=0):
         super().__init__(bmSuite)
         self.most_recent_text_output = None
+        self.skip = skip # the number of RSS entries to skip from each poll (used to skip entries of other trackers)
 
     def map_command(self, cmd):
         if not _use_tracker:
@@ -2876,16 +2877,37 @@ class RssPercentilesTracker(Tracker):
                 os.remove(temp_text_output)
                 mx.log(f"Temporary output file {temp_text_output} deleted.")
 
-            if not rows:
+            values = []
+            acc = 0
+            skips_left = self.tracker.skip
+            # At every 'RSS' row append the previously accumulated value
+            # After the 'RSS' row, skip self.tracker.skip numerical rows (to ignore other trackers)
+            # After self.tracker.skip skips, accumulate all the numerical rows until the next 'RSS'
+            for r in rows:
+                if r["rss_kb"].isnumeric():
+                    if skips_left == 0:
+                        acc += float(r["rss_kb"])
+                    else:
+                        skips_left -= 1
+                else:
+                    if acc > 0:
+                        values.append(acc)
+                    acc = 0
+                    skips_left = self.tracker.skip
+            if acc > 0:
+                values.append(acc)
+
+            if len(values) == 0:
                 mx.log("\tDidn't get any RSS samples.")
                 return []
-            values = sorted(float(r["rss_kb"]) for r in rows)
+
+            sorted_values = sorted(values)
 
             def pc(k): # k-percentile with linear interpolation between closest ranks
-                x = (len(values) - 1) * k / 100
+                x = (len(sorted_values) - 1) * k / 100
                 fr = int(x)
                 cl = int(x + 0.5)
-                v = values[fr] if fr == cl else values[fr] * (cl - x) + values[cl] * (x - fr)
+                v = sorted_values[fr] if fr == cl else sorted_values[fr] * (cl - x) + sorted_values[cl] * (x - fr)
                 v = v / 1024 # convert to MB
                 return {"metric_percentile": str(k), "metric_value": str(int(v))}
 
@@ -2899,11 +2921,9 @@ class RssPercentilesAndMaxTracker(Tracker):
     def __init__(self, bmSuite):
         super().__init__(bmSuite)
         self.rss_max_tracker = RssTracker(bmSuite)
-        self.rss_percentiles_tracker = RssPercentilesTracker(bmSuite)
+        self.rss_percentiles_tracker = RssPercentilesTracker(bmSuite, skip=1) # skip RSS of the 'time' command
 
     def map_command(self, cmd):
-        # Note that ps_poller tracks the metrics of the `time` tool as well, which adds 1-2M of RSS.
-        # Vice versa, `time` would track ps_poller's Python interpreter, which adds more than 10M.
         return self.rss_percentiles_tracker.map_command(self.rss_max_tracker.map_command(cmd))
 
     def get_rules(self, bmSuiteArgs):

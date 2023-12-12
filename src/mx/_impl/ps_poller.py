@@ -64,11 +64,9 @@ def _wait_for_processes(processes):
     return return_code
 
 def _poll_session(sid, out_file):
-    # Get RSS for every process with sid, and then calculate sum
-    ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "rss="], stdout=subprocess.PIPE) # gets rss of every process in session
-    paste_proc = subprocess.Popen(["paste", "-sd+", "-"], stdin=ps_proc.stdout, stdout=subprocess.PIPE) # constructs <rssp1>+<rssp2>+...+<rsspN> string
-    bc_proc = subprocess.Popen(["bc"], stdin=paste_proc.stdout, stdout=out_file) # calculates the sum string
-    return _wait_for_processes([ps_proc, paste_proc, bc_proc])
+    # Get RSS for every process in session
+    ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "rss"], stdout=out_file)
+    return _wait_for_processes([ps_proc])
 
 def _kill_session(sid):
     ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "pid="], stdout=subprocess.PIPE) # gets pid of every process in session
