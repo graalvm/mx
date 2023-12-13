@@ -812,6 +812,17 @@ suite = {
       "licence": "EPL-2.0",
     },
 
+    # compatible version for JDK >= 21
+    "ECJ_3.36": {
+      "digest": "sha512:f889b0f305cdf6b548e13ef73cd8ec488be3bf43a3d48659a1fcfce01068fb47adb398bb6006a067d61cfefbee7ecc279e4fcea385f27be211817709cdebc54e",
+      "maven": {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "ecj",
+        "version": "3.36.0",
+      },
+      "licence": "EPL-2.0",
+    },
+
   },
 
   "licenses" : {

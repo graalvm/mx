@@ -8099,7 +8099,7 @@ class JavaBuildTask(ProjectBuildTask):
 
             jdt = None
             if useJDT:
-                jdt = _resolve_ecj_jar(self.jdk, self.project.javaCompliance, self.args.jdt)
+                jdt = _resolve_ecj_jar(self.jdk, self.project.javaCompliance, self.project.javaPreviewNeeded, self.args.jdt)
                 if not jdt:
                     logv(f'Project {self.subject} should be compiled with ecj. But no compatible ecj version was found for this project - falling back to javac')
 
@@ -15245,7 +15245,7 @@ def _before_fork():
     except ImportError:
         pass
 
-def _resolve_ecj_jar(jdk, java_project_compliance, spec):
+def _resolve_ecj_jar(jdk, java_project_compliance, java_project_preview_needed, spec):
     """
     Resolves `spec` to the path of a local jar file containing the Eclipse batch compiler.
     """
@@ -15259,9 +15259,13 @@ def _resolve_ecj_jar(jdk, java_project_compliance, spec):
         elif jdk.javaCompliance <= '17':
             min_jdt_version = VersionSpec('3.27')
 
-    if java_project_compliance and java_project_compliance >= '18':
-        # not yet supported. see GR-43914.
+    if java_project_compliance and java_project_compliance >= '22':
+        abort(f'ECJ for java project compliance version "{java_project_compliance}" not configured.')
+    elif java_project_preview_needed and java_project_preview_needed >= '21':
+        # ECJ does not have sufficient support for preview features
         return None
+    elif java_project_compliance and java_project_compliance >= '21':
+        min_jdt_version = VersionSpec('3.36')
     elif java_project_compliance and java_project_compliance >= '17':
         min_jdt_version = VersionSpec('3.32')
 
@@ -15429,7 +15433,7 @@ def build(cmd_args, parser=None):
 
     if not args.force_javac and args.jdt is not None:
         # fail early but in the end we need to resolve with JDK version
-        _resolve_ecj_jar(None, None, args.jdt)
+        _resolve_ecj_jar(None, None, None, args.jdt)
 
     onlyDeps = None
     removed = []
@@ -19238,7 +19242,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.7.2")  # [GR-51431] Remove repairing of benchmark datapoints
+version = VersionSpec("7.7.3")  # GR-50900 Update ECJ to a version compatible with JDK21
 
 _mx_start_datetime = datetime.utcnow()
 

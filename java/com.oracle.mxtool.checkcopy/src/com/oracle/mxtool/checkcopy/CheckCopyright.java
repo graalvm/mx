@@ -742,7 +742,7 @@ public class CheckCopyright {
         int threadCount = 1;
         threadCount = Runtime.getRuntime().availableProcessors();
 
-        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
         List<Future<?>> tasks = new ArrayList<>();
 
         for (String fileName : fileNames) {
