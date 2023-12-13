@@ -403,8 +403,24 @@ class NativeDependency(mx.Dependency):
     include_dirs = ()
     libs = ()
 
+class MultitargetNativeDependency(NativeDependency):
 
-class MultitargetProject(mx.AbstractNativeProject, NativeDependency):
+    libs = property(lambda self: self.target_libs(TargetSpec({})))
+
+    def target_libs(self, target):
+        return []
+
+    @classmethod
+    def _get_libs(cls, dep, target):
+        if isinstance(dep, MultitargetNativeDependency):
+            return dep.target_libs(target)
+        elif isinstance(dep, NativeDependency):
+            return dep.libs
+        else:
+            return []
+
+
+class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
     """A Project containing native code that can be built for multiple targets.
 
     Attributes
@@ -932,12 +948,15 @@ class DefaultNativeProject(NinjaProject):
             mx.abort('include directory must have a flat structure')
 
         self.include_dirs = [include_dir]
-        if kind == 'static_lib':
-            self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
+        self.kind = kind
 
     @property
     def toolchain_kind(self):
         return "ninja"
+
+    def target_libs(self, target):
+        if self.kind == 'static_lib':
+            yield mx.join(self.out_dir, target.subdir, self._target)
 
     def resolveDeps(self):
         super(DefaultNativeProject, self).resolveDeps()
@@ -1033,7 +1052,7 @@ class DefaultNativeProject(NinjaProject):
                 gen.ar(self._target, object_files)
             else:
                 link = gen.linkxx if self.cxx_files else gen.link
-                dep_libs = list(itertools.chain.from_iterable(getattr(d, 'libs', []) for d in self.buildDependencies))
+                dep_libs = list(itertools.chain.from_iterable(MultitargetNativeDependency._get_libs(d, target=task.toolchain.spec.target) for d in self.buildDependencies))
                 link(self._target, object_files + dep_libs)
 
     def _archivable_results(self, target_arch, use_relpath, single):
