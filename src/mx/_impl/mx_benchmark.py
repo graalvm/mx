@@ -2814,7 +2814,7 @@ class PsrecordMaxrssTracker(Tracker):
 # Calculates percentile rss metrics from the rss samples gathered by ps_poller.
 class RssPercentilesTracker(Tracker):
     # rss metric will be calculated for these percentiles
-    interesting_percentiles = [100, 99, 95, 90, 75, 50, 25]
+    interesting_percentiles = [100, 99, 98, 97, 96, 95, 90, 75, 50, 25]
     # the time period between two polls, in seconds
     poll_interval = 0.1
 
