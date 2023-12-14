@@ -51,27 +51,18 @@ def _start_target_process(target_cmd):
     print(f"Starting and attaching to command: \"{' '.join(target_cmd)}\"")
     return subprocess.Popen(target_cmd, start_new_session=True)
 
-def _wait_for_processes(processes):
-    return_code = 0
-    # Wait for every process and make sure it didn't fail, kill other processes if one fails (made for piped commands)
-    for proc in processes:
-        if return_code == 0:
-            return_code = proc.wait()
-            if return_code != 0:
-                print(f"Command {proc.args} failed with return code {return_code}!")
-        else:
-            proc.kill()
-    return return_code
-
 def _poll_session(sid, out_file):
     # Get RSS for every process in session
-    ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "rss"], stdout=out_file)
-    return _wait_for_processes([ps_proc])
-
-def _kill_session(sid):
-    ps_proc = subprocess.Popen(["ps", "-g", str(sid), "-o", "pid="], stdout=subprocess.PIPE) # gets pid of every process in session
-    xargs_proc = subprocess.Popen(["xargs", "kill"], stdin=ps_proc.stdout) # kills every piped process pid
-    return _wait_for_processes([ps_proc, xargs_proc])
+    args = ["ps", "-g", str(sid), "-o", "rss"]
+    try:
+        ps_proc = subprocess.Popen(args, stdout=out_file)
+        ps_return_code = ps_proc.wait()
+        if ps_return_code != 0:
+            print(f"Command {ps_proc.args} failed with return code {return_code}!")
+        return ps_return_code
+    except:
+        print(f"An exception occurred when trying to start subprocess with {args}")
+        return 1
 
 def main(args):
     output_file, poll_interval, target_cmd = _parse_args(args)
@@ -89,18 +80,15 @@ def main(args):
             target_status = target_proc.poll()
         end_time = time.time()
 
-    if poll_return_code != 0:
-        print("Polling for RSS failed! Killing the target process...")
-        kill_return_code = _kill_session(target_pid)
-        if kill_return_code != 0:
-            print("Killing target process failed!")
+        if poll_return_code != 0:
+            f.write("FAILED") # Communicate to tracker that the RSS polling was unsuccessful
+            print("Polling for RSS failed! Any samples gathered until this moment will be ignored. Waiting for the target process without RSS polling...")
+            target_status = target_proc.wait()
         else:
-            print("Target process successfully killed.")
-        return poll_return_code
+            print(f"Rss samples saved in file: {output_file}")
+            print(f"Elapsed time: {end_time - start_time:.2f}s")
 
     print(f"Target process return code: {target_status}")
-    print(f"Rss samples saved in file: {output_file}")
-    print(f"Elapsed time: {end_time - start_time:.2f}s")
     return target_status # Propagate target process exit code
 
 if __name__ == '__main__':

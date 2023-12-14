@@ -2890,6 +2890,9 @@ class RssPercentilesTracker(Tracker):
                     else:
                         skips_left -= 1
                 else:
+                    if r["rss_kb"] == "FAILED":
+                        mx.warn(f"Tracker {self.tracker.__class__.__name__} failed at polling the benchmark process for RSS! No 'rss' metric will be emitted.")
+                        return []
                     if acc > 0:
                         values.append(acc)
                     acc = 0
