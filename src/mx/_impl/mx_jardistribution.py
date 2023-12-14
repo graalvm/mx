@@ -1038,6 +1038,8 @@ class _ArchiveStager(object):
                 for root, _, files in os.walk(outputDir):
                     reldir = root[len(outputDir) + 1:]
                     for f in files:
+                        if f.endswith(".bc"):
+                            continue # skip parfait bitcode files
                         # If the directory contains a special file named .mxkeep then add a file entry for it
                         # This was added for the needs of https://github.com/oracle/graal/pull/4327
                         if f == ".mxkeep":
