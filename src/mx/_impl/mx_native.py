@@ -276,10 +276,8 @@ class TargetSelection(object):
         cls._extra.append(TargetSelection(target))
 
     @classmethod
-    def get_selection(cls, default=None, always=None):
+    def get_selection(cls, always=None):
         ret = cls._global or [TargetSelection('default-default-default')]
-        if not ret:
-            ret = default or []
         if always:
             ret = ret + always
         return ret + cls._extra
@@ -456,8 +454,9 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
             The targets that should be always built, regardless of the --multitarget argument.
     """
 
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, ignore=False, **kwargs):
         mt_spec = kwargs.pop('multitarget', None)
+        self._ignore = ignore
         self._multitarget = bool(mt_spec)  # remember whether we need to put stuff in target-specific subdirs
         self._multitarget_spec = MultitargetSpec.get(mt_spec)
         self._explicit_toolchain = kwargs.pop('toolchain', None)
@@ -489,6 +488,9 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
         if ret:
             yield ret
 
+    def _toolchains_for_selection(self, selection):
+        return [toolchain for target in Target.selected(selection) for toolchain in self._toolchain_for_target(target)]
+
     @property
     def toolchains(self):
         if self._toolchains is None:
@@ -498,13 +500,28 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
                 # subclass that doesn't support multitarget yet
                 self._toolchains = []
             else:
-                selected_targets = TargetSelection.get_selection(default=self._default_targets, always=self._always_build_targets)
+                selected_targets = TargetSelection.get_selection(always=self._always_build_targets)
                 mx.logv(f"Selected targets for {self}: {selected_targets}")
-                self._toolchains = [toolchain for target in Target.selected(selected_targets) for toolchain in self._toolchain_for_target(target)]
+                selected_toolchains = self._toolchains_for_selection(selected_targets)
+                if len(selected_toolchains) == 0:
+                    mx.logv(f"No toolchains selected for {self}, using default {self._default_targets}")
+                    selected_toolchains = self._toolchains_for_selection(self._default_targets)
+                self._toolchains = selected_toolchains
                 mx.logv(f"Selected toolchains for {self}: {self._toolchains}")
             if len(self._toolchains) > 1:
                 assert self._multitarget, "more than one toolchain even though this is not a multitarget project?"
         return self._toolchains
+
+    @property
+    def ignore(self):
+        if self.toolchain_kind is not None and len(self.toolchains) == 0:
+            return f"no toolchains selected for {self} -- ignoring"
+        else:
+            return self._ignore
+
+    @ignore.setter
+    def ignore(self, ignore):
+        self._ignore = ignore
 
     def getBuildTask(self, args):
         if self.toolchain_kind:
