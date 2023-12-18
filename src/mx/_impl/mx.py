@@ -951,7 +951,7 @@ environment variables:
         self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
         self.add_argument('--multi-platform-layout-directories', action='store', help="Causes platform-dependent layout dir distribution to contain the union of the files from their declared platforms. "
                                 "Can be set to 'all' or to a comma-separated list of platforms.")
-        self.add_argument('--extra-cmake-arg', action='append', metavar='<arg>')
+        self.add_argument('--extra-cmake-arg', action='append', metavar='<arg>', help="Extra arguments to pass to all cmake invocations. Can also be set with the EXTRA_CMAKE_ARGS environment variable or in env files.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
