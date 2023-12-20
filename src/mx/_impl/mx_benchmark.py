@@ -2825,12 +2825,10 @@ class RssPercentilesTracker(Tracker):
 
     def map_command(self, cmd):
         if not _use_tracker:
-            self.most_recent_text_output = None
             return cmd
 
         if mx.get_os() != "linux" and mx.get_os() != "darwin":
             mx.warn(f"Ignoring the '{self.__class__.__name__}' tracker since it is not supported on {mx.get_os()}")
-            self.most_recent_text_output = None
             return cmd
 
         import datetime
