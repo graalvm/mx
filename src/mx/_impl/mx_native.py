@@ -875,7 +875,14 @@ class NinjaManifestGenerator(object):
     def _output(source_file, ext=None):
         if ext is None:
             ext = '.obj' if mx.is_windows() else '.o'
-        return os.path.splitext(source_file)[0] + ext
+        path = os.path.splitext(source_file)[0] + ext
+        if os.path.isabs(path):
+            (drive, path) = os.path.splitdrive(path)
+            assert path.startswith(os.path.sep)
+            path = path[1:]  # strip leading /
+            if drive:
+                path = os.path.join(drive.replace(':', '_'), path)
+        return path
 
     @staticmethod
     def _resolve(path):
