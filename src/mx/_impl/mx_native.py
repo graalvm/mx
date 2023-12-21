@@ -28,7 +28,8 @@ __all__ = [
     "lazy_class_default",
     "Ninja",
     "NativeDependency",
-    "MultiarchProject",
+    "TargetSelection",
+    "MultitargetProject",
     "TargetArchBuildTask",
     "NinjaProject",
     "NinjaBuildTask",
@@ -95,29 +96,251 @@ class lazy_class_default(object):  # pylint: disable=invalid-name
         except KeyError:
             return vars(self).setdefault(self.init.__name__, self.init(owner))
 
+class TargetSpec(object):
+    """Description of a native target.
 
-class _Toolchain(object):
-    def __init__(self, target_arch):
-        self.target_arch = target_arch
+    Attributes
+        os: str, optional
+            The operating system this toolchain is targetting.
+            Defaults to the host OS.
+        arch: str, optional
+            The CPU architecture this toolchain is targetting.
+            Defaults to the host architecture.
+        libc: str, optional
+            The standard C library this toolchain is targetting.
+            If the target os is "linux", possible values are "glibc" and "musl". The default is the host
+            libc, or "glibc" when cross-compiling to linux.
+            On other operating systems, the default and only possible value is "default".
+        variant: str, optional
+            Code generation variant of his toolchain.
+            This can be used to express things like different optimization levels, debug builds,
+            instrumentations and so on.
+    """
+    def __init__(self, target_dict):
+        self.os = target_dict.get('os', mx.get_os())
+        self.arch = target_dict.get('arch', mx.get_arch())
+        self.libc = target_dict.get('libc', TargetSpec._default_libc(self.os))
+        self.variant = target_dict.get('variant')
+
+    @classmethod
+    def _default_libc(cls, os):
+        if os == 'linux':
+            if mx.get_os() == 'linux':
+                return mx.get_os_variant() or 'glibc'
+            else:
+                # no way to detect "host libc" when cross-compiling, default to glibc in that case
+                return "glibc"
+        else:
+            return 'default'
 
     @property
-    def target(self):
-        return f'{mx.get_os()}-{self.target_arch}'
+    def name(self):
+        name = f'{self.os}-{self.arch}-{self.libc}'
+        if self.variant:
+            name = f'{name}-{self.variant}'
+        return name
 
     @property
-    def is_native(self):
-        return self.target_arch == mx.get_arch()
+    def subdir(self):
+        paths = [f"{self.os}-{self.arch}"]
+        libc_var = [self.libc]
+        if self.variant:
+            libc_var.append(self.variant)
+        paths.append('-'.join(libc_var))
+        return os.path.join(*paths)
 
-    @property
-    def is_available(self):
-        return self.is_native
+
+class ToolchainSpec(object):
+    """Description of a native toolchain.
+
+    Attributes
+        kind: str
+            The build system this toolchain is used for.
+        target: TargetSpec
+            The target this toolchain is producing code for.
+        compiler: str, optional
+            The compiler this toolchain is using. Can be used to select special compilers that are shipped
+            with mx suites as library dependencies or even built using mx.
+            Defaults to the special value 'host', which means "the compiler installed on the host os".
+    """
+    def __init__(self, toolchain_dict):
+        self.kind = toolchain_dict.get('kind')
+        self.target = TargetSpec(toolchain_dict.get('target'))
+        self.compiler = toolchain_dict.get('compiler', 'host')
+
+class MultitargetSpec(object):
+    """Declaration of a project that it wants to be built for multiple targets.
+
+    A native project is multi-target if it has a "multitarget" attribute that contains a MultitargetSpec
+    or a list of MultitargetSpec. This selects which toolchains can be used for building a project.
+
+    Attributes
+        os: list of str, optional
+            Build this project for all these operating systems.
+            Defaults to only the host OS.
+        arch: list of str, optional
+            Build this project for all these CPU architectures.
+            Defaults to only the host architecture.
+        libc: list of str, optional
+            Build this project for all these standard C libraries.
+            Defaults to only the default libc for each OS.
+        variant: list of str, optional
+            Build this project with these code generation variants.
+            Defaults to all.
+        compiler: list of str, optional
+            List of compatible compilers for this project, in order of preference.
+            Each os/arch/libc/variant combination will be built with the first compiler from this list that
+            exists for this os/arch/libc/variant combination.
+            Defaults to ["host", "*"], i.e. any compiler but prefer the compiler from the host.
+    """
+    def __init__(self, multitarget):
+        self.os = multitarget.get('os', [mx.get_os()])
+        self.arch = multitarget.get('arch', [mx.get_arch()])
+        self.libc = multitarget.get('libc', [TargetSpec._default_libc(os) for os in self.os])
+        self.variant = multitarget.get('variant', ['*'])
+        self.compiler = multitarget.get('compiler', ['host', '*'])
+
+    def matches(self, target_spec):
+        def _match(attribute):
+            allowed_list = getattr(self, attribute)
+            return getattr(target_spec, attribute) in allowed_list or "*" in allowed_list
+        return _match('os') and _match('arch') and _match('libc') and _match('variant')
+
+    @classmethod
+    def get(cls, multitargets):
+        if not multitargets:
+            return [cls.default()]
+        elif isinstance(multitargets, list):
+            return [MultitargetSpec(t) for t in multitargets]
+        else:
+            return [MultitargetSpec(multitargets)]
+
+    @classmethod
+    def default(cls):
+        return MultitargetSpec({
+            "variant": [None],
+            "compiler": ["host"],
+        })
+
+class TargetSelection(object):
+    """Select which targets of multitarget projects are built. Without this argument, only the host target is built.
+
+    This is a comma-separated list of <os>-<arch>-<libc>[-<variant>] tuples. Each component can also be '*'
+    to indicate all. <os>, <arch> and <libc> can be 'default' to indicate the host os/architecture/libc.
+
+    Can also be specified using the MULTITARGET environment variable.
+    """
+    def __init__(self, spec_string):
+        spec = spec_string.split('-')
+        def _get(idx, default):
+            if spec[idx] == 'default':
+                return default
+            else:
+                return spec[idx]
+        self.os = _get(0, default=mx.get_os())
+        self.arch = _get(1, default=mx.get_arch())
+        self.libc = _get(2, default=TargetSpec._default_libc(self.os))
+        if len(spec) > 3:
+            self.variant = spec[3]
+        else:
+            self.variant = None
+
+    def __repr__(self):
+        ret = f"{self.os}-{self.arch}-{self.libc}"
+        if self.variant is not None:
+            ret = f"{ret}-{self.variant}"
+        return ret
+
+    def matches(self, target_spec):
+        def _match(attribute):
+            selector = getattr(self, attribute)
+            if selector == '*':
+                return True
+            else:
+                return selector == getattr(target_spec, attribute)
+        return _match('os') and _match('arch') and _match('libc') and _match('variant')
+
+    _global = None
+    _extra = []
+
+    @classmethod
+    def parse_args(cls, opts):
+        cmdline = opts.multitarget or []
+        env = mx.get_env('MULTITARGET')
+        if env:
+            cmdline += [env]
+        cls._global = [TargetSelection(target) for arg in cmdline for target in arg.split(',')]
+
+    @classmethod
+    def add_extra(cls, target):
+        cls._extra.append(TargetSelection(target))
+
+    @classmethod
+    def get_selection(cls, always=None):
+        ret = cls._global or [TargetSelection('default-default-default')]
+        if always:
+            ret = ret + always
+        return ret + cls._extra
+
+class Target(object):
+    def __init__(self, spec):
+        self.spec = spec
+        self.toolchains = {}
+
+    def add_toolchain(self, t):
+        toolchains = self.toolchains.setdefault(t.spec.kind, {})
+        if t.spec.compiler in toolchains:
+            other = toolchains[t.spec.compiler]
+            mx.abort(f"Error: Compiler '{t.spec.compiler}' declared twice for {self.spec.name}: {t.toolchain_dist} and {other.toolchain_dist}")
+        toolchains[t.spec.compiler] = t
 
     _registry = {}
 
     @classmethod
-    def for_(cls, target_arch):
-        return cls._registry.setdefault(target_arch, _Toolchain(target_arch))
+    def get(cls, spec):
+        ret = cls._registry.get(spec.name)
+        if ret is None:
+            ret = Target(spec)
+            cls._registry[spec.name] = ret
+        return ret
 
+    @classmethod
+    def selected(cls, selections):
+        for target in cls._registry.values():
+            if any((s.matches(target.spec) for s in selections)):
+                yield target
+
+class Toolchain(object):
+    """A native toolchain for multitarget projects.
+
+    A native toolchain is created by adding the `native_toolchain` property to a distribution.
+    See ToolchainSpec for the possible attributes of the `native_toolchain` property.
+    """
+    def __init__(self, toolchain_dist):
+        self.toolchain_dist = toolchain_dist
+        if hasattr(toolchain_dist, 'native_toolchain'):
+            spec = toolchain_dist.native_toolchain
+        else:
+            # This is an explicitly selected toolchain distribution that doesn't declare its target.
+            # For backwards compatibility, assume it is a ninja toolchain for the host target.
+            spec = {'kind': 'ninja', 'target': {}, 'compiler': 'unknown'}
+        self.spec = ToolchainSpec(spec)
+
+    def __repr__(self):
+        return self.toolchain_dist.__repr__()
+
+    @property
+    def target(self):
+        return self.spec.name
+
+    def get_path(self):
+        return self.toolchain_dist.get_output()
+
+    @classmethod
+    def register(cls, toolchain_dist):
+        t = Toolchain(toolchain_dist)
+        target = Target.get(t.spec.target)
+        target.add_toolchain(t)
 
 class Ninja(object):
     """Encapsulates access to Ninja (ninja).
@@ -189,63 +412,164 @@ class NativeDependency(mx.Dependency):
     include_dirs = ()
     libs = ()
 
+class MultitargetNativeDependency(NativeDependency):
 
-class MultiarchProject(mx.AbstractNativeProject, NativeDependency):
-    """A Project containing native code that can be built for multiple target architectures.
+    libs = property(lambda self: self.target_libs(TargetSpec({})))
+
+    def target_libs(self, target):
+        return []
+
+    @classmethod
+    def _get_libs(cls, dep, target):
+        if isinstance(dep, MultitargetNativeDependency):
+            return dep.target_libs(target)
+        elif isinstance(dep, NativeDependency):
+            return dep.libs
+        else:
+            return []
+
+
+class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
+    """A Project containing native code that can be built for multiple targets.
 
     Attributes
-        multiarch : list of str, optional
-            Target architectures for which this project can be built (must include
-            the host architecture).
+        multitarget : list of MultitargetSpec, optional
+            Targets for which this project can be built.
 
-            If present, the archivable results for each target architecture are in
+            If present, the target specific results for each target architecture are in
             a separate subdir of the archive. Otherwise, the archivable results for
             the host architecture are at the root of the archive.
+
+            The subdirectory name contains all components of the target that are specified, in
+            the form "os-arch/libc-variant". If a target component is not specified, that component
+            is also skipped in the subdirectory name.
+        toolchain : str, optional
+            Toolchain distribution for building this project.
+            Only one of multitarget or toolchain can be specified.
+        default_targets : list of str, optional
+            The default targets to build for this project if the --multitarget argument
+            is not specified.
+            Defaults to the host target only.
+        always_build_targets : list of str, optional
+            The targets that should be always built, regardless of the --multitarget argument.
     """
 
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
-        context = 'project ' + name
-        if 'multiarch' in kwargs:
-            multiarch = mx.Suite._pop_list(kwargs, 'multiarch', context)
-            self.multiarch = list(set(mx_subst.results_substitutions.substitute(arch) for arch in multiarch))
-            if mx.get_arch() not in self.multiarch:
-                mx.abort(f'"multiarch" must contain the host architecture "{mx.get_arch()}"', context)
-        else:
-            self.multiarch = []
-        super(MultiarchProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, ignore=False, **kwargs):
+        mt_spec = kwargs.pop('multitarget', None)
+        self._ignore = ignore
+        self._multitarget = bool(mt_spec)  # remember whether we need to put stuff in target-specific subdirs
+        self._multitarget_spec = MultitargetSpec.get(mt_spec)
+        self._explicit_toolchain = kwargs.pop('toolchain', None)
+        if self._multitarget and self._explicit_toolchain:
+            mx.abort(f"Can not have an explicitly specified toolchain in multitarget project {self}!")
+        self._default_targets = [TargetSelection(s) for s in kwargs.pop('default_targets', ['default-default-default'])]
+        self._always_build_targets = [TargetSelection(s) for s in kwargs.pop('always_build_targets', [])]
+        self._toolchains = None  # lazy init
+        super(MultitargetProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         self.out_dir = self.get_output_root()
 
     @property
-    def _use_multiarch(self):
-        return self.multiarch and mx.get_opts().multiarch
+    def toolchain_kind(self):
+        return None
+
+    def _toolchain_for_target(self, target):
+        toolchains = target.toolchains[self.toolchain_kind]
+        def _first_matching_compiler():
+            for mt_spec in self._multitarget_spec:
+                if mt_spec.matches(target.spec):
+                    for c in mt_spec.compiler:
+                        if c == "*":
+                            for c1 in toolchains:
+                                return toolchains[c1]
+                        elif c in toolchains:
+                            return toolchains.get(c)
+            return None
+        ret = _first_matching_compiler()
+        if ret:
+            yield ret
+
+    def _toolchains_for_selection(self, selection):
+        return [toolchain for target in Target.selected(selection) for toolchain in self._toolchain_for_target(target)]
+
+    @property
+    def toolchains(self):
+        if self._toolchains is None:
+            if self._explicit_toolchain:
+                self._toolchains = [self._explicit_toolchain]
+            elif self.toolchain_kind is None:
+                # subclass that doesn't support multitarget yet
+                self._toolchains = []
+            else:
+                selected_targets = TargetSelection.get_selection(always=self._always_build_targets)
+                mx.logv(f"Selected targets for {self}: {selected_targets}")
+                selected_toolchains = self._toolchains_for_selection(selected_targets)
+                if len(selected_toolchains) == 0:
+                    mx.logv(f"No toolchains selected for {self}, using default {self._default_targets}")
+                    selected_toolchains = self._toolchains_for_selection(self._default_targets)
+                self._toolchains = selected_toolchains
+                mx.logv(f"Selected toolchains for {self}: {self._toolchains}")
+            if len(self._toolchains) > 1:
+                assert self._multitarget, "more than one toolchain even though this is not a multitarget project?"
+        return self._toolchains
+
+    @property
+    def ignore(self):
+        if self.toolchain_kind is not None and len(self.toolchains) == 0:
+            return f"no toolchains selected for {self} -- ignoring"
+        else:
+            return self._ignore
+
+    @ignore.setter
+    def ignore(self, ignore):
+        self._ignore = ignore
 
     def getBuildTask(self, args):
-        if self._use_multiarch:
-            class MultiarchBuildTask(mx.Buildable, mx.TaskSequence):
-                subtasks = [self._build_task(target_arch, args) for target_arch in self.multiarch]
+        if self.toolchain_kind:
+            if len(self.toolchains) == 1:
+                t = self.toolchains[0]
+                return self._build_task(t.spec.target.name, args, toolchain=t)
+            else:
+                class MultitargetBuildTask(mx.Buildable, mx.TaskSequence):
+                    subtasks = [self._build_task(toolchain.spec.target.name, args, toolchain=toolchain) for toolchain in self.toolchains]
 
-                def execute(self):
-                    super(MultiarchBuildTask, self).execute()
-                    self.built = any(t.built for t in self.subtasks)
+                    def execute(self):
+                        super(MultitargetBuildTask, self).execute()
+                        self.built = any(t.built for t in self.subtasks)
 
-                def newestOutput(self):
-                    return mx.TimeStampFile.newest(t.newestOutput() for t in self.subtasks)
+                    def newestOutput(self):
+                        return mx.TimeStampFile.newest(t.newestOutput().path for t in self.subtasks)
 
-            return MultiarchBuildTask(self, args)
+                return MultitargetBuildTask(self, args)
         else:
+            # subclass that doesn't support multitarget, mimic old behavior
             return self._build_task(mx.get_arch(), args)
 
     @abc.abstractmethod
-    def _build_task(self, target_arch, args):
+    def _build_task(self, target_arch, args, toolchain=None):
         """:rtype: TargetArchBuildTask"""
 
+    def resolveDeps(self):
+        super(MultitargetProject, self).resolveDeps()
+        if self._explicit_toolchain:
+            self._explicit_toolchain = Toolchain(mx.distribution(self._explicit_toolchain, context=self))
+        self.buildDependencies += [t.toolchain_dist for t in self.toolchains]
+
     def getArchivableResults(self, use_relpath=True, single=False):
-        for target_arch in self.multiarch if self._use_multiarch else [mx.get_arch()]:
-            toolchain = _Toolchain.for_(target_arch)
-            target_arch_path = toolchain.target if self.multiarch else ''
-            if toolchain.is_native or not single:
-                for file_path, archive_path in self._archivable_results(target_arch, use_relpath, single):
-                    yield file_path, mx.join(target_arch_path, archive_path)
+        if self._multitarget:
+            if single:
+                raise ValueError("single not supported")
+            for toolchain in self.toolchains:
+                subdir = toolchain.spec.target.subdir
+                for file_path, archive_path in self._archivable_results(subdir, use_relpath, single):
+                    yield file_path, mx.join(subdir, archive_path)
+        elif self.toolchain_kind:
+            assert len(self.toolchains) == 1
+            yield from self._archivable_results(self.toolchains[0].spec.target.subdir, use_relpath, single)
+        else:
+            # subclass that doesn't support multitarget yet, default to old directory layout
+            yield from self._archivable_results(mx.get_arch(), use_relpath, single)
+        if not single:
+            yield from self._archivable_results_no_arch(use_relpath)
 
     def _archivable_result(self, use_relpath, base_dir, file_path):
         assert not mx.isabs(file_path)
@@ -256,26 +580,29 @@ class MultiarchProject(mx.AbstractNativeProject, NativeDependency):
     def _archivable_results(self, target_arch, use_relpath, single):
         """:rtype: typing.Iterable[(str, str)]"""
 
+    def _archivable_results_no_arch(self, use_relpath):
+        """:rtype: typing.Iterable[(str, str)]"""
+        yield from ()
+
 
 class TargetArchBuildTask(mx.AbstractNativeBuildTask):
-    def __init__(self, args, project, target_arch):
+    def __init__(self, args, project, target_arch=None, toolchain=None):
         self.target_arch = target_arch
         super(TargetArchBuildTask, self).__init__(args, project)
-        self.out_dir = mx.join(self.subject.out_dir, self.target_arch)
+        if toolchain is None:
+            self.toolchain = None
+            # for backwards compatibility, should happen only on subclasses that don't support multitarget yet
+            self.out_dir = mx.join(self.subject.out_dir, self.target_arch)
+        else:
+            self.toolchain = toolchain
+            self.out_dir = mx.join(self.subject.out_dir, toolchain.spec.target.subdir)
 
     @property
     def name(self):
         return f'{super(TargetArchBuildTask, self).name}_{self.target_arch}'
 
-    def buildForbidden(self):
-        forbidden = super(TargetArchBuildTask, self).buildForbidden()
-        if not forbidden and not _Toolchain.for_(self.target_arch).is_available:
-            self.subject.abort(f'Missing toolchain for {self.target_arch}.')
-        return forbidden
-
-
-class NinjaProject(MultiarchProject):
-    """A MultiarchProject that is built using the Ninja build system.
+class NinjaProject(MultitargetProject):
+    """A MultitargetProject that is built using the Ninja build system.
 
     What distinguishes Ninja from other build systems is that its input files are
     not meant to be written by hand. Instead, they should be generated, which in
@@ -365,12 +692,15 @@ class NinjaProject(MultiarchProject):
 
         return JavaHome()
 
-    def _build_task(self, target_arch, args):
-        return NinjaBuildTask(args, self, target_arch)
+    def _build_task(self, target_arch, args, toolchain=None):
+        return NinjaBuildTask(args, self, target_arch, toolchain=toolchain)
 
-    @abc.abstractmethod
     def generate_manifest(self, output_dir, filename):
         """Generates a Ninja manifest used to build this project."""
+        mx.abort("Must override either generate_manifest or generate_manifest_for_task.")
+
+    def generate_manifest_for_task(self, task, output_dir, filename):
+        self.generate_manifest(output_dir, filename)
 
     @property
     def cflags(self):
@@ -420,8 +750,8 @@ class NinjaBuildTask(TargetArchBuildTask):
            require special consideration.
     """
 
-    def __init__(self, args, project, target_arch=mx.get_arch(), ninja_targets=None):
-        super(NinjaBuildTask, self).__init__(args, project, target_arch)
+    def __init__(self, args, project, target_arch, ninja_targets=None, **kwArgs):
+        super(NinjaBuildTask, self).__init__(args, project, target_arch, **kwArgs)
         self._reason = None
         self._manifest = mx.join(self.out_dir, Ninja.default_manifest)
         self.ninja = Ninja(self.out_dir, self.parallelism, targets=ninja_targets)
@@ -453,7 +783,7 @@ class NinjaBuildTask(TargetArchBuildTask):
             with mx.SafeFileCreation(self._manifest) as sfc:
                 output_dir = os.path.dirname(sfc.tmpPath)
                 tmpfilename = os.path.basename(sfc.tmpPath)
-                self.subject.generate_manifest(output_dir, tmpfilename)
+                self.subject.generate_manifest_for_task(self, output_dir, tmpfilename)
 
                 if mx.exists(self._manifest) \
                         and not filecmp.cmp(self._manifest, sfc.tmpPath, shallow=False):
@@ -472,7 +802,6 @@ class NinjaBuildTask(TargetArchBuildTask):
                 if e.errno != errno.ENOENT:
                     raise
 
-
 class NinjaManifestGenerator(object):
     """Abstracts the writing of the Ninja build manifest.
 
@@ -482,10 +811,11 @@ class NinjaManifestGenerator(object):
     For more details about Ninja, see https://ninja-build.org/manual.html.
     """
 
-    def __init__(self, project, output_dir, filename):
+    def __init__(self, project, output_dir, filename, toolchain=None):
         import ninja_syntax
         self.project = project
         self.output_dir = output_dir
+        self.toolchain = toolchain
         self.n = ninja_syntax.Writer(open(os.path.join(output_dir, filename), 'w'))  # pylint: disable=invalid-name
         self._generate()
 
@@ -525,7 +855,7 @@ class NinjaManifestGenerator(object):
 
     def asm(self, source_file):
         asm_source = self._resolve(source_file)
-        if getattr(self.project.toolchain, 'asm_requires_cpp', False):
+        if self.toolchain and getattr(self.toolchain.toolchain_dist, 'asm_requires_cpp', False):
             asm_source = self.n.build(self._output(source_file, '.asm'), 'cpp', asm_source)
         return self.n.build(self._output(source_file), 'asm', asm_source)[0]
 
@@ -545,7 +875,14 @@ class NinjaManifestGenerator(object):
     def _output(source_file, ext=None):
         if ext is None:
             ext = '.obj' if mx.is_windows() else '.o'
-        return os.path.splitext(source_file)[0] + ext
+        path = os.path.splitext(source_file)[0] + ext
+        if os.path.isabs(path):
+            (drive, path) = os.path.splitdrive(path)
+            assert path.startswith(os.path.sep)
+            path = path[1:]  # strip leading /
+            if drive:
+                path = os.path.join(drive.replace(':', '_'), path)
+        return path
 
     @staticmethod
     def _resolve(path):
@@ -629,7 +966,6 @@ class DefaultNativeProject(NinjaProject):
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
         self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
-        self.toolchain = kwargs.pop('toolchain', 'mx:DEFAULT_NINJA_TOOLCHAIN')
         if srcDirs:
             mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
@@ -644,15 +980,21 @@ class DefaultNativeProject(NinjaProject):
             mx.abort('include directory must have a flat structure')
 
         self.include_dirs = [include_dir]
-        if kind == 'static_lib':
-            self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
-        self.buildDependencies.append(self.toolchain)
+        self.kind = kind
+
+    @property
+    def toolchain_kind(self):
+        return "ninja"
+
+    def target_libs(self, target):
+        if self.kind == 'static_lib':
+            yield mx.join(self.out_dir, target.subdir, self._target)
 
     def resolveDeps(self):
         super(DefaultNativeProject, self).resolveDeps()
-        self.toolchain = mx.distribution(self.toolchain, context=self)
-        if not isinstance(self.toolchain, mx.AbstractDistribution) or not self.toolchain.get_output():
-            mx.abort(f"Cannot generate manifest: the specified toolchain ({self.toolchain}) must be an AbstractDistribution that returns a value for get_output", context=self)
+        for t in self.toolchains:
+            if not isinstance(t.toolchain_dist, mx.AbstractDistribution) or not t.toolchain_dist.get_output():
+                mx.abort(f"Cannot generate manifest: the specified toolchain ({t.toolchain_dist}) must be an AbstractDistribution that returns a value for get_output", context=self)
 
     @property
     def _target(self):
@@ -708,14 +1050,14 @@ class DefaultNativeProject(NinjaProject):
     def asm_sources(self):
         return self._source['files'].get('.S', [])
 
-    def generate_manifest(self, output_dir, filename):
+    def generate_manifest_for_task(self, task, output_dir, filename):
         unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S', '.swp'})
         if unsupported_source_files:
             mx.abort(f'{unsupported_source_files} source files are not supported by default native projects')
 
-        with NinjaManifestGenerator(self, output_dir, filename) as gen:
+        with NinjaManifestGenerator(self, output_dir, filename, toolchain=task.toolchain) as gen:
             gen.comment("Toolchain configuration")
-            gen.include(mx.join(self.toolchain.get_output(), 'toolchain.ninja'))
+            gen.include(os.path.join(task.toolchain.get_path(), 'toolchain.ninja'))
             gen.newline()
             gen.variables(cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags])
             if self._kind != self._kinds['static_lib']:
@@ -742,12 +1084,12 @@ class DefaultNativeProject(NinjaProject):
                 gen.ar(self._target, object_files)
             else:
                 link = gen.linkxx if self.cxx_files else gen.link
-                dep_libs = list(itertools.chain.from_iterable(getattr(d, 'libs', []) for d in self.buildDependencies))
+                dep_libs = list(itertools.chain.from_iterable(MultitargetNativeDependency._get_libs(d, target=task.toolchain.spec.target) for d in self.buildDependencies))
                 link(self._target, object_files + dep_libs)
 
     def _archivable_results(self, target_arch, use_relpath, single):
         yield self._archivable_result(use_relpath, mx.join(self.out_dir, target_arch), self._target)
 
-        if not single:
-            for header in os.listdir(mx.join(self.dir, self.include)):
-                yield self._archivable_result(use_relpath, self.dir, mx.join(self.include, header))
+    def _archivable_results_no_arch(self, use_relpath):
+        for header in os.listdir(mx.join(self.dir, self.include)):
+            yield self._archivable_result(use_relpath, self.dir, mx.join(self.include, header))

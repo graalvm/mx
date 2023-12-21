@@ -1021,6 +1021,12 @@ suite = {
       "native": True,
       "platformDependent": True,
       "description": "Default ninja rules for an OS-dependent toolchain found on the PATH",
+      "native_toolchain": {
+        "kind": "ninja",
+        "target": {
+          # all defaults (host compiler, host os/arch/libc, no variant)
+        },
+      },
       "os_arch": {
         "<others>": {
           "<others>": {
