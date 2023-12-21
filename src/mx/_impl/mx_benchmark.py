@@ -2871,7 +2871,7 @@ class RssPercentilesTracker(Tracker):
             rows = super().parseResults(text)
 
             temp_text_output = self.tracker.most_recent_text_output
-            if temp_text_output != None:
+            if temp_text_output is not None:
                 os.remove(temp_text_output)
                 mx.log(f"Temporary output file {temp_text_output} deleted.")
 
