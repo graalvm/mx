@@ -8893,8 +8893,9 @@ class NativeBuildTask(AbstractNativeBuildTask):
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
         elif (is_darwin() and get_arch() == 'amd64' and is_continuous_integration()) and not _opts.cpu_count:
-            # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
-            self.parallelism = 1
+            # work around a bug on macOS versions before Big Sur where make randomly fails in our CI (GR-6892) if compilation is too parallel
+            if int(platform.mac_ver()[0].split('.')[0]) < 11:
+                self.parallelism = 1
         self._newestOutput = None
 
     def __str__(self):
@@ -19246,7 +19247,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.5.0")  # GR-33678 multi-target native projects
+version = VersionSpec("7.5.1")  # GR-51052 Reenable parallel compilation on darwin-amd64
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
