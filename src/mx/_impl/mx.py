@@ -19247,7 +19247,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.5.1")  # GR-51052 Reenable parallel compilation on darwin-amd64
+version = VersionSpec("7.5.2")  # GR-50424 Add custom rss percentile tracker, based on the ps command.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime

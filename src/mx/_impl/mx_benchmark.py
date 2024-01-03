@@ -2811,11 +2811,132 @@ class PsrecordMaxrssTracker(Tracker):
     def get_rules(self, bmSuiteArgs):
         return self.rss.get_rules(bmSuiteArgs) + self.psrecord.get_rules(bmSuiteArgs)
 
+# Calculates percentile rss metrics from the rss samples gathered by ps_poller.
+class RssPercentilesTracker(Tracker):
+    # rss metric will be calculated for these percentiles
+    interesting_percentiles = [100, 99, 98, 97, 96, 95, 90, 75, 50, 25]
+    # the time period between two polls, in seconds
+    poll_interval = 0.1
+
+    def __init__(self, bmSuite, skip=0):
+        super().__init__(bmSuite)
+        self.most_recent_text_output = None
+        self.skip = skip # the number of RSS entries to skip from each poll (used to skip entries of other trackers)
+
+    def map_command(self, cmd):
+        if not _use_tracker:
+            return cmd
+
+        if mx.get_os() != "linux" and mx.get_os() != "darwin":
+            mx.warn(f"Ignoring the '{self.__class__.__name__}' tracker since it is not supported on {mx.get_os()}")
+            return cmd
+
+        import datetime
+        bench_name = self.bmSuite.currently_running_benchmark() if self.bmSuite else "benchmark"
+        if self.bmSuite:
+            bench_name = f"{self.bmSuite.name()}-{bench_name}"
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        text_output = os.path.join(os.getcwd(), f"ps_{bench_name}_{ts}.txt")
+
+        self.most_recent_text_output = text_output
+        ps_poller_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ps_poller.py")
+        return ["python3", ps_poller_script_path, "-f", text_output, "-i", str(RssPercentilesTracker.poll_interval)] + cmd
+
+    def get_rules(self, bmSuiteArgs):
+        return [RssPercentilesTracker.RssPercentilesRule(self, bmSuiteArgs)]
+
+    class RssPercentilesRule(CSVBaseRule):
+        def __init__(self, tracker, bmSuiteArgs, **kwargs):
+            replacement = {
+                "benchmark": tracker.bmSuite.currently_running_benchmark(),
+                "bench-suite": tracker.bmSuite.benchSuiteName(bmSuiteArgs) if mx_benchmark_compatibility().bench_suite_needs_suite_args() else tracker.bmSuite.benchSuiteName(),
+                "config.vm-flags": ' '.join(tracker.bmSuite.vmArgs(bmSuiteArgs)),
+                "metric.name": "rss",
+                "metric.value": ("<metric_value>", int),
+                "metric.unit": "MB",
+                "metric.type": "numeric",
+                "metric.score-function": "id",
+                "metric.better": "lower",
+                "metric.percentile": ("<metric_percentile>", int),
+                "metric.iteration": 0
+            }
+            super().__init__(["rss_kb"], replacement, delimiter=' ', skipinitialspace=True, **kwargs)
+            self.tracker = tracker
+
+        def getCSVFiles(self, text):
+            file = self.tracker.most_recent_text_output
+            return [file] if file else []
+
+        def parseResults(self, text):
+            rows = super().parseResults(text)
+
+            temp_text_output = self.tracker.most_recent_text_output
+            if temp_text_output is not None:
+                os.remove(temp_text_output)
+                mx.log(f"Temporary output file {temp_text_output} deleted.")
+
+            values = []
+            acc = 0
+            skips_left = self.tracker.skip
+            # At every 'RSS' row append the previously accumulated value
+            # After the 'RSS' row, skip self.tracker.skip numerical rows (to ignore other trackers)
+            # After self.tracker.skip skips, accumulate all the numerical rows until the next 'RSS'
+            for r in rows:
+                if r["rss_kb"].isnumeric():
+                    if skips_left == 0:
+                        acc += float(r["rss_kb"])
+                    else:
+                        skips_left -= 1
+                else:
+                    if r["rss_kb"] == "FAILED":
+                        mx.warn(f"Tracker {self.tracker.__class__.__name__} failed at polling the benchmark process for RSS! No 'rss' metric will be emitted.")
+                        return []
+                    if acc > 0:
+                        values.append(acc)
+                    acc = 0
+                    skips_left = self.tracker.skip
+            if acc > 0:
+                values.append(acc)
+
+            if len(values) == 0:
+                mx.log("\tDidn't get any RSS samples.")
+                return []
+
+            sorted_values = sorted(values)
+
+            def pc(k): # k-percentile with linear interpolation between closest ranks
+                x = (len(sorted_values) - 1) * k / 100
+                fr = int(x)
+                cl = int(x + 0.5)
+                v = sorted_values[fr] if fr == cl else sorted_values[fr] * (cl - x) + sorted_values[cl] * (x - fr)
+                v = v / 1024 # convert to MB
+                return {"metric_percentile": str(k), "metric_value": str(int(v))}
+
+            percentiles = [pc(perc) for perc in RssPercentilesTracker.interesting_percentiles]
+            for rss_percentile in percentiles:
+                mx.log(f"\t{rss_percentile['metric_percentile']}th RSS percentile (MB): {rss_percentile['metric_value']}")
+            return percentiles
+
+
+class RssPercentilesAndMaxTracker(Tracker):
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.rss_max_tracker = RssTracker(bmSuite)
+        self.rss_percentiles_tracker = RssPercentilesTracker(bmSuite, skip=1) # skip RSS of the 'time' command
+
+    def map_command(self, cmd):
+        return self.rss_percentiles_tracker.map_command(self.rss_max_tracker.map_command(cmd))
+
+    def get_rules(self, bmSuiteArgs):
+        return self.rss_max_tracker.get_rules(bmSuiteArgs) + self.rss_percentiles_tracker.get_rules(bmSuiteArgs)
+
 
 _available_trackers = {
     "rss": RssTracker,
     "psrecord": PsrecordTracker,
     "psrecord+maxrss": PsrecordMaxrssTracker,
+    "rsspercentiles": RssPercentilesTracker,
+    "rsspercentiles+maxrss": RssPercentilesAndMaxTracker,
 }
 
 
