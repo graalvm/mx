@@ -1350,21 +1350,35 @@ class SuiteModel:
 
     @staticmethod
     def get_vc(candidate_root_dir):
+        """
+        Attempt to determine what kind of VCS is associated with 'candidate_root_dir'.
+        Return the VC and the root directory or (None, None) if it cannot be determined.
+        The root dir is computed as follows:
+        - look for the "deepest nested" VC root
+        - look for the "deepest nested" directory that includes a 'ci.hocon' or '.mx_vcs_root' file
+        - return the "most nested" result (that is, the longest string of the two)
+
+        :param candidate_root_dir:
+        :rtype: :class:`VC`, str
+        """
         vc, vc_dir = VC.get_vc_root(candidate_root_dir, abortOnError=False)
-        if not vc_dir:
-            while True:
-                # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
-                # at the root of a repo that contains multiple suites.
-                hocon = join(candidate_root_dir, 'ci.hocon')
-                mx_vcs_root = join(candidate_root_dir, '.mx_vcs_root')
-                if exists(hocon) or exists(mx_vcs_root):
-                    vc_dir = candidate_root_dir
-                    # return the match with the "deepest nesting", like `VC.get_vc_root()` does.
-                    break
-                if os.path.splitdrive(candidate_root_dir)[1] == os.sep:
-                    break
-                candidate_root_dir = dirname(candidate_root_dir)
-        return vc, vc_dir
+
+        marked_root_dir = None
+        while True:
+            # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
+            # at the root of a repo that contains multiple suites.
+            hocon = join(candidate_root_dir, 'ci.hocon')
+            mx_vcs_root = join(candidate_root_dir, '.mx_vcs_root')
+            if exists(hocon) or exists(mx_vcs_root):
+                marked_root_dir = candidate_root_dir
+                # return the match with the "deepest nesting", like 'VC.get_vc_root()' does.
+                break
+            if os.path.splitdrive(candidate_root_dir)[1] == os.sep:
+                break
+            candidate_root_dir = dirname(candidate_root_dir)
+
+        # Return the match with the "deepest nesting"
+        return vc, vc_dir if len(vc_dir or '') > len(marked_root_dir or '') else marked_root_dir
 
     @staticmethod
     def siblings_dir(suite_dir):
