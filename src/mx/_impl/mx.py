@@ -1349,18 +1349,27 @@ class SuiteModel:
             abort('unknown suitemodel type: ' + name)
 
     @staticmethod
-    def siblings_dir(suite_dir):
-        if exists(suite_dir):
-            _, primary_vc_root = VC.get_vc_root(suite_dir, abortOnError=False)
-            if not primary_vc_root:
-                suite_parent = dirname(suite_dir)
+    def get_vc(candidate_root_dir):
+        vc, vc_dir = VC.get_vc_root(candidate_root_dir, abortOnError=False)
+        if not vc_dir:
+            while True:
                 # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
                 # at the root of a repo that contains multiple suites.
-                hocon = join(suite_parent, 'ci.hocon')
-                mx_vcs_root = join(suite_parent, '.mx_vcs_root')
+                hocon = join(candidate_root_dir, 'ci.hocon')
+                mx_vcs_root = join(candidate_root_dir, '.mx_vcs_root')
                 if exists(hocon) or exists(mx_vcs_root):
-                    return dirname(suite_parent)
-                return suite_parent
+                    vc_dir = candidate_root_dir
+                    # return the match with the "deepest nesting", like `VC.get_vc_root()` does.
+                    break
+                if os.path.splitdrive(candidate_root_dir)[1] == os.sep:
+                    break
+                candidate_root_dir = dirname(candidate_root_dir)
+        return vc, vc_dir
+
+    @staticmethod
+    def siblings_dir(suite_dir):
+        if exists(suite_dir):
+            _, primary_vc_root = SuiteModel.get_vc(suite_dir)
         else:
             primary_vc_root = suite_dir
         return dirname(primary_vc_root)
@@ -3087,20 +3096,7 @@ class SourceSuite(Suite):
     """A source suite"""
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, foreign=None, **kwArgs):
         candidate_root_dir = realpath(mxDir if foreign else dirname(mxDir))
-        vc, vc_dir = VC.get_vc_root(candidate_root_dir, abortOnError=False)
-        if not vc_dir:
-            while True:
-                # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
-                # at the root of a repo that contains multiple suites.
-                hocon = join(candidate_root_dir, 'ci.hocon')
-                mx_vcs_root = join(candidate_root_dir, '.mx_vcs_root')
-                if exists(hocon) or exists(mx_vcs_root):
-                    vc_dir = candidate_root_dir
-                    # return the match with the "deepest nesting", like `VC.get_vc_root()` does.
-                    break
-                if os.path.splitdrive(candidate_root_dir)[1] == os.sep:
-                    break
-                candidate_root_dir = dirname(candidate_root_dir)
+        vc, vc_dir = SuiteModel.get_vc(candidate_root_dir)
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, foreign=foreign, **kwArgs)
         logvv(f"SourceSuite.__init__({mxDir}), got vc={self.vc}, vc_dir={self.vc_dir}")
         self.projects = []
