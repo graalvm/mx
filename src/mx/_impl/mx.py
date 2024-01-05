@@ -3099,7 +3099,8 @@ class SourceSuite(Suite):
                 mx_vcs_root = join(current_dir, '.mx_vcs_root')
                 if exists(hocon) or exists(mx_vcs_root):
                     vc_dir = current_dir
-                    # don't break here to get the top most directory as the vc_dir
+                    # return the match with the "deepest nesting", like `VC.get_vc_root()` does.
+                    break
                 if os.path.splitdrive(current_dir)[1] == os.sep:
                     break
                 current_dir = dirname(current_dir)
