@@ -1349,18 +1349,41 @@ class SuiteModel:
             abort('unknown suitemodel type: ' + name)
 
     @staticmethod
+    def get_vc(candidate_root_dir):
+        """
+        Attempt to determine what kind of VCS is associated with 'candidate_root_dir'.
+        Return the VC and the root directory or (None, None) if it cannot be determined.
+        The root dir is computed as follows:
+        - look for the "deepest nested" VC root
+        - look for the "deepest nested" directory that includes a 'ci.hocon' or '.mx_vcs_root' file
+        - return the "most nested" result (that is, the longest string of the two)
+
+        :param candidate_root_dir:
+        :rtype: :class:`VC`, str
+        """
+        vc, vc_dir = VC.get_vc_root(candidate_root_dir, abortOnError=False)
+
+        marked_root_dir = None
+        while True:
+            # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
+            # at the root of a repo that contains multiple suites.
+            hocon = join(candidate_root_dir, 'ci.hocon')
+            mx_vcs_root = join(candidate_root_dir, '.mx_vcs_root')
+            if exists(hocon) or exists(mx_vcs_root):
+                marked_root_dir = candidate_root_dir
+                # return the match with the "deepest nesting", like 'VC.get_vc_root()' does.
+                break
+            if os.path.splitdrive(candidate_root_dir)[1] == os.sep:
+                break
+            candidate_root_dir = dirname(candidate_root_dir)
+
+        # Return the match with the "deepest nesting"
+        return vc, vc_dir if len(vc_dir or '') > len(marked_root_dir or '') else marked_root_dir
+
+    @staticmethod
     def siblings_dir(suite_dir):
         if exists(suite_dir):
-            _, primary_vc_root = VC.get_vc_root(suite_dir, abortOnError=False)
-            if not primary_vc_root:
-                suite_parent = dirname(suite_dir)
-                # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
-                # at the root of a repo that contains multiple suites.
-                hocon = join(suite_parent, 'ci.hocon')
-                mx_vcs_root = join(suite_parent, '.mx_vcs_root')
-                if exists(hocon) or exists(mx_vcs_root):
-                    return dirname(suite_parent)
-                return suite_parent
+            _, primary_vc_root = SuiteModel.get_vc(suite_dir)
         else:
             primary_vc_root = suite_dir
         return dirname(primary_vc_root)
@@ -3086,23 +3109,8 @@ class Repository(SuiteConstituent):
 class SourceSuite(Suite):
     """A source suite"""
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, foreign=None, **kwArgs):
-        if foreign:
-            vc, vc_dir = VC.get_vc_root(mxDir, abortOnError=False)
-        else:
-            vc, vc_dir = VC.get_vc_root(dirname(mxDir), abortOnError=False)
-        if not vc_dir:
-            current_dir = realpath(dirname(mxDir))
-            while True:
-                # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
-                # at the root of a repo that contains multiple suites.
-                hocon = join(current_dir, 'ci.hocon')
-                mx_vcs_root = join(current_dir, '.mx_vcs_root')
-                if exists(hocon) or exists(mx_vcs_root):
-                    vc_dir = current_dir
-                    # don't break here to get the top most directory as the vc_dir
-                if os.path.splitdrive(current_dir)[1] == os.sep:
-                    break
-                current_dir = dirname(current_dir)
+        candidate_root_dir = realpath(mxDir if foreign else dirname(mxDir))
+        vc, vc_dir = SuiteModel.get_vc(candidate_root_dir)
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, foreign=foreign, **kwArgs)
         logvv(f"SourceSuite.__init__({mxDir}), got vc={self.vc}, vc_dir={self.vc_dir}")
         self.projects = []
@@ -19247,7 +19255,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.5.2")  # GR-50424 Add custom rss percentile tracker, based on the ps command.
+version = VersionSpec("7.6.0")  # [GR-51173] Improve computation of suite root dirs.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
