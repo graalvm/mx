@@ -37,6 +37,7 @@ from .. import mx
 
 Path = str
 
+
 def _safe_path(path: Path):
     """
     If not on Windows, this function returns `path`.
@@ -45,16 +46,17 @@ def _safe_path(path: Path):
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if is_windows():
-        if _opts.verbose and '/' in path:
+        if _opts.verbose and "/" in path:
             warn(f"Forward slash in path on windows: {path}")
             import traceback
+
             traceback.print_stack()
         path = ospath.normpath(path)
-        MAX_PATH = 260 # pylint: disable=invalid-name
-        path_len = len(path) + 1 # account for trailing NUL
+        MAX_PATH = 260  # pylint: disable=invalid-name
+        path_len = len(path) + 1  # account for trailing NUL
         if ospath.isabs(path) and path_len >= MAX_PATH:
-            if path.startswith('\\\\'):
-                if path[2:].startswith('?\\'):
+            if path.startswith("\\\\"):
+                if path[2:].startswith("?\\"):
                     # if it already has a \\?\ don't do the prefix
                     pass
                 else:
@@ -67,11 +69,12 @@ def _safe_path(path: Path):
                     #
                     #   \\?\UNC\Mac\Home\mydir
                     #
-                    path = '\\\\?\\UNC' + path[1:]
+                    path = "\\\\?\\UNC" + path[1:]
             else:
-                path = '\\\\?\\' + path
+                path = "\\\\?\\" + path
         path = str(path)
     return path
+
 
 def lstat(name: Path):
     """
@@ -79,10 +82,12 @@ def lstat(name: Path):
     """
     return os.lstat(_safe_path(name))
 
+
 def canonicalize(p: Path):
     if mx.is_windows() and p.startswith("\\\\?\\"):
         return p[4:]
     return p
+
 
 def equal(p1: Path, p2: Path):
     return canonicalize(p1) == canonicalize(p2)

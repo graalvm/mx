@@ -24,10 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-__all__ = [
-    "_opts",
-    "_opts_parsed_deferrables"
-]
+__all__ = ["_opts", "_opts_parsed_deferrables"]
 
 from ..build.args import ArgsNamespace
 

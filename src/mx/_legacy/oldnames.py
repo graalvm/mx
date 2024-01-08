@@ -87,7 +87,9 @@ def _exit_handler():
         mx.logv(f"The following internal mx symbols were accessed: {', '.join(_internal_accesses)}")
 
 
-def redirect(thisname: str, allowed_internal_reads: Optional[List[str]]=None, allowed_writes: Optional[List[str]]=None):
+def redirect(
+    thisname: str, allowed_internal_reads: Optional[List[str]] = None, allowed_writes: Optional[List[str]] = None
+):
     """
     Redirects all attribute accesses on the ``thisname`` module to the
     ``mx._impl.{thisname}`` module.

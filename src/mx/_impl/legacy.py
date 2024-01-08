@@ -28,25 +28,17 @@ r"""
 This module reconstructs the old mx.py structure.
 """
 
+# pylint: disable=unused-import
+
 __all__ = []
 
-__all__ += [
-    "Daemon"
-]
+__all__ += ["Daemon"]
 from .build.daemons import Daemon
 
-__all__ += [
-    "Dependency",
-    "SuiteConstituent"
-]
+__all__ += ["Dependency", "SuiteConstituent"]
 from .build.suite import Dependency, SuiteConstituent
 
-__all__ += [
-    "BuildTask",
-    "NoOpTask",
-    "Task",
-    "TaskSequence"
-]
+__all__ += ["BuildTask", "NoOpTask", "Task", "TaskSequence"]
 from .build.tasks import BuildTask, NoOpTask, Task, TaskSequence
 
 __all__ += [
@@ -57,10 +49,7 @@ __all__ += [
 ]
 from .support.envvars import check_get_env, env_var_to_bool, get_env, str_to_bool
 
-__all__ += [
-    "compare",
-    "Comparable"
-]
+__all__ += ["compare", "Comparable"]
 from .support.comparable import compare, Comparable
 
 __all__ += [
@@ -88,28 +77,16 @@ from .support.logging import (
     warn,
 )
 
-__all__ += [
-    "waitOn"
-]
-from .support.processes import (
-    waitOn
-)
+__all__ += ["waitOn"]
+from .support.processes import waitOn
 
 __all__ += [
     "lstat",
 ]
-from .support.path import (
-    lstat
-)
+from .support.path import lstat
 
-__all__ += [
-    "ERROR_TIMEOUT",
-    "terminate_subprocesses"
-]
-from .support.processes import (
-    ERROR_TIMEOUT,
-    terminate_subprocesses
-)
+__all__ += ["ERROR_TIMEOUT", "terminate_subprocesses"]
+from .support.processes import ERROR_TIMEOUT, terminate_subprocesses
 
 __all__ += [
     "get_os",
@@ -120,7 +97,7 @@ __all__ += [
     "is_openbsd",
     "is_sunos",
     "is_windows",
-    "is_cygwin"
+    "is_cygwin",
 ]
 from .support.system import (
     get_os,
@@ -131,10 +108,8 @@ from .support.system import (
     is_openbsd,
     is_sunos,
     is_windows,
-    is_cygwin
+    is_cygwin,
 )
 
-__all__ += [
-    "TimeStampFile"
-]
+__all__ += ["TimeStampFile"]
 from .support.timestampfile import TimeStampFile

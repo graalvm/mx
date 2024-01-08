@@ -34,14 +34,16 @@ from typing import TypeVar
 
 from .logging import abort
 
+
 def check_get_env(key) -> str:
     """
     Gets an environment variable, aborting with a useful message if it is not set.
     """
     value = get_env(key)
     if value is None:
-        return abort(f'Required environment variable \'{key}\' must be set')
+        return abort(f"Required environment variable '{key}' must be set")
     return value
+
 
 Ty = TypeVar("Ty")
 
@@ -54,14 +56,16 @@ def get_env(key: str, default: Ty = None) -> str | Ty:
     value = os.getenv(key, default)
     return value
 
+
 def str_to_bool(val: str) -> bool:
     low_val = val.lower()
-    if low_val in ('false', '0', 'no'):
+    if low_val in ("false", "0", "no"):
         return False
-    elif low_val in ('true', '1', 'yes'):
+    elif low_val in ("true", "1", "yes"):
         return True
-    return abort(f'Unexpected string to bool value {val}')
+    return abort(f"Unexpected string to bool value {val}")
 
-def env_var_to_bool(name: str, default: str = 'false') -> bool:
+
+def env_var_to_bool(name: str, default: str = "false") -> bool:
     val = get_env(name, default)
     return str_to_bool(val)

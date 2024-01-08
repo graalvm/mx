@@ -39,4 +39,3 @@ class ArgsNamespace(Namespace):
     """Answer all questions with 'y' or 'n'"""
     java_dbg_port: Optional[int] = None
     clean: bool = False
-

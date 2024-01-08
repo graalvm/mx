@@ -35,27 +35,34 @@ def compare(a, b):
     """
     return (a > b) - (a < b)
 
-Ty = TypeVar('Ty')
+
+Ty = TypeVar("Ty")
 
 ComparisonResult = Union[int, type(NotImplemented)]
 
+
 class Comparable(object):
     def _checked_cmp(self, other, f: Callable[[Any, Any], Ty]) -> Ty:
-        compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
+        compar = self.__cmp__(other)  # pylint: disable=assignment-from-no-return
         return f(compar, 0) if compar is not NotImplemented else f(compare(id(self), id(other)), 0)
 
     def __lt__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a < b)
+
     def __gt__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a > b)
+
     def __eq__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a == b)
+
     def __le__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a <= b)
+
     def __ge__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a >= b)
+
     def __ne__(self, other: Any) -> bool:
         return self._checked_cmp(other, lambda a, b: a != b)
 
-    def __cmp__(self, other: Any) -> ComparisonResult: # to override
+    def __cmp__(self, other: Any) -> ComparisonResult:  # to override
         raise TypeError("No override for compare")

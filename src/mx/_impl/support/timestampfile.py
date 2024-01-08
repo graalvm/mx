@@ -35,21 +35,22 @@ from .path import Path
 from ..mx_util import ensure_dir_exists
 
 
-TimeStampComparable = Union[int, 'TimeStampFile', float, str, Sequence[str]]
+TimeStampComparable = Union[int, "TimeStampFile", float, str, Sequence[str]]
 
 """
 Represents a file and its modification time stamp at the time the TimeStampFile is created.
 """
-class TimeStampFile:
 
+
+class TimeStampFile:
     path: Path
     timestamp: Optional[float]
 
-    def __init__(self, path: Path, followSymlinks: bool | str=True):
-        assert isinstance(path, str), path + ' # type=' + str(type(path))
+    def __init__(self, path: Path, followSymlinks: bool | str = True):
+        assert isinstance(path, str), path + " # type=" + str(type(path))
         self.path = path
         if ospath.exists(path):
-            if followSymlinks == 'newest':
+            if followSymlinks == "newest":
                 self.timestamp = max(ospath.getmtime(path), mxpath.lstat(path).st_mtime)
             elif followSymlinks:
                 self.timestamp = ospath.getmtime(path)
@@ -123,9 +124,9 @@ class TimeStampFile:
 
     def __str__(self) -> str:
         if self.timestamp:
-            ts = time.strftime('[%Y-%m-%d %H:%M:%S]', time.localtime(self.timestamp))
+            ts = time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime(self.timestamp))
         else:
-            ts = '[does not exist]'
+            ts = "[does not exist]"
         return self.path + ts
 
     def touch(self) -> None:
@@ -133,5 +134,5 @@ class TimeStampFile:
             os.utime(self.path, None)
         else:
             ensure_dir_exists(ospath.dirname(self.path))
-            open(self.path, 'a')
+            open(self.path, "a")
         self.timestamp = ospath.getmtime(self.path)
