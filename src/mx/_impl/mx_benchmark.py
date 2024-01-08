@@ -700,12 +700,12 @@ class BenchmarkSuite(object):
         mx benchmark mySuite:* -- --mode=*
 
         to run the suite in all available modes. Overriding this method will allow expanding the
-        "--mode=*"
+        ["--mode=*"]
         to
-        ["--mode=interpreter", "--mode=compiled", "--mode=precompiled"]
+        [["--mode=interpreter"], ["--mode=compiled"], ["--mode=precompiled"]]
         resulting in the benchmark being executed 3 times with these 3 arguments passed in as bmSuiteArgs.
 
-        :returns: A list of arguments resulting from the expansion of bmSuiteArgs.
+        :returns: A list of lists of arguments resulting from the expansion of bmSuiteArgs.
 
         """
         return [bmSuiteArgs]
