@@ -52,7 +52,7 @@ class ModuleInterceptor:
         self.__dict__["_othermodule"] = sys.modules[targetname]
 
     def _get_target(self, name, is_set: bool):
-        if name.startswith("__") or name in self.__dict__["_thismodule"].__dict__:
+        if name.startswith("__"):
             return self.__dict__["_thismodule"]
 
         mem_name = f"{self.__dict__['_thisname']}.{name}"
@@ -68,10 +68,12 @@ class ModuleInterceptor:
 
         if is_set and name not in self.__dict__["_allowed_writes"]:
             mx.abort(f"Disallowed write to {mem_name}")
-        if name not in self.__dict__["_othermodule"].__all__:
-            mx.warn(f"Access to symbol '{mem_name}' which isn't exported")
 
-        return self.__dict__["_othermodule"]
+        if name in self.__dict__["_othermodule"].__dict__:
+            if name not in self.__dict__["_othermodule"].__all__:
+                mx.warn(f"Access to symbol '{mem_name}' which isn't exported")
+            return self.__dict__["_othermodule"]
+        return self.__dict__["_thismodule"]
 
     def __setattr__(self, name, value):
         target = self._get_target(name, True)
