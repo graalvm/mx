@@ -98,6 +98,8 @@ __all__ = [
     "OutputDump",
     "TTYCapturing",
     "gate_mx_benchmark",
+    "DataPoint",
+    "DataPoints",
 ]
 
 import sys
@@ -117,13 +119,15 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Collection, Callable, NoReturn, Optional, Sequence
+from typing import Collection, Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, MutableSequence
 
 from . import mx
 
 _bm_suites = {}
 _benchmark_executor = None
 
+DataPoint = Dict[str, Any]
+DataPoints = Sequence[DataPoint]
 
 def mx_benchmark_compatibility():
     """Get the required compatibility version from the mx primary suite.
@@ -429,7 +433,7 @@ class BenchmarkSuite(object):
     def __init__(self, *args, **kwargs):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
-        self._suite_dimensions = {}
+        self._suite_dimensions: DataPoint = {}
         self._command_mapper_hooks = []
         self._trackers = []
         self._currently_running_benchmark = None
@@ -624,15 +628,13 @@ class BenchmarkSuite(object):
         """
         return []
 
-    def suiteDimensions(self):
+    def suiteDimensions(self) -> DataPoint:
         """Returns context specific dimensions that will be integrated in the measurement
         data.
-
-        :rtype: dict
         """
         return self._suite_dimensions
 
-    def run(self, benchmarks, bmSuiteArgs):
+    def run(self, benchmarks, bmSuiteArgs) -> DataPoints:
         """Runs the specified benchmarks with the given arguments.
 
         More precisely, if `benchmarks` is a list, runs the list of the benchmarks from
@@ -666,7 +668,6 @@ class BenchmarkSuite(object):
                   (e.g. `"numeric"`)
                 - `metric.better` -- `"higher"` if higher is better, `"lower"` otherwise
                 - `metric.iteration` -- iteration number of the measurement (e.g. `0`)
-        :rtype: object
         """
         raise NotImplementedError()
 
@@ -766,7 +767,7 @@ class Rule(object):
             return str(path[:Rule.max_string_field_length-len(suffix)] + suffix)
         return _crop
 
-    def parse(self, text):
+    def parse(self, text: str) -> Iterable[DataPoint]:
         """Create a dictionary of variables for every measurement.
 
         :param text: The standard output of the benchmark.
@@ -832,8 +833,8 @@ class BaseRule(Rule):
         """
         raise NotImplementedError()
 
-    def parse(self, text):
-        datapoints = []
+    def parse(self, text) -> Iterable[DataPoint]:
+        datapoints: MutableSequence[DataPoint] = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(self.parseResults(text)):
@@ -1051,7 +1052,7 @@ class JMHJsonRule(Rule):
     def getBenchmarkNameFromResult(self, result):
         return result["benchmark"]
 
-    def parse(self, text):
+    def parse(self, text) -> Iterable[DataPoint]:
         r = []
         with open(self._prepend_working_dir(self.filename)) as fp:
             for result in json.load(fp):
@@ -1155,7 +1156,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     4. Terminate if none of the specified success patterns was matched.
     5. Use the parse rules on the standard output to create data points.
     """
-    def run(self, benchmarks, bmSuiteArgs):
+    def run(self, benchmarks, bmSuiteArgs) -> DataPoints:
         retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
         datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
         return datapoints
@@ -1164,7 +1165,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise BenchmarkFailureError(message)
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -1190,7 +1191,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
-        datapoints = []
+        datapoints: MutableSequence[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
         for t in self._trackers:
             rules += t.get_rules(bmSuiteArgs)
@@ -1264,14 +1265,13 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """List of regex patterns which fail the benchmark if not matched."""
         return []
 
-    def rules(self, output, benchmarks, bmSuiteArgs):
+    def rules(self, output, benchmarks, bmSuiteArgs) -> Sequence[Rule]:
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
         :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
-        :rtype: list
         """
         raise NotImplementedError()
 
@@ -1480,7 +1480,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return vm.config_name() if host_vm else "default"
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
 
         if extraRules is None:
             extraRules = []
@@ -1762,10 +1762,8 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         """Adapts command-line arguments to run the specific VM configuration."""
         raise NotImplementedError()
 
-    def dimensions(self, cwd, args, code, out):
-        """Returns a dict of additional dimensions to put into every datapoint.
-        :rtype: dict
-        """
+    def dimensions(self, cwd, args, code, out) -> DataPoint:
+        """Returns a dict of additional dimensions to put into every datapoint."""
         return {}
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
