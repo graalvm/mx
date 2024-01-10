@@ -19255,7 +19255,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.6.0")  # [GR-51173] Improve computation of suite root dirs.
+version = VersionSpec("7.6.1")  # [GR-51173] Fix computation of suite root dirs.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
