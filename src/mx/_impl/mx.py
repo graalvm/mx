@@ -1378,7 +1378,7 @@ class SuiteModel:
             candidate_root_dir = dirname(candidate_root_dir)
 
         # Return the match with the "deepest nesting"
-        return vc, vc_dir if len(vc_dir or '') > len(marked_root_dir or '') else marked_root_dir
+        return (vc, vc_dir) if len(vc_dir or '') >= len(marked_root_dir or '') else (None, marked_root_dir)
 
     @staticmethod
     def siblings_dir(suite_dir):
