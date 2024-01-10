@@ -1378,7 +1378,7 @@ class SuiteModel:
             candidate_root_dir = dirname(candidate_root_dir)
 
         # Return the match with the "deepest nesting"
-        return vc, vc_dir if len(vc_dir or '') > len(marked_root_dir or '') else marked_root_dir
+        return (vc, vc_dir) if len(vc_dir or '') >= len(marked_root_dir or '') else (None, marked_root_dir)
 
     @staticmethod
     def siblings_dir(suite_dir):
@@ -19255,7 +19255,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.6.0")  # [GR-51173] Improve computation of suite root dirs.
+version = VersionSpec("7.6.1")  # [GR-51173] Fix computation of suite root dirs.
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
