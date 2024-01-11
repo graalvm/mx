@@ -9024,7 +9024,7 @@ class Extractor(object, metaclass=ABCMeta):
 
     @staticmethod
     def create(src):
-        if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz") or src.endswith(".tar.bz2") or src.endswith(".tbz2"):
+        if any((src.endswith(ext) for ext in [".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"])):
             return TarExtractor(src)
         if src.endswith(".zip") or src.endswith(".jar"):
             return ZipExtractor(src)
@@ -19255,7 +19255,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.6.1")  # [GR-51173] Fix computation of suite root dirs.
+version = VersionSpec("7.7.0")  # GR-39434 support xz resources
 
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
