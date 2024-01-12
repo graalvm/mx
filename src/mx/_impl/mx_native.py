@@ -45,6 +45,7 @@ import itertools
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from . import mx
 from . import mx_compdb
@@ -871,12 +872,14 @@ class NinjaManifestGenerator(object):
     def close(self):
         self.n.close()
 
-    @staticmethod
-    def _output(source_file, ext=None):
+    def _output(self, source_file, ext=None):
         if ext is None:
             ext = '.obj' if mx.is_windows() else '.o'
         path = os.path.splitext(source_file)[0] + ext
         if os.path.isabs(path):
+            common = os.path.commonpath([path, self.output_dir])
+            if common:
+                return str(Path(path).relative_to(common))
             (drive, path) = os.path.splitdrive(path)
             assert path.startswith(os.path.sep)
             path = path[1:]  # strip leading /
