@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2018, 2016, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -115,6 +115,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
+from typing import Optional
 
 from . import mx
 
@@ -1135,10 +1136,7 @@ class JMHJsonRule(Rule):
 
 class BenchmarkFailureError(RuntimeError):
     """Thrown when a benchmark execution results in an error."""
-
-    def __init__(self, message, partialResults):
-        super(BenchmarkFailureError, self).__init__(message)
-        self.partialResults = partialResults
+    pass
 
 
 class StdOutBenchmarkSuite(BenchmarkSuite):
@@ -1157,25 +1155,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
         return datapoints
 
-    def repairDatapoints(self, benchmarks, bmSuiteArgs, partialResults):
-        """Repairs output results after a benchmark fails.
-
-        Subclasses should override this method when they need to add failed datapoints.
-
-        This method is called when the benchmark suite invocation completes abnormally,
-        due to a non-zero exit code, a failure pattern in the standard output, or a
-        missing success pattern. The benchmark suite must go through the partial list of
-        datapoints, and add missing datapoints to it if necessary.
-
-        The `error` field of each datapoint should not be modified in this benchmark,
-        as it will be overwritten with the appropriate error message.
-        """
-
-    def repairDatapointsAndFail(self, benchmarks, bmSuiteArgs, partialResults, message):
-        self.repairDatapoints(benchmarks, bmSuiteArgs, partialResults)
-        for result in partialResults:
-            result["error"] = message
-        raise BenchmarkFailureError(message, partialResults)
+    def repairDatapointsAndFail(self, message):
+        raise BenchmarkFailureError(message)
 
     def validateStdoutWithDimensions(
         self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
@@ -1231,13 +1212,11 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         if not flaky:
             if retcode is not None:
                 if not self.validateReturnCode(retcode):
-                    self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                        f"Benchmark failed, exit code: {retcode}")
+                    self.repairDatapointsAndFail(f"Benchmark failed, exit code: {retcode}")
             for pat in self.failurePatterns():
                 m = compiled(pat).search(out)
                 if m:
-                    self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                        f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
+                    self.repairDatapointsAndFail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
             success = False
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
@@ -1245,8 +1224,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if len(self.successPatterns()) == 0:
                 success = True
             if not success:
-                self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
-                    f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+                self.repairDatapointsAndFail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
@@ -1580,7 +1558,7 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
         else:
             mx.warn("NO scratch directory created! (--no-scratch)")
             self.workdir = None
-        super(TemporaryWorkdirMixin, self).before(otherArgs)
+        super().before(otherArgs)
 
     def _create_tmp_workdir(self):
         self.workdir = tempfile.mkdtemp(prefix=self.name() + '-work.', dir='.')
@@ -1597,11 +1575,11 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
             self.scratchDirectories.append(os.path.abspath(self.workdir))
         elif self.workdir:
             shutil.rmtree(self.workdir)
-        super(TemporaryWorkdirMixin, self).after(bmSuiteArgs)
+        super().after(bmSuiteArgs)
 
-    def repairDatapointsAndFail(self, benchmarks, bmSuiteArgs, partialResults, message):
+    def repairDatapointsAndFail(self, message):
         try:
-            super(TemporaryWorkdirMixin, self).repairDatapointsAndFail(benchmarks, bmSuiteArgs, partialResults, message)
+            super().repairDatapointsAndFail(message)
         finally:
             if self.workdir:
                 # keep old workdir for investigation, create a new one for further benchmarking
@@ -3252,7 +3230,7 @@ class BenchmarkExecutor(object):
             err = OutputDump(sys.stderr)
 
         with TTYCapturing(out=out, err=err):
-            suite = None
+            suite: Optional[BenchmarkSuite] = None
             if mxBenchmarkArgs.benchmark:
                 # The suite will read the benchmark specifier,
                 # and therewith produce a list of benchmark sets to run in separate forks.
