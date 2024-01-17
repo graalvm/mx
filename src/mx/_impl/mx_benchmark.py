@@ -115,7 +115,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Optional
+from typing import Optional, NoReturn
 
 from . import mx
 
@@ -1155,7 +1155,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
         return datapoints
 
-    def repairDatapointsAndFail(self, message):
+    def on_fail(self, message) -> NoReturn:
         raise BenchmarkFailureError(message)
 
     def validateStdoutWithDimensions(
@@ -1210,21 +1210,16 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if compiled(pat).search(out):
                 flaky = True
         if not flaky:
-            if retcode is not None:
-                if not self.validateReturnCode(retcode):
-                    self.repairDatapointsAndFail(f"Benchmark failed, exit code: {retcode}")
+            if retcode is not None and not self.validateReturnCode(retcode):
+                self.on_fail(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
             for pat in self.failurePatterns():
                 m = compiled(pat).search(out)
                 if m:
-                    self.repairDatapointsAndFail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
-            success = False
-            for pat in self.successPatterns():
-                if compiled(pat).search(out):
-                    success = True
-            if len(self.successPatterns()) == 0:
-                success = True
-            if not success:
-                self.repairDatapointsAndFail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+                    self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
+
+            if self.successPatterns():
+                if not any(compiled(pat).search(out) for pat in self.successPatterns()):
+                    self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
@@ -1553,11 +1548,11 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
         bmArgs, otherArgs = parser.parse_known_args(bmSuiteArgs)
         self.keepScratchDir = bmArgs.keep_scratch
         self.scratchDirectories = []
-        if not bmArgs.no_scratch:
-            self._create_tmp_workdir()
-        else:
+        self.workdir: Optional[str] = None
+        if bmArgs.no_scratch:
             mx.warn("NO scratch directory created! (--no-scratch)")
-            self.workdir = None
+        else:
+            self._create_tmp_workdir()
         super().before(otherArgs)
 
     def _create_tmp_workdir(self):
@@ -1577,15 +1572,13 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
             shutil.rmtree(self.workdir)
         super().after(bmSuiteArgs)
 
-    def repairDatapointsAndFail(self, message):
-        try:
-            super().repairDatapointsAndFail(message)
-        finally:
-            if self.workdir:
-                # keep old workdir for investigation, create a new one for further benchmarking
-                mx.warn(f"Keeping scratch directory after failed benchmark: {self.workdir}")
-                self.scratchDirectories.append(os.path.abspath(self.workdir))
-                self._create_tmp_workdir()
+    def on_fail(self, message):
+        if self.workdir:
+            # keep old workdir for investigation, create a new one for further benchmarking
+            mx.warn(f"Keeping scratch directory after failed benchmark: {self.workdir}")
+            self.scratchDirectories.append(os.path.abspath(self.workdir))
+            self._create_tmp_workdir()
+        super().on_fail(message)
 
     def parserNames(self):
         return super(TemporaryWorkdirMixin, self).parserNames() + ["temporary_workdir_parser"]
@@ -3334,7 +3327,7 @@ class BenchmarkExecutor(object):
                                     for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
                                         mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
                                         results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
-                            except (BenchmarkFailureError, RuntimeError):
+                            except RuntimeError:
                                 failures_seen = True
                                 if benchnames and len(benchnames) > 0:
                                     failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
