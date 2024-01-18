@@ -1830,13 +1830,14 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 hooks = self.command_mapper_hooks
                 self.command_mapper_hooks = None
                 with mx.DisableJavaDebugging():
-                    java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
+                    # TODO undo
+                    java_version_out = mx.OutputCapture()
                     vm_opts = _get_vm_options_for_config_extraction(args)
                     vm_args = vm_opts + ["-version"]
                     mx.logv(f"Extracting vm info by calling : java {' '.join(vm_args)}")
                     code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
                     if code == 0:
-                        command_output = java_version_out.underlying.data
+                        command_output = java_version_out.data
                         gc, initial_heap, max_heap = _get_gc_info(command_output)
                         vm_info["platform.gc"] = gc
                         vm_info["platform.initial-heap-size"] = initial_heap
