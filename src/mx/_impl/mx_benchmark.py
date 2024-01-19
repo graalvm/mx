@@ -119,7 +119,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Collection, Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, MutableSequence
+from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, MutableSequence, List
 
 from . import mx
 
@@ -1265,7 +1265,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """List of regex patterns which fail the benchmark if not matched."""
         return []
 
-    def rules(self, output, benchmarks, bmSuiteArgs) -> Sequence[Rule]:
+    def rules(self, output, benchmarks, bmSuiteArgs) -> List[Rule]:
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
@@ -1607,11 +1607,11 @@ class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
     @property
-    def bmSuite(self):
+    def bmSuite(self) -> BenchmarkSuite:
         return getattr(self, '_bmSuite', None)
 
     @bmSuite.setter
-    def bmSuite(self, val):
+    def bmSuite(self, val: BenchmarkSuite):
         self._bmSuite = val
 
     @property
@@ -1639,14 +1639,13 @@ class Vm(object): #pylint: disable=R0922
         """Extract vm information."""
         pass
 
-    def rules(self, output, benchmarks, bmSuiteArgs):
+    def rules(self, output, benchmarks, bmSuiteArgs) -> List[Rule]:
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
         :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
-        :rtype: list
         """
         return []
 
