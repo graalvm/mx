@@ -50,6 +50,7 @@ from pathlib import Path
 from . import mx, mx_util
 from . import mx_compdb
 from . import mx_subst
+from .build import tasks
 
 _target_jdk = None
 """JDK for which native projects should be built."""
@@ -530,7 +531,7 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
                 t = self.toolchains[0]
                 return self._build_task(t.spec.target.name, args, toolchain=t)
             else:
-                class MultitargetBuildTask(mx.Buildable, mx.TaskSequence):
+                class MultitargetBuildTask(tasks.Buildable, tasks.TaskSequence):
                     subtasks = [self._build_task(toolchain.spec.target.name, args, toolchain=toolchain) for toolchain in self.toolchains]
 
                     def execute(self):
@@ -593,10 +594,10 @@ class TargetArchBuildTask(mx.AbstractNativeBuildTask):
         if toolchain is None:
             self.toolchain = None
             # for backwards compatibility, should happen only on subclasses that don't support multitarget yet
-            self.out_dir = mx.join(self.subject.out_dir, self.target_arch)
+            self.out_dir = os.path.join(self.subject.out_dir, self.target_arch)
         else:
             self.toolchain = toolchain
-            self.out_dir = mx.join(self.subject.out_dir, toolchain.spec.target.subdir)
+            self.out_dir = os.path.join(self.subject.out_dir, toolchain.spec.target.subdir)
 
     @property
     def name(self):

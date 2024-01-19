@@ -358,7 +358,7 @@ import posixpath
 
 from .build.suite import Dependency, SuiteConstituent
 from .build.tasks import BuildTask, NoOpTask
-from .build.daemons import Daemon
+from .build.daemon import Daemon
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
 from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn

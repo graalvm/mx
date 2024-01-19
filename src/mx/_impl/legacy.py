@@ -33,13 +33,13 @@ This module reconstructs the old mx.py structure.
 __all__ = []
 
 __all__ += ["Daemon"]
-from .build.daemons import Daemon
+from .build.daemon import Daemon
 
 __all__ += ["Dependency", "SuiteConstituent"]
 from .build.suite import Dependency, SuiteConstituent
 
-__all__ += ["BuildTask", "NoOpTask", "Task", "TaskSequence"]
-from .build.tasks import BuildTask, NoOpTask, Task, TaskSequence
+__all__ += ["Buildable", "BuildTask", "NoOpTask", "Task", "TaskSequence"]
+from .build.tasks import Buildable, BuildTask, NoOpTask, Task, TaskSequence
 
 __all__ += [
     "check_get_env",

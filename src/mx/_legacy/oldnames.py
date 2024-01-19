@@ -33,7 +33,7 @@ from __future__ import annotations
 import atexit
 import sys
 import traceback
-from typing import Optional
+from typing import List, Optional
 
 from .._impl import mx
 
@@ -69,9 +69,7 @@ class ModuleInterceptor:
         if is_set and name not in self.__dict__["_allowed_writes"]:
             mx.abort(f"Disallowed write to {mem_name}")
 
-        if name in self.__dict__["_othermodule"].__dict__:
-            if name not in self.__dict__["_othermodule"].__all__:
-                mx.warn(f"Access to symbol '{mem_name}' which isn't exported")
+        if not hasattr(self.__dict__["_thismodule"], name):
             return self.__dict__["_othermodule"]
         return self.__dict__["_thismodule"]
 

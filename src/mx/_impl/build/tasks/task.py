@@ -30,7 +30,7 @@ from abc import ABCMeta, abstractmethod
 from argparse import Namespace
 from typing import Dict, Optional, MutableSequence
 
-from ..daemons import Daemon
+from ..daemon import Daemon
 from ..suite import Dependency
 from ...support.logging import nyi
 from ...support.processes import Process
