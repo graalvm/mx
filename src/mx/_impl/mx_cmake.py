@@ -31,7 +31,7 @@ __all__ = [
 import os
 import shutil
 
-from . import mx
+from . import mx, mx_util
 from . import mx_native
 from . import mx_subst
 
@@ -240,7 +240,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
         return mx.TimeStampFile.newest([_path for _path, _ in self.subject.getArchivableResults()])
 
     def _write_guard(self, source_dir, cmake_config):
-        with mx.SafeFileCreation(self.guard_file()) as sfc:
+        with mx_util.SafeFileCreation(self.guard_file()) as sfc:
             with open(sfc.tmpPath, 'w') as fp:
                 fp.write(self._guard_data(source_dir, cmake_config))
 

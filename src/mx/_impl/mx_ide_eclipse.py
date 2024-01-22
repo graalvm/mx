@@ -52,7 +52,7 @@ from io import StringIO
 
 from .ide import project_processor
 
-from . import mx
+from . import mx, mx_util
 from . import mx_ideconfig
 from . import mx_javamodules
 
@@ -381,7 +381,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
         else:
             suitePrefix = suite.name + '-'
         name = suitePrefix + 'attach-' + hostname + '-' + port
-    eclipseLaunches = mx.ensure_dir_exists(join(suite.mxDir, 'eclipse-launches'))
+    eclipseLaunches = mx_util.ensure_dir_exists(join(suite.mxDir, 'eclipse-launches'))
     launchFile = join(eclipseLaunches, name + '.launch')
     sourcesFile = join(eclipseLaunches, name + '.sources')
     mx.update_file(sourcesFile, '\n'.join(sources))
@@ -449,7 +449,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     launch.close('launchConfiguration')
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
 
-    eclipseLaunches = mx.ensure_dir_exists(join(suite.mxDir, 'eclipse-launches'))
+    eclipseLaunches = mx_util.ensure_dir_exists(join(suite.mxDir, 'eclipse-launches'))
     launchFile = join(eclipseLaunches, name + '.launch')
     sourcesFile = join(eclipseLaunches, name + '.sources')
     mx.update_file(sourcesFile, '\n'.join(sources))
@@ -612,7 +612,7 @@ def _eclipse_project_rel(project_loc, path, linked_resources, res_type=IRESOURCE
         return os.path.relpath(path, project_loc)
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     # PROJECT_LOC Eclipse variable
-    project_loc = mx.ensure_dir_exists(p.dir)
+    project_loc = mx_util.ensure_dir_exists(p.dir)
 
     linkedResources = []
 
@@ -629,11 +629,11 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         out.close('classpathentry')
 
     for src in p.srcDirs:
-        _add_src_classpathentry(mx.ensure_dir_exists(join(p.dir, src)))
+        _add_src_classpathentry(mx_util.ensure_dir_exists(join(p.dir, src)))
 
     processors = p.annotation_processors()
     if processors:
-        gen_dir = mx.ensure_dir_exists(p.source_gen_dir())
+        gen_dir = mx_util.ensure_dir_exists(p.source_gen_dir())
         # ignore warnings produced by third-party annotation processors
         has_external_processors = any((ap for ap in p.declaredAnnotationProcessors if ap.isLibrary()))
         attributes = {'ignore_optional_problems': 'true'} if has_external_processors else None
@@ -898,7 +898,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
     if isinstance(s, mx.BinarySuite):
         return
 
-    suite_config_dir = mx.ensure_dir_exists(s.get_mx_output_dir())
+    suite_config_dir = mx_util.ensure_dir_exists(s.get_mx_output_dir())
 
     configZip = mx.TimeStampFile(join(suite_config_dir, 'eclipse-config.zip'))
     configLibsZip = join(suite_config_dir, 'eclipse-config-libs.zip')
@@ -938,7 +938,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         project_loc = dist.get_ide_project_dir()
         if not project_loc:
             continue
-        mx.ensure_dir_exists(project_loc)
+        mx_util.ensure_dir_exists(project_loc)
         relevantResources = []
         relevantResourceDeps = set(dist.archived_deps())
         for d in sorted(relevantResourceDeps):
@@ -1121,7 +1121,7 @@ def _genEclipseBuilder(eclipseConfigRoot, dotProjectDoc, p, name, mxCommand, ref
 
     launchOut.close('launchConfiguration')
 
-    mx.ensure_dir_exists(externalToolDir)
+    mx_util.ensure_dir_exists(externalToolDir)
     launchFile = join(externalToolDir, name + '.launch')
     mx.update_file(launchFile, launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
 
@@ -1328,7 +1328,7 @@ def _workingset_element(wsdoc, p):
 def _copy_eclipse_settings(project_loc, p, files=None):
     processors = p.annotation_processors()
 
-    settingsDir = mx.ensure_dir_exists(join(project_loc, ".settings"))
+    settingsDir = mx_util.ensure_dir_exists(join(project_loc, ".settings"))
 
     for name, sources in p.eclipse_settings_sources().items():
         out = StringIO()

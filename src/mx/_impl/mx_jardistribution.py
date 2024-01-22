@@ -40,7 +40,7 @@ from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
-from . import mx
+from . import mx, mx_util
 from . import mx_subst
 from .support import path
 
@@ -182,7 +182,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         res = getattr(self, '.stripped_path', None)
         if res is None:
             jdk = mx.get_jdk(tag='default')
-            res = join(mx.ensure_dir_exists(join(dirname(self._path), 'stripped', str(jdk.javaCompliance))), basename(self._path))
+            res = join(mx_util.ensure_dir_exists(join(dirname(self._path), 'stripped', str(jdk.javaCompliance))), basename(self._path))
             setattr(self, '.stripped_path', res)
         return res
 
@@ -463,7 +463,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 for version, entries in sorted(versions.items()):
                     flattened_entries.update(entries)
 
-        with mx.SafeFileCreation(flattened_jar) as sfc:
+        with mx_util.SafeFileCreation(flattened_jar) as sfc:
             with zipfile.ZipFile(sfc.tmpPath, 'w', compression) as out_zf:
                 for name, ic in sorted(flattened_entries.items()):
                     info, contents = ic
@@ -839,7 +839,7 @@ class _ArchiveStager(object):
         origin = _FileContentsSupplier(join(archive.staging_dir, arcname))
         entry = _ArchiveEntry(None, arcname, archive, origin)
         staged = entry.staged
-        mx.ensure_dir_exists(dirname(staged))
+        mx_util.ensure_dir_exists(dirname(staged))
         if callable(contents):
             contents = contents()
         with open(staged, 'w' if isinstance(contents, str) else 'wb') as fp:
@@ -1153,7 +1153,7 @@ class _Archive(object):
         self.dist = dist
         self.path = path
         self.exploded = exploded
-        self.staging_dir = path if exploded else mx.ensure_dir_exists(path + _staging_dir_suffix)
+        self.staging_dir = path if exploded else mx_util.ensure_dir_exists(path + _staging_dir_suffix)
         self.entries = {} # Map from archive entry names to _ArchiveEntry objects
         self.compression = compression
 
@@ -1483,7 +1483,7 @@ def _stage_file_impl(src, dst):
     if exists(dst) and os.path.samefile(src, dst):
         return
 
-    mx.ensure_dir_exists(dirname(dst))
+    mx_util.ensure_dir_exists(dirname(dst))
 
     if not mx.can_symlink():
         if exists(dst):

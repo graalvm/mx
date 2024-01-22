@@ -1183,7 +1183,7 @@ def _make_coverage_report(output_directory,
                                 d = hashlib.sha1()
                                 d.update(url.encode())
                                 url_hash = d.hexdigest()
-                                cache_dir = mx.ensure_dir_exists(abspath(join(output_directory, '.cache', url_hash)))
+                                cache_dir = mx_util.ensure_dir_exists(abspath(join(output_directory, '.cache', url_hash)))
                                 cache = join(cache_dir, 'lcov.info')
                                 cache_url = join(cache_dir, 'url')
                                 if not exists(cache):
@@ -1227,7 +1227,7 @@ def _make_coverage_report(output_directory,
         elif fmt == 'xml':
             mx.log(f'Generated XML coverage report in {join(output_directory, "jacoco.xml")}')
 
-    output_directory = mx.ensure_dir_exists(abspath(output_directory))
+    output_directory = mx_util.ensure_dir_exists(abspath(output_directory))
     if not omit_excluded:
         _run_reporter(exec_files, output_directory)
         excludes = []

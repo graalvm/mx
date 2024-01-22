@@ -47,7 +47,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import mx
+from . import mx, mx_util
 from . import mx_compdb
 from . import mx_subst
 
@@ -668,7 +668,7 @@ class NinjaProject(MultitargetProject):
             dep = mx.library('NINJA_SYNTAX')
             deps.append(dep)
             module_path = mx.join(dep.get_path(False), f'ninja_syntax-{dep.version}')
-            mx.ensure_dir_exists(module_path)  # otherwise, import machinery will ignore it
+            mx_util.ensure_dir_exists(module_path)  # otherwise, import machinery will ignore it
             sys.path.append(module_path)
 
         return deps
@@ -781,7 +781,7 @@ class NinjaBuildTask(TargetArchBuildTask):
                 or self._reason is None \
                 or mx.basename(self._manifest) in self._reason \
                 or 'phony' in self._reason:
-            with mx.SafeFileCreation(self._manifest) as sfc:
+            with mx_util.SafeFileCreation(self._manifest) as sfc:
                 output_dir = os.path.dirname(sfc.tmpPath)
                 tmpfilename = os.path.basename(sfc.tmpPath)
                 self.subject.generate_manifest_for_task(self, output_dir, tmpfilename)
