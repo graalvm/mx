@@ -1136,8 +1136,6 @@ class Timer():
     will not emit anything but will have leave `times` with something like:
 
         [('phase1', 2.45), ('phase2', 1.75)]
-
-    See also _show_timestamp.
     """
     def __init__(self, name, times=None):
         self.name = name
@@ -1152,21 +1150,6 @@ class Timer():
         else:
             self.times.append((self.name, elapsed))
 
-_last_timestamp = None
-
-def _show_timestamp(label):
-    """
-    Prints the current date and time followed by `label` followed by the
-    milliseconds elapsed since the last call to this method, if any.
-    """
-    global _last_timestamp
-    now = datetime.utcnow()
-    if _last_timestamp is not None:
-        duration = (now - _last_timestamp).total_seconds() * 1000
-        print(f'{now}: {label} [{duration:.02f} ms]')
-    else:
-        print(f'{now}: {label}')
-    _last_timestamp = now
 
 def glob_match_any(patterns, path):
     return any((glob_match(pattern, path) for pattern in patterns))
@@ -19255,10 +19238,9 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.7.1")  # [GR-51151] fix long pathname on windows
+version = VersionSpec("7.7.2")  # [GR-51431] Remove repairing of benchmark datapoints
 
 _mx_start_datetime = datetime.utcnow()
-_last_timestamp = _mx_start_datetime
 
 def _main_wrapper():
     main()
