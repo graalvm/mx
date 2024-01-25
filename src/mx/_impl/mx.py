@@ -8075,6 +8075,8 @@ class JavaBuildTask(ProjectBuildTask):
                         if name.endswith('.java'):
                             classfile = outputDir + path[len(sourceDir):-len('.java')] + '.class'
                             javafiles[path] = classfile
+                        elif is_darwin() and name == '.DS_Store':
+                            continue
                         else:
                             non_javafiles[path] = outputDir + path[len(sourceDir):]
 
