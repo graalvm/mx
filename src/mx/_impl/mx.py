@@ -14100,7 +14100,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
 
     mavenCommand = cmd_suffix(get_env('MAVEN_COMMAND', 'mvn'))
 
-    if is_windows():
+    if is_windows() or is_continuous_integration():
         extra_args += ['--batch-mode'] # prevent maven to color output
 
     mavenHome = get_env('MAVEN_HOME')
