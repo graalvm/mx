@@ -951,10 +951,12 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                 uses.add(service)
 
                     def exported_package_exists(p):
-                        package_exists = exists(join(dest_dir, p.replace('.', os.sep)))
+                        package_dir = join(dest_dir, p.replace('.', os.sep))
+                        package_exists = exists(package_dir)
                         if not package_exists and dist.suite.getMxCompatibility().enforce_spec_compliant_exports():
                             pp = [proj for proj in java_projects if p in proj.defined_java_packages()][0]
-                            dist.abort(f'Modular multi-release JARs cannot export packages defined only by versioned projects: {p} is defined by {pp} with multiReleaseJarVersion={pp.multiReleaseJarVersion}')
+                            dist.abort(f'{package_dir} does not exist. Modular multi-release JARs cannot export packages defined only by versioned projects: '
+                                       f'{p} is defined by {pp} with multiReleaseJarVersion={getattr(pp, "multiReleaseJarVersion", None)}.')
                         return package_exists
 
                     # Exports of modular multi-release JARs must be exactly the same in all versions,
