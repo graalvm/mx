@@ -15260,6 +15260,7 @@ def _resolve_ecj_jar(jdk, java_project_compliance, java_project_preview_needed, 
             min_jdt_version = VersionSpec('3.27')
 
     if java_project_compliance and java_project_compliance >= '22':
+        # GR-51699
         abort(f'ECJ for java project compliance version "{java_project_compliance}" not configured.')
     elif java_project_preview_needed and java_project_preview_needed >= '21':
         # ECJ does not have sufficient support for preview features
@@ -19242,7 +19243,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.7.3")  # GR-50900 Update ECJ to a version compatible with JDK21
+version = VersionSpec("7.7.4")  # GR-50900 Update ECJ to a version compatible with JDK21
 
 _mx_start_datetime = datetime.utcnow()
 
