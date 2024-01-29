@@ -1223,9 +1223,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 if m:
                     self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
 
-            if self.successPatterns():
-                if not any(compiled(pat).search(out) for pat in self.successPatterns()):
-                    self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+            success_patterns = self.successPatterns()
+            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
+                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
