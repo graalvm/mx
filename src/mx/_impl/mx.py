@@ -521,7 +521,7 @@ def _make_absolute(path, prefix):
 
 
 def _cache_dir():
-    return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
+    return _cygpathW2U(_CACHE_DIR)
 
 def _global_env_file():
     return _cygpathW2U(get_env('MX_GLOBAL_ENV', join(dot_mx_dir(), 'env')))
@@ -19268,6 +19268,9 @@ def main():
     except KeyboardInterrupt:
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
+
+
+_CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
 version = VersionSpec("7.9.2")  # fix mx mergetool-suite-import
