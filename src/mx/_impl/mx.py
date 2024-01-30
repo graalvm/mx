@@ -19236,7 +19236,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.8.0")  # [GR-51531] Create proxy for mx_util
+version = VersionSpec("7.8.1")  # GR-49806 gate mx on JDK latest
 
 _mx_start_datetime = datetime.utcnow()
 
