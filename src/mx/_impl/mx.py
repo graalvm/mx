@@ -14588,7 +14588,7 @@ class JDKConfig(Comparable):
             raise JDKConfigException(f'{e.returncode}: {e.output}')
 
         def _checkOutput(out):
-            return 'java version' in out
+            return 'java version' in out and 'warning' not in out
 
         self._is_openjdk = 'openjdk' in output.lower()
 
@@ -14597,17 +14597,17 @@ class JDKConfig(Comparable):
         version = None
         for o in output:
             if _checkOutput(o):
-                assert version is None
+                assert version is None, version
                 version = o
 
         def _checkOutput0(out):
-            return 'version' in out
+            return 'version' in out and 'warning' not in out
 
         # fall back: check for 'version' if there is no 'java version' string
         if not version:
             for o in output:
                 if _checkOutput0(o):
-                    assert version is None
+                    assert version is None, version
                     version = o
 
         self.version = VersionSpec(version.split()[2].strip('"'))
