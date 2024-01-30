@@ -14582,17 +14582,10 @@ class JDKConfig(Comparable):
         self.java_args_pfx = sum(map(shlex.split, _opts.java_args_pfx), [])
         self.java_args_sfx = sum(map(shlex.split, _opts.java_args_sfx), [])
 
-        # Prepend the -d64 VM option only if the java command supports it
         try:
-            output = _check_output_str([self.java, '-d64', '-version'], stderr=subprocess.STDOUT)
-            self.java_args = ['-d64'] + self.java_args
-        except OSError as e:
-            raise JDKConfigException(f'{e.errno}: {e.strerror}')
+            output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
-            try:
-                output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as e:
-                raise JDKConfigException(f'{e.returncode}: {e.output}')
+            raise JDKConfigException(f'{e.returncode}: {e.output}')
 
         def _checkOutput(out):
             return 'java version' in out
