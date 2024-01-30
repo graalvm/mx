@@ -2031,8 +2031,18 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
 
     jmh_result_file = "jmh_result.json"
 
-    def extraRunArgs(self):
-        return ["-rff", JMHBenchmarkSuiteBase.jmh_result_file, "-rf", "json"]
+    def get_jmh_result_file(self, bm_suite_args: List[str]) -> Optional[str]:
+        """
+        :return: The path to the JMH results file or None, if no result file should be generated
+        """
+        return JMHBenchmarkSuiteBase.jmh_result_file
+
+    def extraRunArgs(self, bm_suite_args):
+        result_file = self.get_jmh_result_file(bm_suite_args)
+        if result_file:
+            return ["-rff", result_file, "-rf", "json"]
+        else:
+            return []
 
     def extraVmArgs(self):
         return []
@@ -2054,7 +2064,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
             return True
 
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
-        runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
+        runArgs = self.extraRunArgs(bmSuiteArgs) + self.runArgs(bmSuiteArgs)
 
         if self.profilerNames(bmSuiteArgs) and _is_forking(runArgs):
             mx.warn("Profilers are not currently compatible with the JMH benchmark runner in forked mode.\n" +
@@ -2079,8 +2089,11 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return []
 
     def rules(self, out, benchmarks, bmSuiteArgs):
-        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs),
-            self.extraBenchProperties(bmSuiteArgs))]
+        result_file = self.get_jmh_result_file(bmSuiteArgs)
+        if result_file:
+            return [JMHJsonRule(result_file, self.benchSuiteName(bmSuiteArgs), self.extraBenchProperties(bmSuiteArgs))]
+        else:
+            return []
 
     def jmhArgs(self, bmSuiteArgs):
         vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
@@ -2337,6 +2350,9 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
             allOut = ''
             lastDims = None
             jsons = []
+
+            jmh_result_file = self.get_jmh_result_file(bmSuiteArgs)
+
             for benchmark in benchmarks_to_run:
                 individualBmArgs = vmArgs + ['--'] + jmhOptions + [benchmark]
                 print("Individual JMH benchmark run:", benchmark)
@@ -2347,18 +2363,21 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
                 if lastDims is not None and lastDims != dims:
                     mx.abort(f"Expected equal dims\nlast: {lastDims}\ncurr: {dims}")
                 lastDims = dims
-                json = open(JMHBenchmarkSuiteBase.jmh_result_file).read().strip()
-                assert json[0] == '[' and json[-1] == ']'
-                jsons += [json[1:-1]]
+                if jmh_result_file:
+                    with open(jmh_result_file) as result_file:
+                        json = result_file.read().strip()
+                        assert json[0] == '[' and json[-1] == ']'
+                        jsons += [json[1:-1]]
 
             # Combine the collected JSON results into one result file.
-            with open(JMHBenchmarkSuiteBase.jmh_result_file, 'w') as result_file:
-                result_file.write('[')
-                for index, json in enumerate(jsons):
-                    result_file.write(json)
-                    if index < len(jsons) - 1:
-                        result_file.write(',\n')
-                result_file.write(']')
+            if jmh_result_file:
+                with open(jmh_result_file, "w") as result_file:
+                    result_file.write('[')
+                    for index, json in enumerate(jsons):
+                        result_file.write(json)
+                        if index < len(jsons) - 1:
+                            result_file.write(',\n')
+                    result_file.write(']')
             return 0, allOut, lastDims
         else:
             return super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, bmSuiteArgs)
