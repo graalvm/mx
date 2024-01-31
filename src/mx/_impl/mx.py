@@ -14582,20 +14582,13 @@ class JDKConfig(Comparable):
         self.java_args_pfx = sum(map(shlex.split, _opts.java_args_pfx), [])
         self.java_args_sfx = sum(map(shlex.split, _opts.java_args_sfx), [])
 
-        # Prepend the -d64 VM option only if the java command supports it
         try:
-            output = _check_output_str([self.java, '-d64', '-version'], stderr=subprocess.STDOUT)
-            self.java_args = ['-d64'] + self.java_args
-        except OSError as e:
-            raise JDKConfigException(f'{e.errno}: {e.strerror}')
+            output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
-            try:
-                output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as e:
-                raise JDKConfigException(f'{e.returncode}: {e.output}')
+            raise JDKConfigException(f'{e.returncode}: {e.output}')
 
         def _checkOutput(out):
-            return 'java version' in out
+            return 'java version' in out and 'warning' not in out
 
         self._is_openjdk = 'openjdk' in output.lower()
 
@@ -14604,17 +14597,17 @@ class JDKConfig(Comparable):
         version = None
         for o in output:
             if _checkOutput(o):
-                assert version is None
+                assert version is None, version
                 version = o
 
         def _checkOutput0(out):
-            return 'version' in out
+            return 'version' in out and 'warning' not in out
 
         # fall back: check for 'version' if there is no 'java version' string
         if not version:
             for o in output:
                 if _checkOutput0(o):
-                    assert version is None
+                    assert version is None, version
                     version = o
 
         self.version = VersionSpec(version.split()[2].strip('"'))
@@ -19243,7 +19236,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.8.0")  # [GR-51531] Create proxy for mx_util
+version = VersionSpec("7.8.1")  # GR-49806 gate mx on JDK latest
 
 _mx_start_datetime = datetime.utcnow()
 

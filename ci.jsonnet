@@ -39,7 +39,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     local base = platform + jdk + eclipse_dep + common.deps.pylint + common.deps.sulong + common.deps.svm + {
         # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then Java version followed by OS and arch
-        name: "%s-jdk%s-%s-%s" % [self.prefix, java_release, os, arch],
+        name: "%s-jdk-%s-%s-%s" % [self.prefix, java_release, os, arch],
         targets: ["gate"],
         catch_files+: extra_catch_files,
         timelimit: timelimit,
@@ -72,7 +72,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     # Specific gate builders are defined by the following functions
 
-    gate:: self.with_name("gate") + common.deps.black + {
+    gate:: self.with_name("gate") + common.deps.black + common.deps.spotbugs +{
         environment+: {
             MX_ALT_OUTPUT_ROOT: path("$BUILD_DIR/alt_output_root"),
             JDT: "builtin",
@@ -220,13 +220,13 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "8ddbe516f060a31d4c44bb4e6ade93484dfeb056",
+    overlay: "7fd31a78943e2a4d6e15573401b5865822980223",
 
     # For use by overlay
     versions:: versions,
     extra_catch_files:: extra_catch_files,
-    primary_jdk_version:: 21,
-    secondary_jdk_version:: 20,
+    primary_jdk_version:: "latest",
+    secondary_jdk_version:: 21,
 
     local builds = [
         with(common.linux_amd64, self.primary_jdk_version).gate,
@@ -243,6 +243,11 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
         with(common.linux_amd64, self.primary_jdk_version).version_update_check,
         with(common.linux_amd64, self.primary_jdk_version).post_merge_tag_version,
+
+        with(common.linux_amd64, self.secondary_jdk_version).gate,
+        with(common.windows_amd64, self.secondary_jdk_version).gate,
+        with(common.darwin_amd64, self.secondary_jdk_version, timelimit="25:00").gate,
+        with(common.darwin_aarch64, self.secondary_jdk_version).gate,
     ],
     builds: [remove_mx_from_packages(b) for b in builds],
 }
