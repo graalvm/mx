@@ -42,7 +42,7 @@ __all__ = [
     "unittest",
 ]
 
-from . import mx
+from . import mx, mx_util
 import os
 import re
 import tempfile
@@ -124,7 +124,7 @@ def _find_classes_by_annotated_methods(annotations, dists, buildCacheDir, jdk=No
     cachesDir = None
     jarsToParse = []
     if primarySuite and primarySuite != mx._mx_suite:
-        cachesDir = mx.ensure_dir_exists(join(primarySuite.get_output_root(), buildCacheDir))
+        cachesDir = mx_util.ensure_dir_exists(join(primarySuite.get_output_root(), buildCacheDir))
         for d in dists:
             jar = d.classpath_repr()
             testclasses = _read_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk())

@@ -29,7 +29,7 @@ import shutil
 from argparse import ArgumentParser
 from os.path import join, exists, dirname
 
-from . import mx
+from . import mx, mx_util
 
 
 def _local_os_arch():
@@ -44,7 +44,7 @@ See mx restore-pd-layouts and --multi-platform-layout-directories.""")
     args = parser.parse_args(args)
     archive_path = os.path.realpath(args.path)
 
-    ext = mx.get_file_extension(archive_path)
+    ext = mx_util.get_file_extension(archive_path)
     if ext not in ('zip', 'jar', 'tar', 'tgz'):
         raise mx.abort("Unsupported archive extension. Supported: .zip, .jar, .tar, .tgz")
 
@@ -92,5 +92,5 @@ See mx archive-pd-layouts and --multi-platform-layout-directories.""")
                 foreign_output = local_output.replace(local_os_arch, os_arch)
                 if exists(foreign_output):
                     mx.rmtree(foreign_output)
-                mx.ensure_dir_exists(dirname(foreign_output))
+                mx_util.ensure_dir_exists(dirname(foreign_output))
                 shutil.move(join(tmp, entry.name), foreign_output)

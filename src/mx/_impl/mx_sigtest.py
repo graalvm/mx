@@ -29,7 +29,7 @@ __all__ = [
     "sigtest",
 ]
 
-from . import mx
+from . import mx, mx_util
 import os
 from os.path import exists
 from argparse import ArgumentParser
@@ -139,7 +139,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         out = OutputCapture()
         print('Checking ' + checktype + ' signature changes against ' + sigtestResults)
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance), out=out, err=out)
-        mx.ensure_dir_exists(p.get_output_root())
+        mx_util.ensure_dir_exists(p.get_output_root())
         with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w') as f:
             f.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
             f.write('<testsuite tests="1" name="' + p.name + '.sigtest.' + checktype + '">\n')

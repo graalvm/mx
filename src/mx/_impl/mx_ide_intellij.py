@@ -41,7 +41,7 @@ from os.path import join, basename, dirname, exists, isdir, realpath
 from io import StringIO
 from dataclasses import dataclass
 
-from . import mx
+from . import mx, mx_util
 from . import mx_ideconfig
 from . import mx_javamodules
 
@@ -300,7 +300,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
     modulesXml = mx.XMLDoc()
     if not module_files_only and not s.isBinarySuite():
-        mx.ensure_dir_exists(ideaProjectDirectory)
+        mx_util.ensure_dir_exists(ideaProjectDirectory)
         nameFile = join(ideaProjectDirectory, '.name')
         mx.update_file(nameFile, s.name)
         modulesXml.open('project', attributes={'version': '4'})
@@ -472,7 +472,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             assert jdk
 
             # Value of the $MODULE_DIR$ IntelliJ variable and parent directory of the .iml file.
-            module_dir = mx.ensure_dir_exists(p.dir)
+            module_dir = mx_util.ensure_dir_exists(p.dir)
 
             processors = p.annotation_processors()
             if processors:
@@ -488,7 +488,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
             moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
             for src in p.srcDirs:
-                srcDir = mx.ensure_dir_exists(join(p.dir, src))
+                srcDir = mx_util.ensure_dir_exists(join(p.dir, src))
                 moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + os.path.relpath(srcDir, module_dir), 'isTestSource': str(p.is_test_project())})
             for name in ['.externalToolBuilders', '.settings', 'nbproject']:
                 _intellij_exclude_if_exists(moduleXml, p, name)
@@ -497,7 +497,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             if processors:
                 moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
                 genDir = p.source_gen_dir()
-                mx.ensure_dir_exists(genDir)
+                mx_util.ensure_dir_exists(genDir)
                 moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': str(p.is_test_project()), 'generated': 'true'})
                 for name in [basename(p.output_dir())]:
                     _intellij_exclude_if_exists(moduleXml, p, name, output=True)
@@ -624,7 +624,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             """
             name = basename(suite.mxDir)
             module_dir = suite.mxDir
-            return name, mx.ensure_dir_exists(module_dir), name + '.iml'
+            return name, mx_util.ensure_dir_exists(module_dir), name + '.iml'
 
         def _add_declared_module(suite):
             if not module_files_only:
@@ -693,9 +693,9 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
     if config.java_modules and not module_files_only:
         unique_library_file_names = set()
-        librariesDirectory = mx.ensure_dir_exists(join(ideaProjectDirectory, 'libraries'))
+        librariesDirectory = mx_util.ensure_dir_exists(join(ideaProjectDirectory, 'libraries'))
 
-        mx.ensure_dir_exists(librariesDirectory)
+        mx_util.ensure_dir_exists(librariesDirectory)
 
         def make_library(name, path, source_path, suite_dir):
             libraryXml = mx.XMLDoc()
@@ -834,7 +834,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
         runConfig.close('configuration')
         runConfig.close('component')
         runConfigFile = join(ideaProjectDirectory, 'runConfigurations', 'GraalDebug.xml')
-        mx.ensure_dir_exists(join(ideaProjectDirectory, 'runConfigurations'))
+        mx_util.ensure_dir_exists(join(ideaProjectDirectory, 'runConfigurations'))
         mx.update_file(runConfigFile, runConfig.xml(indent='  ', newl='\n'))
 
         if config.java_modules:
@@ -895,7 +895,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
         if config.java_modules:
             # Write codestyle settings
-            mx.ensure_dir_exists(join(ideaProjectDirectory, 'codeStyles'))
+            mx_util.ensure_dir_exists(join(ideaProjectDirectory, 'codeStyles'))
 
             codeStyleConfigXml = mx.XMLDoc()
             codeStyleConfigXml.open('component', attributes={'name': 'ProjectCodeStyleConfiguration'})
@@ -1028,7 +1028,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             # 3) Make an artifact for every distribution
             validArtifactNames = {artifactFileName(dist) for dist in validDistributions}
             artifactsDir = join(ideaProjectDirectory, 'artifacts')
-            mx.ensure_dir_exists(artifactsDir)
+            mx_util.ensure_dir_exists(artifactsDir)
             for fileName in os.listdir(artifactsDir):
                 filePath = join(artifactsDir, fileName)
                 if os.path.isfile(filePath) and fileName not in validArtifactNames:
@@ -1090,7 +1090,7 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
         if not p.isNativeProject():
             continue
 
-        mx.ensure_dir_exists(p.dir)
+        mx_util.ensure_dir_exists(p.dir)
 
         moduleXml = mx.XMLDoc()
         moduleXml.open('module', attributes={'type': 'CPP_MODULE'})
@@ -1100,7 +1100,7 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         for src in p.srcDirs:
             srcDir = join(p.dir, src)
-            mx.ensure_dir_exists(srcDir)
+            mx_util.ensure_dir_exists(srcDir)
             moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + src,
                                                           'isTestSource': str(p.is_test_project())})
         moduleXml.close('content')

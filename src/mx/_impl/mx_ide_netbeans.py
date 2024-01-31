@@ -29,7 +29,7 @@ import os, sys
 from os.path import join, exists
 from io import StringIO
 
-from . import mx
+from . import mx, mx_util
 from . import mx_ideconfig
 from . import mx_ide_eclipse
 
@@ -53,8 +53,8 @@ def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProject
 
 def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     dists = [] if dists is None else dists
-    nb_dir = mx.ensure_dir_exists(join(p.dir))
-    nbproject_dir = mx.ensure_dir_exists(join(nb_dir, 'nbproject'))
+    nb_dir = mx_util.ensure_dir_exists(join(p.dir))
+    nbproject_dir = mx_util.ensure_dir_exists(join(nb_dir, 'nbproject'))
 
     jdk = mx.get_jdk(p.javaCompliance)
     assert jdk
@@ -292,7 +292,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     annotationProcessorSrcFolderRef = ""
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
-        mx.ensure_dir_exists(p.source_gen_dir())
+        mx_util.ensure_dir_exists(p.source_gen_dir())
         annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), nb_dir)
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
         annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
@@ -307,7 +307,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     else:
         nbBuildDir = p.output_dir()
         apSourceOutRef = ""
-    mx.ensure_dir_exists(p.output_dir())
+    mx_util.ensure_dir_exists(p.output_dir())
 
     mx_ide_eclipse._copy_eclipse_settings(nb_dir, p)
 
@@ -417,7 +417,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     mainSrc = True
     for src in p.srcDirs:
-        srcDir = mx.ensure_dir_exists(join(p.dir, src))
+        srcDir = mx_util.ensure_dir_exists(join(p.dir, src))
         ref = 'file.reference.' + p.name + '-' + src
         print(ref + '=' + os.path.relpath(srcDir, nb_dir), file=out)
         if mainSrc:
@@ -522,7 +522,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         files.append(join(p.dir, 'nbproject', 'cfg_hints.xml'))
 
 def _netbeansinit_suite(args, jdks, suite, refreshOnly=False, buildProcessorJars=True):
-    netbeans_dir = mx.ensure_dir_exists(suite.get_mx_output_dir())
+    netbeans_dir = mx_util.ensure_dir_exists(suite.get_mx_output_dir())
     configZip = mx.TimeStampFile(join(netbeans_dir, 'netbeans-config.zip'))
     configLibsZip = join(netbeans_dir, 'netbeans-config-libs.zip')
     if refreshOnly and not configZip.exists():

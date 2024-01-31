@@ -30,7 +30,7 @@ import shutil
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, exists
 
-from . import mx
+from . import mx, mx_util
 from . import mx_ide_intellij
 from . import mx_ide_netbeans
 from . import mx_ide_eclipse
@@ -100,7 +100,7 @@ def _get_ide_envvars():
 
 
 def _zip_files(files, baseDir, zipPath):
-    with mx.SafeFileCreation(zipPath) as sfc:
+    with mx_util.SafeFileCreation(zipPath) as sfc:
         zf = zipfile.ZipFile(sfc.tmpPath, 'w')
         for f in sorted(set(files)):
             relpath = os.path.relpath(f, baseDir)

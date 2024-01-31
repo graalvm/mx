@@ -48,7 +48,7 @@ from collections import defaultdict
 
 from zipfile import ZipFile
 
-from . import mx
+from . import mx, mx_util
 
 from .support import path
 
@@ -226,7 +226,7 @@ class JavaModuleDescriptor(mx.Comparable):
         if self.alternatives:
             self.alternatives = {alt_name : None if v is None else alt_name for alt_name, v in self.alternatives.items()}
         try:
-            with mx.SafeFileCreation(pickled_path) as sfc, open(sfc.tmpPath, 'wb') as f:
+            with mx_util.SafeFileCreation(pickled_path) as sfc, open(sfc.tmpPath, 'wb') as f:
                 pickle.dump(self, f)
         finally:
             # Restore fields that were modified for pickling
@@ -433,7 +433,7 @@ def get_library_as_module(dep, jdk):
             mx.abort(f"Invalid identifier in automatic module name derived for library {dep.name}: {moduleName} (path: {dep.path})")
         dep.moduleName = moduleName
 
-    modulesDir = mx.ensure_dir_exists(join(mx.primary_suite().get_output_root(), 'modules'))
+    modulesDir = mx_util.ensure_dir_exists(join(mx.primary_suite().get_output_root(), 'modules'))
     cache = join(modulesDir, moduleName + '.desc')
     fullpath = dep.get_path(resolve=True)
     save = False
@@ -497,7 +497,7 @@ def get_library_as_module(dep, jdk):
 
     if save:
         try:
-            with mx.SafeFileCreation(cache) as sfc, open(sfc.tmpPath, 'w') as fp:
+            with mx_util.SafeFileCreation(cache) as sfc, open(sfc.tmpPath, 'w') as fp:
                 fp.write('\n'.join(lines) + '\n')
         except IOError as e:
             mx.warn('Error writing to ' + cache + ': ' + str(e))
@@ -790,7 +790,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             if module != 'java.base':
                 requires.setdefault(module, set())
 
-        build_directory = mx.ensure_dir_exists(module_jar + ".build")
+        build_directory = mx_util.ensure_dir_exists(module_jar + ".build")
         try:
             files_to_remove = set()
 
@@ -883,7 +883,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             while islink(src):
                                 src = os.readlink(src)
                             if not mx.can_symlink():
-                                mx.ensure_dir_exists(dirname(dst))
+                                mx_util.ensure_dir_exists(dirname(dst))
                                 if exists(dst):
                                     restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
                                     os.remove(dst)
@@ -1092,7 +1092,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             restore()
 
             if files_to_remove:
-                with mx.Timer('cleanup', times), mx.SafeFileCreation(module_jar) as sfc:
+                with mx.Timer('cleanup', times), mx_util.SafeFileCreation(module_jar) as sfc:
                     with ZipFile(module_jar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
                         for info in inzf.infolist():
                             if info.filename not in files_to_remove:
