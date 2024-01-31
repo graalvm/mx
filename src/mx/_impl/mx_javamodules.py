@@ -45,6 +45,7 @@ import shutil
 from . import mx_javacompliance
 from os.path import join, exists, dirname, basename, isdir, islink
 from collections import defaultdict
+from functools import partial
 
 from zipfile import ZipFile
 
@@ -566,17 +567,44 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         with mx.Timer('requires', times):
             if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
                 module_deps = dist.archived_deps()
-                for dep in mx.classpath_entries(dist, includeSelf=False):
+                for dep, direct_requires, indirect_requires, requiredBy in (
+                    (dep, requiredBy.get(dist), indireq, requiredBy)
+                    for (dep, requiredBy, indireq) in module_path_entries(dist, jdk=jdk, includeSelf=False)
+                ):
+                    if direct_requires is not None:
+                        # direct distribution dependency that this this module *requires*.
+                        # we assume "requires transitive" by default, although that still
+                        # may be overridden by an explicit "requires" entry in "moduleInfo"
+                        # to a non-transitive "requires" or a "requires static" (see below).
+                        reads = True
+                        requires_modifiers = direct_requires
+                    elif indirect_requires:
+                        # inherited dependency declared as "requires transitive".
+                        # technically, it's already transitively required, regardless of whether
+                        # we declare it as "requires transitive" again or even just "requires",
+                        # so adding it mostly just makes the *implied readability* explicit.
+                        reads = True
+                        requires_modifiers = indirect_requires
+                    else:
+                        # an implicit dependency required by one of the transitive dependencies
+                        # of this module that needs to be on the module path but this module
+                        # does not explicitly *require* it and therefore cannot *read* it.
+                        reads = False
+                        requires_modifiers = None
+                        mx.logv(f"Skipping implicit non-readable module path dependency of {dist.name}: {dep} reachable via {requiredBy}")
+
                     if dep.isJARDistribution():
                         jmd = as_java_module(dep, jdk)
                         modulepath.append(jmd)
-                        requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
+                        if reads:
+                            requires[jmd.name] = requires_modifiers
                     elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
                         pass
                     elif dep.isLibrary():
                         jmd = get_library_as_module(dep, jdk)
                         modulepath.append(jmd)
-                        requires[jmd.name] = set()
+                        if reads:
+                            requires[jmd.name] = requires_modifiers
                     else:
                         mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
             else:
@@ -592,12 +620,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             for project in java_projects:
                 module_packages.update(project.defined_java_packages())
 
-                # Collect the required modules denoted by the dependencies of each project
-                entries = mx.classpath_entries(project, includeSelf=False)
-                for e in entries:
-                    e_module_name = e.get_declaring_module_name()
-                    if e_module_name and e_module_name != moduleName:
-                        requires.setdefault(e_module_name, set())
             for library in java_libraries:
                 module_packages.update(library.defined_java_packages())
 
@@ -1218,3 +1240,161 @@ def requiredExports(distributions, jdk):
             target_module.collect_required_exports(required_exports)
 
     return required_exports
+
+def get_dependency_as_module(dep, jdk):
+    """
+    Gets the Java module descriptor created from a given distribution or library dependency.
+
+    :param JARDistribution|Library dep: a distribution or library that defines a Java module
+    :param JDKConfig jdk: a JDK with a version >= 9 that can be used to resolve references to JDK modules
+    :return: the descriptor for the module
+    :rtype: JavaModuleDescriptor
+    """
+    assert isinstance(dep, mx.ClasspathDependency), dep
+    if dep.isJARDistribution():
+        return as_java_module(dep, jdk)
+    elif dep.isLibrary():
+        return get_library_as_module(dep, jdk)
+    else:
+        mx.abort(f"{dep} is not a module JARDistribution or Library")
+
+def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=True, excludes=None):
+    """
+    Gets the transitive set of dependencies that need to be on the module path
+    given the root set of (module) distributions, libraries, or projects in `names`.
+
+    :param names: the root ClasspathDependency(s) for which to get the module dependencies.
+    :type names: ClasspathDependency | str | Collection[ClasspathDependency | str]
+    :param bool includeSelf: whether to include any of the dependencies in `names` in the returned list
+    :param bool includeProjects: for a JARDistribution dependencies, specifies whether to include
+            dependencies only reachable via project dependency edges in the module path.
+    :return: an iterable of (Dependency, {Dependency: Requires}, Requires) tuples representing
+            the transitive set of dependencies that should be on the module path for something
+            depending on `names`, associated with the modules that directly (i.e. not transitively)
+            require or depend on the module, and a set of transitive `requires` qualifiers.
+    :rtype: Iterable[tuple[ClasspathDependency, Mapping[ClasspathDependency, Collection[str]], Collection[str]]]
+    """
+    if not names:
+        # all classpath dependencies that define a module.
+        roots = [
+            d for d in mx.dependencies()
+            if isinstance(d, mx.ClasspathDependency) and (d.isJARDistribution() or d.isLibrary()) and d.get_declaring_module_name() is not None
+        ]
+    elif isinstance(names, mx.Dependency):
+        roots = [names]
+    else:
+        if isinstance(names, str):
+            names = [names]
+        roots = [mx.dependency(n) for n in names]
+
+    if not roots:
+        return []
+
+    if invalid := [d for d in roots if not isinstance(d, mx.ClasspathDependency)]:
+        mx.abort('class path roots must be classpath dependencies: ' + str(invalid))
+
+    if excludes is None:
+        excludes = []
+    elif isinstance(excludes, mx.Dependency):
+        excludes = [excludes]
+    else:
+        if isinstance(excludes, str):
+            excludes = [excludes]
+        excludes = [mx.dependency(n) for n in excludes]
+
+    assert len(set(roots) & set(excludes)) == 0
+    transitive_keyword = jdk.get_transitive_requires_keyword()
+
+    def is_unavailable_root_dist(dist):
+        return dist.isJARDistribution() and dist in roots and (len(roots) == 1 or as_java_module(dist, jdk, fatalIfNotCreated=False) is None)
+
+    mpEntries = {}
+    backedges = {}
+    def _visitEdge(src, dst, edge):
+        if edge and (dst.isJARDistribution() or dst.isLibrary()):
+            if src.isJavaProject() and (module_distribution := src.get_declaring_module_distribution()) is not None:
+                src_mod = module_distribution
+            else:
+                src_mod = src
+            srcs = backedges.setdefault(dst, {})
+            # default requires is transitive for distDependencies (but not for dependencies of projects or libraries)
+            default_requires = [transitive_keyword] if edge.kind == mx.DEP_STANDARD and src.isJARDistribution() else []
+            srcs.setdefault(src_mod, set()).update(default_requires)
+    def _preVisit(dst, edge, visitProjects=False):
+        if not isinstance(dst, mx.ClasspathDependency):
+            return False
+        if dst in excludes:
+            return False
+        if edge and edge.src.isLayoutJARDistribution():
+            return False
+        if dst in roots:
+            return True
+        if edge and dst.isLibrary():
+            # library dependencies are a bit weird for being included in distributions by default.
+            # therefore, we only want to consider them if excluded from the distribution, and
+            # simply ignore any library dependencies from projects.
+            if edge.src.isJARDistribution():
+                return edge.kind == mx.DEP_EXCLUDED
+            elif edge.src.isProject():
+                return False
+        if edge and edge.src.isJARDistribution() and dst.isProject():
+            # skip projects of already visited distributions
+            # effectively, this means we only visit projects of the root distribution(s)
+            return visitProjects and edge.src not in backedges
+        return True
+    def _visit(dep, edge):
+        if not includeSelf and dep in roots:
+            return
+        if (dep.isJARDistribution() or dep.isLibrary()) and dep.get_declaring_module_name() is not None:
+            srcs = mpEntries.setdefault(dep, backedges.get(dep))
+            assert srcs is not None or dep in roots, dep
+
+    # Although it should not make a difference, not visiting projects in the first pass seems more reliable
+    # in case of any ambiguities, and module information should be wholly provided by distributions anyway.
+    # In the optional second pass, we would only discover any modules that we missed for not being distDependencies
+    # and don't need to visit projects of already visited distributions for which we can use the module descriptor.
+    ignoredEdges = [mx.DEP_ANNOTATION_PROCESSOR, mx.DEP_BUILD]
+    mx.walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=ignoredEdges, visitEdge=_visitEdge)
+    if includeProjects:
+        mx.walk_deps(roots=roots, visit=_visit, preVisit=partial(_preVisit, visitProjects=True), ignoredEdges=ignoredEdges, visitEdge=_visitEdge)
+
+    def resolve_direct(dep, src, default_requires=None):
+        """resolve direct requires to `dep` from `src`"""
+        if not (src.isJARDistribution() or src.isLibrary()) or src.get_declaring_module_name() is None:
+            return []
+        if is_unavailable_root_dist(src):
+            # we cannot use as_java_module for the root JARDistribution yet (initialization cycle).
+            # while we could read the distribution's "moduleInfo" attribute to look for "requires" here,
+            # we are going to do that in make_java_module anyway after, so just return the default for now,
+            # and let make_java_module override it with any explicitly specified requires.
+            return default_requires if default_requires is not None else backedges[dep].get(src, [])
+        else:
+            dstModuleDesc = get_dependency_as_module(dep, jdk)
+            srcModuleDesc = get_dependency_as_module(src, jdk)
+            return srcModuleDesc.requires.get(dstModuleDesc.name, [])
+
+    def resolve_indirect(dep, srcs):
+        """resolve indirect transitive requires to `dep`"""
+        all_requires = set()
+        for src, default_requires in srcs.items():
+            all_requires.update(resolve_direct(dep, src, default_requires))
+        return all_requires & {transitive_keyword}
+
+    def dep_with_requires(dep, srcs):
+        if srcs is None:
+            srcs = backedges.get(dep, {})
+        return (
+            dep,
+            {src: resolve_direct(dep, src) for src in srcs},
+            resolve_indirect(dep, srcs),
+        )
+
+    if mx.get_opts().verbose:
+        for (dep, direct, indirect) in (dep_with_requires(*e) for e in mpEntries.items()):
+            mx.log("{prefix}Found module path entry: {dep} {indirect} required by {direct}".format(
+                prefix=f"{[*roots][0]}: " if len(roots) == 1 else "",
+                dep=dep.qualifiedName(),
+                direct={dep.qualifiedName(): list(modifiers) for dep, modifiers in direct.items()},
+                indirect="transitively" if indirect else "directly",
+            ))
+    return (dep_with_requires(*e) for e in mpEntries.items())
