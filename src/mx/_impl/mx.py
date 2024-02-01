@@ -4252,6 +4252,13 @@ def dir_contains_files_recursively(directory, file_pattern):
             return True
     return False
 
+
+def _maybe_fix_external_cygwin_path(p):
+    if is_windows() and p.startswith('/cygdrive/'):
+        p = _check_output_str(['cygpath', '-a', '-w', p]).strip()
+    return p
+
+
 def _cygpathU2W(p):
     """
     Translate a path from unix-style to windows-style.
@@ -11223,7 +11230,7 @@ class GitConfig(VC):
             if self.check_for_git(abortOnError=True):
                 try:
                     out = _check_output_str(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
-                    return out.strip()
+                    return _maybe_fix_external_cygwin_path(out.strip())
                 except subprocess.CalledProcessError:
                     if abortOnError:
                         abort('`git rev-parse --show-toplevel` (root) failed')
@@ -19236,7 +19243,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.8.1")  # GR-49806 gate mx on JDK latest
+version = VersionSpec("7.8.2")  # cygwin git
 
 _mx_start_datetime = datetime.utcnow()
 
