@@ -19245,7 +19245,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.8.2")  # cygwin git
+version = VersionSpec("7.9.0")  # mx mergetool-suite-import
 
 _mx_start_datetime = datetime.utcnow()
 
