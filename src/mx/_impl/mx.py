@@ -19295,7 +19295,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.14.3")  # resource libraries behave like libraries
+version = VersionSpec("7.15.0")  # requires transitive
 
 _mx_start_datetime = datetime.utcnow()
 
