@@ -33,6 +33,7 @@ from __future__ import annotations
 import atexit
 import sys
 import traceback
+from types import ModuleType
 from typing import List, Optional
 
 from .._impl import mx
@@ -45,19 +46,49 @@ _exit_handler_set = False
 
 class ModuleInterceptor:
     def __init__(self, thisname, targetname, allowed_internal_reads, allowed_writes=None):
+        """
+        This class mimics a python module and intercepts all accesses, that's why we have to access our instance fields
+        through ``__dict__``.
+        """
+        allowed_internal_reads = allowed_internal_reads or []
+        allowed_writes = allowed_writes or []
+        this_module = sys.modules[thisname]
+        target_module = sys.modules[targetname]
+
         self.__dict__["_thisname"] = thisname
-        self.__dict__["_allowed_internal_reads"] = allowed_internal_reads or []
-        self.__dict__["_allowed_writes"] = allowed_writes or []
-        self.__dict__["_thismodule"] = sys.modules[thisname]
-        self.__dict__["_othermodule"] = sys.modules[targetname]
+        self.__dict__["_allowed_internal_reads"] = allowed_internal_reads
+        self.__dict__["_allowed_writes"] = allowed_writes
+        self.__dict__["_this_module"] = this_module
+        self.__dict__["_target_module"] = target_module
+        # Set of names for which reads should be redirected to the target module
+        # Only symbols exported by the module and the allowed internal reads are redirected, everything else does not
+        # need to be (such accesses shouldn't happen in the first place, since they either access non-exported symbols
+        # or indirect imports).
+        self.__dict__["_redirected_reads"] = set(target_module.__all__ + allowed_internal_reads)
+        # Set of names for which writes should be redirected to the target module
+        self.__dict__["_redirected_writes"] = set(allowed_writes)
 
-    def _get_target(self, name, is_set: bool):
-        if name.startswith("__"):
-            return self.__dict__["_thismodule"]
+    def _get_target(self, name, is_set: bool) -> ModuleType:
+        """
+        Logic how a given access is redirected.
 
+        Accesses are either not redirected (returns ``_thismdoule``, the proxy module that created the interceptor) or
+        redirected to ``_target_module``, the module that is being proxied.
+
+        Proxying is important to ensure changes to global variables are observed correctly.
+        If client code changes a global variable in mx, that write should happen in the module where the symbol was
+        defined and not in the proxy, otherwise internal code may not see the write.
+        If mx code changes a global variable, client code accessing that variable through a proxy should read the
+        updated value, so such accesses need to be redirected to the original module.
+
+        :param name: The name of the symbol being accessed
+        :param is_set: Whether this access is a set (True) or a get (False)
+        :return: The python module on which this access should be performed on
+        """
         mem_name = f"{self.__dict__['_thisname']}.{name}"
 
-        if name.startswith("_"):
+        # We do not treat double underscore symbols (dunders) as internal
+        if name.startswith("_") and not name.startswith("__"):
             if not is_set and name not in self.__dict__["_allowed_internal_reads"]:
                 mx.abort(f"Disallowed read of internal symbol detected: {mem_name}")
 
@@ -69,9 +100,10 @@ class ModuleInterceptor:
         if is_set and name not in self.__dict__["_allowed_writes"]:
             mx.abort(f"Disallowed write to {mem_name}")
 
-        if not hasattr(self.__dict__["_thismodule"], name):
-            return self.__dict__["_othermodule"]
-        return self.__dict__["_thismodule"]
+        if name in self.__dict__["_redirected_writes" if is_set else "_redirected_reads"]:
+            return self.__dict__["_target_module"]
+        else:
+            return self.__dict__["_this_module"]
 
     def __setattr__(self, name, value):
         target = self._get_target(name, True)
@@ -91,10 +123,8 @@ def redirect(
     thisname: str, allowed_internal_reads: Optional[List[str]] = None, allowed_writes: Optional[List[str]] = None
 ):
     """
-    Redirects all attribute accesses on the ``thisname`` module to the
-    ``mx._impl.{thisname}`` module.
-
-    The only exception are builtins (names starting with two underscores).
+    Redirects attribute accesses on the ``thisname`` module to the ``mx._impl.{thisname}`` module.
+    For the exact rules which accesses are redirected, see :class:`ModuleInterceptor`
 
     Produces warnings for accesses to internal symbols (which should not be accessed from the outside) that are not
     explicitly allowed in ``allowed_internal_reads``.
