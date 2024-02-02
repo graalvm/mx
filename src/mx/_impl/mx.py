@@ -309,6 +309,7 @@ __all__ = [
     "current_mx_command",
     "main",
     "version",
+    "JavaCompliance", # Re-export from mx_javacompliance
 ]
 
 import sys
