@@ -795,6 +795,21 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     for module in getattr(project, 'requires', []):
                         requires.setdefault(module, set())
 
+                    # check for missing requires based on imported packages.
+                    allmodules = modulepath + jdk_modules
+                    for pkg in itertools.chain(project.imported_java_packages(projectDepsOnly=False), getattr(project, 'imports', [])):
+                        # Only consider packages not defined by the module we're creating. This handles the
+                        # case where we're creating a module that will upgrade an existing upgradeable
+                        # module in the JDK such as jdk.graal.compiler.
+                        if pkg not in module_packages:
+                            module, visibility = lookup_package(allmodules, pkg, moduleName)
+                            if module and module.name != moduleName and module.name != 'java.base':
+                                if module.name not in requires and module.name not in concealedRequires:
+                                    if module in jdk_modules:
+                                        # ignore missing jdk modules
+                                        continue
+                                    mx.abort(f"{moduleName} ({dist}) needs to require {module.name} to be able to read {visibility} package {pkg}.")
+
                 if not module_info:
                     # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
                     # all packages are exported.
