@@ -913,6 +913,9 @@ suite = {
       "dependencies" : [
         "JUNIT",
       ],
+      "requires" : [
+        "java.management",
+      ],
       "javaCompliance" : "1.8+",
       "checkstyleVersion" : "8.36.1",
       "graalCompilerSourceEdition": "ignore",
