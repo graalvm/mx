@@ -1358,7 +1358,9 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
     def _visit(dep, edge):
         if not includeSelf and dep in roots:
             return
-        if (dep.isJARDistribution() or dep.isLibrary()) and dep.get_declaring_module_name() is not None:
+        # Note: although we're only interested in module dependencies, libraries
+        # that do not define a module can still be included as automatic modules.
+        if (dep.isJARDistribution() and dep.get_declaring_module_name() is not None) or dep.isLibrary():
             srcs = mpEntries.setdefault(dep, backedges_by_dep.get(dep))
             assert srcs is not None or dep in roots, dep
 
