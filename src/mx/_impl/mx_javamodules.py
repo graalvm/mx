@@ -806,9 +806,12 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             if module and module.name != moduleName and module.name != 'java.base':
                                 if module.name not in requires and module.name not in concealedRequires:
                                     if module in jdk_modules:
-                                        # ignore missing jdk modules
-                                        continue
-                                    mx.abort(f"{moduleName} ({dist}) needs to require {module.name} to be able to read {visibility} package {pkg}.")
+                                        # no explicit "requires" found; search for transitively required jdk modules.
+                                        # e.g.: requires jdk.management" implies requires transitive java.management.
+                                        if module in get_transitive_closure_from_requires(requires, allmodules):
+                                            mx.log(f"Found module {module.name} required for imported package {pkg} in transitive closure of {moduleName}.")
+                                            continue
+                                    mx.abort(f"Module {moduleName} ({dist}) needs to require {module.name} ({module.dist}) to be able to read {visibility} package {pkg}.")
 
                 if not module_info:
                     # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
