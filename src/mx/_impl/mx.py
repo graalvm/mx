@@ -14944,7 +14944,7 @@ class JDKConfig(Comparable):
                     a = parts[0]
                     if a == 'requires':
                         module = parts[-1]
-                        modifiers = parts[1:-2] if len(parts) > 2 else []
+                        modifiers = parts[1:-1] if len(parts) > 2 else []
                         requires[module] = modifiers
                     elif a == 'boot':
                         boot = parts[1] == 'true'
