@@ -797,6 +797,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
                     # check for missing requires based on imported packages.
                     allmodules = modulepath + jdk_modules
+                    missing_requires = defaultdict(partial(defaultdict, list))
                     for pkg in itertools.chain(project.imported_java_packages(projectDepsOnly=False), getattr(project, 'imports', [])):
                         # Only consider packages not defined by the module we're creating. This handles the
                         # case where we're creating a module that will upgrade an existing upgradeable
@@ -809,9 +810,27 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                         # no explicit "requires" found; search for transitively required jdk modules.
                                         # e.g.: requires jdk.management" implies requires transitive java.management.
                                         if module in get_transitive_closure_from_requires(requires, allmodules):
-                                            mx.log(f"Found module {module.name} required for imported package {pkg} in transitive closure of {moduleName}.")
+                                            mx.logv(f"Found module {module.name} required for imported package {pkg} in transitive closure of {moduleName}.")
                                             continue
-                                    mx.abort(f"Module {moduleName} ({dist}) needs to require {module.name} ({module.dist}) to be able to read {visibility} package {pkg}.")
+
+                                    missing_requires[module][visibility].append(pkg)
+
+                    # automatically add missing requires, but print a warning
+                    if missing_requires:
+                        for required_module, reads in missing_requires.items():
+                            requires.setdefault(required_module.name, set())
+
+                            mx.warn(f"Module {moduleName} ({dist.qualifiedName()}) requires {required_module.name} ({required_module.dist.qualifiedName()}) in order to read " +
+                                    (", and ".join((f'{vis} package(s): {", ".join(pkgs)}' for vis, pkgs in reads.items()))))
+
+                        mx.warn('Module {moduleName} ({dist}): automatically included the following missing "requires": [{requires}]. '
+                                'To fix this warning, please explicitly declare them as "requires" or "distDependencies" in {dist} ({origin}), '
+                                'or as "requires transitive" in any of its transitive dependencies.'.format(
+                            moduleName=moduleName,
+                            dist=dist.qualifiedName(),
+                            requires=", ".join(sorted((f'"{mod.name}"' for mod in missing_requires))),
+                            origin=":".join(map(str, dist.origin())) or dist.suite.suite_py(),
+                        ))
 
                 if not module_info:
                     # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
