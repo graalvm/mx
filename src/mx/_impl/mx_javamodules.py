@@ -574,9 +574,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 ):
                     if direct_requires is not None:
                         # direct distribution dependency that this this module *requires*.
-                        # we assume "requires transitive" by default, although that still
+                        # we assume non-transitive "requires" by default, although that
                         # may be overridden by an explicit "requires" entry in "moduleInfo"
-                        # to a non-transitive "requires" or a "requires static" (see below).
+                        # to a "requires transitive" or "requires static" (see below).
                         reads = True
                         requires_modifiers = direct_requires
                         if 'transitive' in direct_requires:
@@ -1383,8 +1383,7 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
             else:
                 src_mod = src
             srcs = backedges_by_dep.setdefault(dst, {})
-            # default requires is transitive for distDependencies (but not for dependencies of projects or libraries)
-            default_requires = [transitive_keyword] if edge.kind == mx.DEP_STANDARD and src.isJARDistribution() else []
+            default_requires = [] # empty or {'transitive'}
             srcs.setdefault(src_mod, set()).update(default_requires)
     def _preVisit(dst, edge, visitProjects=False):
         if not isinstance(dst, mx.ClasspathDependency):
