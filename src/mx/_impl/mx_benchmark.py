@@ -2030,12 +2030,15 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     """Base class for JMH based benchmark suites."""
 
     jmh_result_file = "jmh_result.json"
+    """
+    Deprecated. Use the ``get_jmh_result_file`` method instead
+    """
 
     def get_jmh_result_file(self, bm_suite_args: List[str]) -> Optional[str]:
         """
         :return: The path to the JMH results file or None, if no result file should be generated
         """
-        return JMHBenchmarkSuiteBase.jmh_result_file
+        return "jmh_result.json"
 
     def extraRunArgs(self, bm_suite_args):
         result_file = self.get_jmh_result_file(bm_suite_args)
