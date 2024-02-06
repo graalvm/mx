@@ -119,7 +119,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, MutableSequence, List
+from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List
 
 from . import mx
 
@@ -834,7 +834,7 @@ class BaseRule(Rule):
         raise NotImplementedError()
 
     def parse(self, text) -> Iterable[DataPoint]:
-        datapoints: MutableSequence[DataPoint] = []
+        datapoints: List[DataPoint] = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(self.parseResults(text)):
@@ -1191,7 +1191,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
-        datapoints: MutableSequence[DataPoint] = []
+        datapoints: List[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
         for t in self._trackers:
             rules += t.get_rules(bmSuiteArgs)
