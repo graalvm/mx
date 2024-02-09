@@ -350,7 +350,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod, abstractproperty
-from typing import Callable, IO, AnyStr, Union
+from typing import Callable, IO, AnyStr, Union, Iterable
 
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
@@ -7578,14 +7578,20 @@ class JavaProject(Project, ClasspathDependency):
             checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
         return config, checkstyleVersion, checkstyleProj
 
-    def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False, includeGenSrc=False):
+    def find_classes_with_annotations(self, pkgRoot, annotations: Iterable[str], includeInnerClasses=False, includeGenSrc=False):
         """
         Scan the sources of this project for Java source files containing a line starting with 'annotation'
         (ignoring preceding whitespace) and return a dict mapping fully qualified class names to a tuple
         consisting of the source file and line number of a match.
         """
 
-        matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
+        def matches(line: str) -> bool:
+            for a in annotations:
+                if line == a or line.startswith(a + "("):
+                    return True
+
+            return False
+
         return self.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses, includeGenSrc)
 
     def find_classes_with_matching_source_line(self, pkgRoot, function, includeInnerClasses=False, includeGenSrc=False):
