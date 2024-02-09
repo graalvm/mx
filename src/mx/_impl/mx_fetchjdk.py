@@ -100,12 +100,13 @@ def fetch_jdk(args):
                     mx.abort(f'Error retrieving {sha_url}: {e}')
 
                 mx.download_file_with_digest(artifact, archive_location, [url], digest, resolve=True, mustExist=True, sources=False)
-                untar = mx.TarExtractor(archive_location)
+
+                extractor = mx.Extractor.create(archive_location)
 
                 mx.log(f"Installing {artifact}{fraction} to {final_path}...")
 
                 try:
-                    untar.extract(extracted_path)
+                    extractor.extract(extracted_path)
                 except:
                     mx.rmtree(temp_dir, ignore_errors=True)
                     mx.abort("Error parsing archive. Please try again")
