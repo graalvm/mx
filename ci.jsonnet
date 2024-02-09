@@ -135,14 +135,11 @@ local with(platform, java_release, timelimit="15:00") = {
     },
 
     fetchjdk_test:: self.with_name("fetch-jdk-test") + {
-        local base_dir = "./fetch-jdk-test-folder",
+        local base_dir = path("./fetch-jdk-%s-test-folder" % java_release),
 
         run: [
             [mx, "fetch-jdk", "--jdk-id", "labsjdk-ce-%s" % java_release, "--to", base_dir, "--alias", "jdk-%s" % java_release],
             [exe(base_dir + "/jdk-%s/bin/java" % java_release), "-version"],
-        ],
-        teardown: [
-            ["rm", "-rf", "$base_dir"],
         ],
     },
 
@@ -231,6 +228,7 @@ local with(platform, java_release, timelimit="15:00") = {
     local builds = [
         with(common.linux_amd64, self.primary_jdk_version).gate,
         with(common.linux_amd64, self.primary_jdk_version).fetchjdk_test,
+        with(common.windows_amd64, self.primary_jdk_version).fetchjdk_test,
         with(common.linux_amd64, self.primary_jdk_version).bisect_test,
         with(common.windows_amd64, self.primary_jdk_version).gate,
         with(common.darwin_amd64, self.primary_jdk_version, timelimit="25:00").gate,

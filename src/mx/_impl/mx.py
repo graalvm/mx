@@ -19245,7 +19245,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.9.0")  # mx mergetool-suite-import
+version = VersionSpec("7.9.1")  # GR-51960: make fetch-jdk work on Windows
 
 _mx_start_datetime = datetime.utcnow()
 
