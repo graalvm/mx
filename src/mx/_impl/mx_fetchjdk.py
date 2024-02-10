@@ -635,7 +635,15 @@ class _JdkBinary(object):
         keywords['filename'] = self._filenames
         version_suffix = _instantiate('{version|jvmci-tag}', keywords, source, jdk_def)[0]
         self._folder_name = f"{jdk_id}-{version_suffix}"
-        if build_id: self._folder_name += '+' + build_id
+        if build_id:
+            prefix = f'jdk-{version}+'
+            if build_id.startswith(prefix):
+                # Remove redundant info from folder name. Example:
+                #   oraclejdk17-17.0.7+jdk-17.0.7+8 ->
+                #   oraclejdk17-17.0.7+8
+                self._folder_name += '+' + build_id[len(prefix):]
+            else:
+                self._folder_name += '+' + build_id
         self._keywords = keywords
 
     def urls(self):
