@@ -115,7 +115,7 @@ def mergetool_suite_import(args):
                 exec(local_fp.read(), my_globals, my_locals)  # pylint: disable=exec-used
             except Exception as ex:  # pylint: disable=broad-except
                 _fallback(f"Cannot load suite file {filename}: {ex}")
-            return locals.get("suite", {}).get("imports", {}).get("suites")
+            return my_locals.get("suite", {}).get("imports", {}).get("suites")
 
     def to_import_dict(suite_imports):
         return {s["name"]: s["version"] for s in suite_imports if "version" in s}
