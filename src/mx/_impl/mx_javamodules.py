@@ -564,7 +564,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         base_uses = set()
 
         modulepath = []
-        implicit_requires_transitive_names = set()
         with mx.Timer('requires', times):
             if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
                 module_deps = dist.archived_deps()
@@ -579,8 +578,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         # to a "requires transitive" or "requires static" (see below).
                         reads = True
                         requires_modifiers = direct_requires
-                        if 'transitive' in direct_requires:
-                            implicit_requires_transitive_names.add(dep.get_declaring_module_name())
                     elif indirect_requires:
                         # inherited dependency declared as "requires transitive".
                         # technically, it's already transitively required, regardless of whether
@@ -742,7 +739,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 # override automatic qualifiers like transitive if they are explicitly specified in the module info
                 # this allows to customize the default behavior.
                 requires[name] = qualifiers
-                implicit_requires_transitive_names.discard(name)
             base_uses.update(module_info.get('uses', []))
             _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
 
@@ -754,16 +750,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             requires_concealed = module_info.get('requiresConcealed', None)
             if requires_concealed is not None:
                 parse_requiresConcealed_attribute(jdk, requires_concealed, concealedRequires, None, dist, modulepath)
-
-        if len(implicit_requires_transitive_names) > 0:
-            mx.warn('Module {} ({}) has implicit `requires transitive` dependency on the following module(s): {}. '
-                    'Please consider adding explicit "requires": {} or {} to the "moduleInfo" attribute.'.format(
-                        moduleName,
-                        dist.qualifiedName(),
-                        ", ".join(implicit_requires_transitive_names),
-                        [f"transitive {name}" for name in implicit_requires_transitive_names],
-                        str(list(implicit_requires_transitive_names)).replace("'",'"'),
-                    ))
 
         enhanced_module_usage_info = dist.suite.getMxCompatibility().enhanced_module_usage_info()
 
