@@ -203,7 +203,7 @@ local with(platform, java_release, timelimit="15:00") = {
     # Applies and pushes a tag equal to `mx version` if no such
     # tag already exists.
     post_merge_tag_version:: self.with_name("post-merge-tag-version") + {
-      targets: ["post-merge"],
+      targets: ["post-merge", "deploy"],
       run: [
           ["set-export", "MX_NEW_TAG", [mx, "version"]],
           ["git", "show", "$MX_NEW_TAG", "||", "git", "tag", "$MX_NEW_TAG", "HEAD"],

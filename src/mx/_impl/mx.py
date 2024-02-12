@@ -6056,13 +6056,22 @@ class AbstractTARDistribution(AbstractDistribution):
         """Directories with headers provided by this archive."""
         return [join(self.get_output(), i) for i in self._include_dirs]
 
+    def compress_locally(self):
+        return False
+
+    def compress_remotely(self):
+        return True
+
     def remoteExtension(self):
-        return 'tar.gz'
+        return 'tar.gz' if self.compress_remotely() else 'tar'
 
     def localExtension(self):
-        return 'tar'
+        return 'tar.gz' if self.compress_locally() else 'tar'
 
     def postPull(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
+        if self.compress_locally() or not self.compress_remotely():
+            return None
         assert f.endswith('.gz')
         logv(f'Decompressing {f}...')
         tarfilename = f[:-len('.gz')]
@@ -6082,6 +6091,10 @@ class AbstractTARDistribution(AbstractDistribution):
         return tarfilename
 
     def prePush(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
+        if not self.compress_remotely() or self.compress_locally():
+            return f
+        assert f.endswith('.tar')
         tgz = f + '.gz'
         logv(f'Compressing {f}...')
         if AbstractTARDistribution._has_gzip():
@@ -6138,6 +6151,7 @@ class AbstractZIPDistribution(AbstractDistribution):
         pass
 
     def postPull(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
         if self.compress_locally() or not self.compress_remotely():
             return None
         logv(f'Decompressing {f}...')
@@ -6154,6 +6168,7 @@ class AbstractZIPDistribution(AbstractDistribution):
         return tmp_file
 
     def prePush(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
         if not self.compress_remotely() or self.compress_locally():
             return f
         logv(f'Compressing {f}...')
@@ -16237,14 +16252,14 @@ class Archiver(SafeFileCreation):
                 self._add_link = self._add_link_zip
             elif self.kind == 'tar':
                 if self.compress:
-                    warn("Archiver created with compress=True and kind=tar, ignoring compression setting")
+                    warn(f"Archiver created with compress={self.compress} and kind=tar, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
                 self._add_link = self._add_link_tar
-            elif self.kind == 'tgz':
-                if self.compress:
-                    warn("Archiver created with compress=False and kind=tgz, ignoring compression setting")
+            elif self.kind in ('tgz', 'tar.gz'):
+                if not self.compress:
+                    warn(f"Archiver created with compress={self.compress} and kind={self.kind}, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w:gz')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
@@ -19279,7 +19294,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.10.0")  # [GR-50022] Benchmark cleanup
+version = VersionSpec("7.11.0")  # locally compressed and remotely uncompressed tar distributions
 
 _mx_start_datetime = datetime.utcnow()
 
