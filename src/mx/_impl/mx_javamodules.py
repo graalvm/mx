@@ -1308,15 +1308,28 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
     def is_unavailable_root_dist(dist):
         return dist.isJARDistribution() and dist in roots and (len(roots) == 1 or as_java_module(dist, jdk, fatalIfNotCreated=False) is None)
 
+    def merge_dicts(this: dict, other: dict, merge=set.union):
+        """Merges two dicts into a new dict of the same type, using `merge` to join values that appear in both dicts."""
+        if not other:
+            return this
+        if not this:
+            return other
+        merged = this.copy()
+        for key, val in other.items():
+            merged[key] = val if key not in merged else merge(merged[key], val)
+        return merged
+
     mpEntries = {}
-    backedges = {}
+    # {dst: {src: requires_modifiers}} mapping where src modules have a requires dependency on dst
+    backedges_by_dep = {}
+    backedges_by_name = {}
     def _visitEdge(src, dst, edge):
         if edge and (dst.isJARDistribution() or dst.isLibrary()):
             if src.isJavaProject() and (module_distribution := src.get_declaring_module_distribution()) is not None:
                 src_mod = module_distribution
             else:
                 src_mod = src
-            srcs = backedges.setdefault(dst, {})
+            srcs = backedges_by_dep.setdefault(dst, {})
             # default requires is transitive for distDependencies (but not for dependencies of projects or libraries)
             default_requires = [transitive_keyword] if edge.kind == mx.DEP_STANDARD and src.isJARDistribution() else []
             srcs.setdefault(src_mod, set()).update(default_requires)
@@ -1340,14 +1353,22 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
         if edge and edge.src.isJARDistribution() and dst.isProject():
             # skip projects of already visited distributions
             # effectively, this means we only visit projects of the root distribution(s)
-            return visitProjects and edge.src not in backedges
+            return visitProjects and edge.src not in backedges_by_dep
         return True
     def _visit(dep, edge):
         if not includeSelf and dep in roots:
             return
         if (dep.isJARDistribution() or dep.isLibrary()) and dep.get_declaring_module_name() is not None:
-            srcs = mpEntries.setdefault(dep, backedges.get(dep))
+            srcs = mpEntries.setdefault(dep, backedges_by_dep.get(dep))
             assert srcs is not None or dep in roots, dep
+
+            if not is_unavailable_root_dist(dep):
+                # consider explicit requires of modules that are not in distDependencies as additional
+                # dependency edges since mx does not require transitive dependencies to be repeated.
+                moduleDesc = get_dependency_as_module(dep, jdk)
+                for name, modifiers in moduleDesc.requires.items():
+                    if transitive_keyword in modifiers:
+                        backedges_by_name.setdefault(name, {})[dep] = modifiers
 
     # Although it should not make a difference, not visiting projects in the first pass seems more reliable
     # in case of any ambiguities, and module information should be wholly provided by distributions anyway.
@@ -1367,7 +1388,7 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
             # while we could read the distribution's "moduleInfo" attribute to look for "requires" here,
             # we are going to do that in make_java_module anyway after, so just return the default for now,
             # and let make_java_module override it with any explicitly specified requires.
-            return default_requires if default_requires is not None else backedges[dep].get(src, [])
+            return default_requires if default_requires is not None else backedges_by_dep[dep].get(src, [])
         else:
             dstModuleDesc = get_dependency_as_module(dep, jdk)
             srcModuleDesc = get_dependency_as_module(src, jdk)
@@ -1382,7 +1403,9 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
 
     def dep_with_requires(dep, srcs):
         if srcs is None:
-            srcs = backedges.get(dep, {})
+            srcs = backedges_by_dep.get(dep, {})
+        if dep.isJARDistribution():
+            srcs = merge_dicts(srcs, backedges_by_name.get(dep.get_declaring_module_name(), {}))
         return (
             dep,
             {src: resolve_direct(dep, src) for src in srcs},
