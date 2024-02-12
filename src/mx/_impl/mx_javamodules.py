@@ -1168,9 +1168,18 @@ def get_transitive_closure(roots, observable_modules):
     Gets the transitive closure of the dependencies of a set of root modules
     (i.e. `roots`) with respect to a set of observable modules (i.e. `observable_modules`)
 
-    :param iterable roots: the roots modules (JavaModulesDescriptors or module names) for
+    :param iterable roots: the roots modules (JavaModuleDescriptors or module names) for
                            which the transitive closure is being requested
     :param iterable observable_modules: set of modules in which the transitive dependencies must exist
+    """
+    return get_transitive_closure_common(roots, observable_modules)
+
+def get_transitive_closure_common(roots, observable_modules, requiresPredicate=None):
+    """
+    Common implementation of `get_transitive_closure` and `get_transitive_closure_from_requires`.
+    :param requiresPredicate: an optional predicate that determines if the transitive closure
+                            should include edges with the given requires modifiers (default all)
+    :type requiresPredicate: Optional[Callable[[Collection[str]], bool]]
     """
     name_to_module = {m.name : m for m in observable_modules}
     transitive_closure = set()
@@ -1182,13 +1191,25 @@ def get_transitive_closure(roots, observable_modules):
     def add_transitive(mod):
         if mod not in transitive_closure:
             transitive_closure.add(mod)
-            for name in mod.requires.keys():
-                add_transitive(lookup_module(name))
+            for name, modifiers in mod.requires.items():
+                if requiresPredicate is None or requiresPredicate(modifiers):
+                    add_transitive(lookup_module(name))
     for root in roots:
         if isinstance(root, str):
             root = lookup_module(root)
         add_transitive(root)
     return transitive_closure
+
+def get_transitive_closure_from_requires(requires, observable_modules):
+    """
+    Gets the transitive closure from a set of requires (i.e. `requires`) of a root module
+    with respect to a set of observable modules (i.e. `observable_modules`)
+
+    :param iterable requires: the requires (JavaModuleDescriptors or module names) of the
+                              module for which the transitive closure is being requested
+    :param iterable observable_modules: set of modules in which the transitive dependencies must exist
+    """
+    return get_transitive_closure_common(requires, observable_modules, lambda modifiers: 'transitive' in modifiers)
 
 def parse_requiresConcealed_attribute(jdk, value, result, importer, context, modulepath=None):
     """
