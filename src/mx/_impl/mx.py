@@ -6066,7 +6066,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return 'tar.gz' if self.compress_remotely() else 'tar'
 
     def localExtension(self):
-        return 'tgz' if self.compress_locally() else 'tar'
+        return 'tar.gz' if self.compress_locally() else 'tar'
 
     def postPull(self, f):
         if self.compress_locally() or not self.compress_remotely():
@@ -16253,9 +16253,9 @@ class Archiver(SafeFileCreation):
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
                 self._add_link = self._add_link_tar
-            elif self.kind == 'tgz':
+            elif self.kind in ('tgz', 'tar.gz'):
                 if not self.compress:
-                    warn(f"Archiver created with compress={self.compress} and kind=tgz, ignoring compression setting")
+                    warn(f"Archiver created with compress={self.compress} and kind={self.kind}, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w:gz')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
