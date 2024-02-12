@@ -6050,7 +6050,6 @@ class AbstractTARDistribution(AbstractDistribution):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output=None, **kw_args):
         self._include_dirs = kw_args.pop("include_dirs", [])
         super(AbstractTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, output=output, **kw_args)
-        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
 
     @property
     def include_dirs(self):
@@ -6070,6 +6069,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return 'tar.gz' if self.compress_locally() else 'tar'
 
     def postPull(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
         if self.compress_locally() or not self.compress_remotely():
             return None
         assert f.endswith('.gz')
@@ -6091,6 +6091,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return tarfilename
 
     def prePush(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
         if not self.compress_remotely() or self.compress_locally():
             return f
         assert f.endswith('.tar')
@@ -6132,10 +6133,6 @@ class AbstractTARDistribution(AbstractDistribution):
 
 
 class AbstractZIPDistribution(AbstractDistribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
-        super(AbstractZIPDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs)
-        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
-
     def remoteExtension(self):
         return 'zip'
 
@@ -6154,6 +6151,7 @@ class AbstractZIPDistribution(AbstractDistribution):
         pass
 
     def postPull(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
         if self.compress_locally() or not self.compress_remotely():
             return None
         logv(f'Decompressing {f}...')
@@ -6170,6 +6168,7 @@ class AbstractZIPDistribution(AbstractDistribution):
         return tmp_file
 
     def prePush(self, f):
+        assert not self.compress_locally() or self.compress_remotely(), f"Distribution '{self.name}' has an invalid combination of compression settings: 'self.compress_locally() == {self.compress_locally()}' and 'self.compress_remotely() == {self.compress_remotely()}'"
         if not self.compress_remotely() or self.compress_locally():
             return f
         logv(f'Compressing {f}...')
