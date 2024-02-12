@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
 __all__ = [
     "mx_benchmark_compatibility",
     "JVMProfiler",
@@ -96,6 +98,8 @@ __all__ = [
     "OutputDump",
     "TTYCapturing",
     "gate_mx_benchmark",
+    "DataPoint",
+    "DataPoints",
 ]
 
 import sys
@@ -115,13 +119,15 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Optional, NoReturn
+from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List
 
 from . import mx
 
 _bm_suites = {}
 _benchmark_executor = None
 
+DataPoint = Dict[str, Any]
+DataPoints = Sequence[DataPoint]
 
 def mx_benchmark_compatibility():
     """Get the required compatibility version from the mx primary suite.
@@ -427,7 +433,7 @@ class BenchmarkSuite(object):
     def __init__(self, *args, **kwargs):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
-        self._suite_dimensions = {}
+        self._suite_dimensions: DataPoint = {}
         self._command_mapper_hooks = []
         self._trackers = []
         self._currently_running_benchmark = None
@@ -622,15 +628,13 @@ class BenchmarkSuite(object):
         """
         return []
 
-    def suiteDimensions(self):
+    def suiteDimensions(self) -> DataPoint:
         """Returns context specific dimensions that will be integrated in the measurement
         data.
-
-        :rtype: dict
         """
         return self._suite_dimensions
 
-    def run(self, benchmarks, bmSuiteArgs):
+    def run(self, benchmarks, bmSuiteArgs) -> DataPoints:
         """Runs the specified benchmarks with the given arguments.
 
         More precisely, if `benchmarks` is a list, runs the list of the benchmarks from
@@ -664,7 +668,6 @@ class BenchmarkSuite(object):
                   (e.g. `"numeric"`)
                 - `metric.better` -- `"higher"` if higher is better, `"lower"` otherwise
                 - `metric.iteration` -- iteration number of the measurement (e.g. `0`)
-        :rtype: object
         """
         raise NotImplementedError()
 
@@ -698,12 +701,12 @@ class BenchmarkSuite(object):
         mx benchmark mySuite:* -- --mode=*
 
         to run the suite in all available modes. Overriding this method will allow expanding the
-        "--mode=*"
+        ["--mode=*"]
         to
-        ["--mode=interpreter", "--mode=compiled", "--mode=precompiled"]
+        [["--mode=interpreter"], ["--mode=compiled"], ["--mode=precompiled"]]
         resulting in the benchmark being executed 3 times with these 3 arguments passed in as bmSuiteArgs.
 
-        :returns: A list of arguments resulting from the expansion of bmSuiteArgs.
+        :returns: A list of lists of arguments resulting from the expansion of bmSuiteArgs.
 
         """
         return [bmSuiteArgs]
@@ -764,7 +767,7 @@ class Rule(object):
             return str(path[:Rule.max_string_field_length-len(suffix)] + suffix)
         return _crop
 
-    def parse(self, text):
+    def parse(self, text: str) -> Iterable[DataPoint]:
         """Create a dictionary of variables for every measurement.
 
         :param text: The standard output of the benchmark.
@@ -784,7 +787,7 @@ class Rule(object):
 
 
 class BaseRule(Rule):
-    """A rule parses a raw result and a prepares a structured measurement using a replacement
+    """A rule parses a raw result and prepares a structured measurement using a replacement
     template.
 
     A replacement template is a dictionary that describes how to create a measurement:
@@ -800,31 +803,38 @@ class BaseRule(Rule):
           "metric.iteration": ("$iteration", id),
         }
 
-    When `instantiate` is called, the tuples in the template shown above are
-    replaced with the corresponding named groups from the parsing pattern, and converted
-    to the specified type.
+    The tuples in the template shown above are replaced with a corresponding
+    value by looking up the keys surrounded with angled brackets (``<`` and ``>``)
+    in the dictionary returned by :func:`parseResults` and converting it using
+    the callable in the second element.
 
     Tuples can contain one of the following special variables, prefixed with a `$` sign:
         - `iteration` -- ordinal number of the match that produced the datapoint, among
           all the matches for that parsing rule.
     """
 
+    replacement: dict[str, str | int | float | bool | tuple[str, Callable]]
+    """
+    The replacement template used to produce datapoints.
+
+    The values are either JSON-compatible types or a tuple.
+    Tuples are replaced with parsed values. See the class documentation for more info.
+    """
+
     def __init__(self, replacement):
         self.replacement = replacement
 
-    def parseResults(self, text):
+    def parseResults(self, text: str) -> Sequence[dict]:
         """Parses the raw result of a benchmark and create a dictionary of variables
         for every measurement.
 
         :param text: The standard output of the benchmark.
-        :type text: str
         :return: Iterable of dictionaries with the matched variables.
-        :rtype: iterable
         """
         raise NotImplementedError()
 
-    def parse(self, text):
-        datapoints = []
+    def parse(self, text) -> Iterable[DataPoint]:
+        datapoints: List[DataPoint] = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(self.parseResults(text)):
@@ -833,30 +843,26 @@ class BaseRule(Rule):
                 inst = value
                 if isinstance(inst, tuple):
                     v, vtype = inst
-                    # Instantiate with named captured groups.
+
                     def var(name):
                         if name == "iteration":
                             return str(iteration)
                         else:
                             raise RuntimeError(f"Unknown var {name}")
+                    # Instantiate with variables
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
+                    # Instantiate with captured groups.
                     v = capturepat.sub(lambda vm: m[vm.group(1)], v)
-                    # Convert to a different type.
-                    if vtype is str:
-                        inst = str(v)
-                    elif vtype is int:
-                        inst = int(v)
-                    elif vtype is float:
-                        if isinstance(v, str) and ',' in v and '.' not in v:
-                            # accommodate different locale in float formatting
-                            v = v.replace(',', '.')
-                        inst = float(v)
-                    elif vtype is bool:
-                        inst = bool(v)
-                    elif hasattr(vtype, '__call__'):
-                        inst = vtype(v)
-                    else:
-                        raise RuntimeError(f"Cannot handle object '{v}' of expected type {vtype}")
+
+                    if not callable(vtype):
+                        raise RuntimeError(f"The entry {key}: {value} is not valid. The second element must be callable")
+
+                    if vtype is float and isinstance(v, str) and ',' in v and '.' not in v:
+                        # accommodate different locale in float formatting
+                        v = v.replace(',', '.')
+
+                    # Convert to the requested type
+                    inst = vtype(v)
                 if not isinstance(inst, (str, int, float, bool)):
                     if type(inst).__name__ != 'long': # Python2: int(x) can result in a long
                         raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
@@ -1046,7 +1052,7 @@ class JMHJsonRule(Rule):
     def getBenchmarkNameFromResult(self, result):
         return result["benchmark"]
 
-    def parse(self, text):
+    def parse(self, text) -> Iterable[DataPoint]:
         r = []
         with open(self._prepend_working_dir(self.filename)) as fp:
             for result in json.load(fp):
@@ -1150,7 +1156,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     4. Terminate if none of the specified success patterns was matched.
     5. Use the parse rules on the standard output to create data points.
     """
-    def run(self, benchmarks, bmSuiteArgs):
+    def run(self, benchmarks, bmSuiteArgs) -> DataPoints:
         retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
         datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
         return datapoints
@@ -1159,7 +1165,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise BenchmarkFailureError(message)
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -1185,7 +1191,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
-        datapoints = []
+        datapoints: List[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
         for t in self._trackers:
             rules += t.get_rules(bmSuiteArgs)
@@ -1217,9 +1223,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 if m:
                     self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
 
-            if self.successPatterns():
-                if not any(compiled(pat).search(out) for pat in self.successPatterns()):
-                    self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+            success_patterns = self.successPatterns()
+            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
+                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
@@ -1259,14 +1265,13 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """List of regex patterns which fail the benchmark if not matched."""
         return []
 
-    def rules(self, output, benchmarks, bmSuiteArgs):
+    def rules(self, output, benchmarks, bmSuiteArgs) -> List[Rule]:
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
         :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
-        :rtype: list
         """
         raise NotImplementedError()
 
@@ -1475,7 +1480,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return vm.config_name() if host_vm else "default"
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
 
         if extraRules is None:
             extraRules = []
@@ -1602,11 +1607,11 @@ class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
     @property
-    def bmSuite(self):
+    def bmSuite(self) -> BenchmarkSuite:
         return getattr(self, '_bmSuite', None)
 
     @bmSuite.setter
-    def bmSuite(self, val):
+    def bmSuite(self, val: BenchmarkSuite):
         self._bmSuite = val
 
     @property
@@ -1634,14 +1639,13 @@ class Vm(object): #pylint: disable=R0922
         """Extract vm information."""
         pass
 
-    def rules(self, output, benchmarks, bmSuiteArgs):
+    def rules(self, output, benchmarks, bmSuiteArgs) -> List[Rule]:
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
         :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
-        :rtype: list
         """
         return []
 
@@ -1757,10 +1761,8 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         """Adapts command-line arguments to run the specific VM configuration."""
         raise NotImplementedError()
 
-    def dimensions(self, cwd, args, code, out):
-        """Returns a dict of additional dimensions to put into every datapoint.
-        :rtype: dict
-        """
+    def dimensions(self, cwd, args, code, out) -> DataPoint:
+        """Returns a dict of additional dimensions to put into every datapoint."""
         return {}
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
@@ -2028,9 +2030,22 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     """Base class for JMH based benchmark suites."""
 
     jmh_result_file = "jmh_result.json"
+    """
+    Deprecated. Use the ``get_jmh_result_file`` method instead
+    """
 
-    def extraRunArgs(self):
-        return ["-rff", JMHBenchmarkSuiteBase.jmh_result_file, "-rf", "json"]
+    def get_jmh_result_file(self, bm_suite_args: List[str]) -> Optional[str]:
+        """
+        :return: The path to the JMH results file or None, if no result file should be generated
+        """
+        return "jmh_result.json"
+
+    def extraRunArgs(self, bm_suite_args):
+        result_file = self.get_jmh_result_file(bm_suite_args)
+        if result_file:
+            return ["-rff", result_file, "-rf", "json"]
+        else:
+            return []
 
     def extraVmArgs(self):
         return []
@@ -2052,7 +2067,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
             return True
 
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
-        runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
+        runArgs = self.extraRunArgs(bmSuiteArgs) + self.runArgs(bmSuiteArgs)
 
         if self.profilerNames(bmSuiteArgs) and _is_forking(runArgs):
             mx.warn("Profilers are not currently compatible with the JMH benchmark runner in forked mode.\n" +
@@ -2077,8 +2092,11 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return []
 
     def rules(self, out, benchmarks, bmSuiteArgs):
-        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs),
-            self.extraBenchProperties(bmSuiteArgs))]
+        result_file = self.get_jmh_result_file(bmSuiteArgs)
+        if result_file:
+            return [JMHJsonRule(result_file, self.benchSuiteName(bmSuiteArgs), self.extraBenchProperties(bmSuiteArgs))]
+        else:
+            return []
 
     def jmhArgs(self, bmSuiteArgs):
         vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
@@ -2335,6 +2353,9 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
             allOut = ''
             lastDims = None
             jsons = []
+
+            jmh_result_file = self.get_jmh_result_file(bmSuiteArgs)
+
             for benchmark in benchmarks_to_run:
                 individualBmArgs = vmArgs + ['--'] + jmhOptions + [benchmark]
                 print("Individual JMH benchmark run:", benchmark)
@@ -2345,18 +2366,21 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
                 if lastDims is not None and lastDims != dims:
                     mx.abort(f"Expected equal dims\nlast: {lastDims}\ncurr: {dims}")
                 lastDims = dims
-                json = open(JMHBenchmarkSuiteBase.jmh_result_file).read().strip()
-                assert json[0] == '[' and json[-1] == ']'
-                jsons += [json[1:-1]]
+                if jmh_result_file:
+                    with open(jmh_result_file) as result_file:
+                        json = result_file.read().strip()
+                        assert json[0] == '[' and json[-1] == ']'
+                        jsons += [json[1:-1]]
 
             # Combine the collected JSON results into one result file.
-            with open(JMHBenchmarkSuiteBase.jmh_result_file, 'w') as result_file:
-                result_file.write('[')
-                for index, json in enumerate(jsons):
-                    result_file.write(json)
-                    if index < len(jsons) - 1:
-                        result_file.write(',\n')
-                result_file.write(']')
+            if jmh_result_file:
+                with open(jmh_result_file, "w") as result_file:
+                    result_file.write('[')
+                    for index, json in enumerate(jsons):
+                        result_file.write(json)
+                        if index < len(jsons) - 1:
+                            result_file.write(',\n')
+                    result_file.write(']')
             return 0, allOut, lastDims
         else:
             return super(JMHDistBenchmarkSuite, self).runAndReturnStdOut(benchmarks, bmSuiteArgs)
