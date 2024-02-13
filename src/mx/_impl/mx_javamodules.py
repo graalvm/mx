@@ -1480,8 +1480,3 @@ def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=
                 indirect="transitively" if indirect else "directly",
             ))
     return (dep_with_requires(*e) for e in mpEntries.items())
-
-@mx.command('mx', 'modulepath')
-def print_modulepath(args):
-    """Print module path for the specified dependencies"""
-    print(":".join(e.classpath_repr() for e, _, _ in module_path_entries(args, mx.get_jdk())))
