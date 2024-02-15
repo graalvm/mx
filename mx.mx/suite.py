@@ -157,26 +157,26 @@ suite = {
     },
 
     "JUNIT-JUPITER": {
-      "digest": "sha512:026e582f05e04a6306fa514118bb3e63fadb43927b7873c2375ea34ec6fb8a605c38b16e9e290aabbe59363ce80277d6410cb00f50da1cf38a569e910b66c53a",
-      "sourceDigest": "sha512:261e62db845b133ee533676255e3d4961911cd97dba8962e90b580d6fc87b4c813956d50d688341a4e603d3463db0f340e9c440b573222b98a80350821029cd6",
+      "digest": "sha512:d10edf43b62c5947b50c506e84d65829138970acd6a85c066d7c6ca192477bed197af77866f6b18ea7b8ebc8a1a16666dc7982a967533079e8927a65aa3b484d",
+      "sourceDigest": "sha512:d7f1de1afb4a475b80fcd07edf98d77dc3de5378dee9b76dcd2f2dd30784015fba4d06532851333246c227208a4d49ce7bf8b174d0454fb71b331c6f5d4d49a9",
       "license": "EPL-2.0",
       "dependencies": ["JUNIT-JUPITER-API", "JUNIT-JUPITER-PARAMS"],
       "maven": {
         "groupId": "org.junit.jupiter",
         "artifactId": "junit-jupiter",
-        "version": "5.8.1",
+        "version": "5.10.2",
       }
     },
 
     "JUNIT-JUPITER-API": {
-        "digest": "sha512:4d5248e43e5aba255875c0ca8f529a360f89c9275e58c87de30b5a7c10b569c7eeb1e31401f9be0c2c0b968adb12b2adc6b402aeb99671dc30bbf3a30b0f9924",
-        "sourceDigest": "sha512:3c6b0deb3e2d6c11e7c501425dcd5d406ffb03b404cba69c4a8b12879b012f6658f092085db31c69a6f69f02aef370acbdbecf9586064bfb59933914552eefea",
+        "digest": "sha512:7dfb74405cc011bf0b9176f2093686680225ef32658ec82b55bad9857eb38999b8ac25c23f920127b426120bfc20938f2d9dc8df111a509d9858d350e5ff7685",
+        "sourceDigest": "sha512:c96241f2cb6fe40a3e9b5639eb378ccbfa7d0efe0ffb232856d5248630a8e4a64220bef9aa86f5e38e91cf3e7d8b5926b707769674c20ee7ac7f044336eabda9",
         "license": "EPL-2.0",
         "dependencies": ["APIGUARDIAN-API", "OPENTEST4J"],
         "maven": {
             "groupId": "org.junit.jupiter",
             "artifactId": "junit-jupiter-api",
-            "version": "5.8.1",
+            "version": "5.10.2",
         }
     },
 
@@ -192,110 +192,110 @@ suite = {
     },
 
     "OPENTEST4J": {
-        "digest": "sha512:17f77797a260eb2bd1666a90e25efc79a5413afa9df1c1cb6c4cd1949d61c38b241e3bb20956396b5f54d144720303d72a2ac00bc5bf245a260a3c3099e01c74",
-        "sourceDigest": "sha512:273324c995654f0c7edc5dbf7cd9233f7f3fe400c45e042669f3c25d6476485a738e6baf8f61d08e8a5559dd0b07deae77849059d910d53deabd36424d0fa4ab",
+        "digest": "sha512:78fc698a7871bb50305e3657893c10500595f043348d875f57bc39ca4a6a51eda3967b7c8c8a7ec3e8f85f2171bca4aa98823e912e416e87e81c6ba5b70a37c3",
+        "sourceDigest": "sha512:f54436dbd733fdae98b984c2c42ef4d1fc114217155b044c21f6e44f0c9e509156423c16aa73aa2d6acae00d2677e7c072aaea36836b21a440df6abe08d44b8d",
         "license": "EPL-2.0",
         "dependencies": ["JUNIT-PLATFORM-COMMONS"],
         "maven": {
             "groupId": "org.opentest4j",
             "artifactId": "opentest4j",
-            "version": "1.2.0",
+            "version": "1.3.0",
         }
     },
 
     "JUNIT-PLATFORM-COMMONS": {
-        "digest": "sha512:bb838b278ad803de6443b7331718786b530d241d79170b3898c7d2f199aec81f5a6d4895bf15210f0060b1d5cc7958b184c8c73dd73cfc60fe988557f5d62da5",
-        "sourceDigest": "sha512:174ca66db180f8145d134956926bde994a13c81c26d6524c1b9dd8ddd5722b2fbeeec76a53e40193303e9aa030015afcb52529bea5d7c73c1605f222a52b1dd4",
+        "digest": "sha512:aa739ee21b91fd4476aa5f9ad975f83cd440b6fbac71c8cc15816e3924710c0d70838465ee22a1b7390c2bae42ef1809868fa7ae0169b75f437cd95baac539d1",
+        "sourceDigest": "sha512:8963ff47fca9af4390762f40366d2ff5ab54d4992aea7947ec3055b5f16e54229aae81fa75996400f31a0cc522b177d93a342eeea3e63d48a55fe85626ac00a1",
         "license": "EPL-2.0",
         "dependencies": ["APIGUARDIAN-API"],
         "maven": {
             "groupId": "org.junit.platform",
             "artifactId": "junit-platform-commons",
-            "version": "1.8.1",
+            "version": "1.10.2",
         }
     },
 
     "JUNIT-JUPITER-PARAMS": {
-      "digest": "sha512:7829e36b9bbe910274e46a1424f0e99fb15c584320de1264d26793b1cd857de3d5125da08880fca9a20492adeed6feaa343e40c65607ab4f448395f5835d7b75",
-      "sourceDigest": "sha512:06b8679489377d310272c9dc51a5eb676128b52a52ae4ec4c3257e33f6603f5b882d08455d42bbcb4d21a397cb7f9aea08af3ac932bda43d8f9cd2f2659918c4",
+      "digest": "sha512:002b2010769413f1bc86cf95a48f679eeb7a372379e8f401f892d03bd1089483937a77f08c095579f81b8f0a27896fac6bebdc4c09a2dff9f5459e09207ac0d8",
+      "sourceDigest": "sha512:776e597de5a3305f5fdbe33f9d1c948829e544d8e83d32af7f52014b58472a0df1e8cc9f66084301a137bfad056c5ac693fe2e9219ec5359c81d435bd8a15941",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API"],
       "maven": {
         "groupId": "org.junit.jupiter",
         "artifactId": "junit-jupiter-params",
-        "version": "5.8.1",
+        "version": "5.10.2",
       }
     },
 
     "JUNIT-PLATFORM-ENGINE": {
-      "digest": "sha512:840d67896a10a70de95eaf3e0bbd267f30d2ffed19672162bdc8c62deaf8d25731ccb8b33dae46b746e90e7e93c99f95923ba64a18ea61bfdee4abe6353d6a9a",
-      "sourceDigest": "sha512:c63dd816d00db7c08c87a6f8757ecd7bc73c519af41b60389720f44fcf34df003a8beb7b7c29742ed0a9fd0fe4629a9f874fc1826f7a816c7212d9dc396a799c",
+      "digest": "sha512:5ca468aff73099673266e4e1431189023b0a660292f4f6c101dc4b03b8ab3643392731aa55455bf3a5079331a563dacda0c6b3cf3df64563ca6e0201af609e27",
+      "sourceDigest": "sha512:0a97eaec00892f7c9e5924279613e0e41c07ecd7cdafa8b5852de1c0468fc5e8c71becfdbe0ea864959d6913308bc50c0f08565628bd9a295aa8e5a57d2eac2f",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "OPENTEST4J"],
       "maven": {
         "groupId": "org.junit.platform",
         "artifactId": "junit-platform-engine",
-        "version": "1.8.1",
+        "version": "1.10.2",
       }
     },
 
     "JUNIT-JUPITER-ENGINE": {
-      "digest": "sha512:e98d1b5fa352bef630c07fdb42da582633b9fc092cbe7ab273da3dd7b33c812f61c31882afcdafd8ceb917f272b136065d92a4b2f545d01bfa4396809ee3aecd",
-      "sourceDigest": "sha512:5bef574a3a7c03c46c730c62f5b7924f21ae13dbb500517550ec642ef584416c4b01bb8854d49715bd6ffdca5987d0895c2fb25ebfc64a98903c33225109b6bc",
+      "digest": "sha512:0a95745a7d7b7d1cc4974e946cb0ab2696d7739ec1cee8545a34d6f14e63f065d06ab1363e4fc1b588d5197107f9ffc42537bebcd7b10a945fae316e5fdbc103",
+      "sourceDigest": "sha512:d16517d7638fe80055e262e99083cd2c84ec7203819d7f949977fd56864c9c4050ca1fe7924ebcb774a85b83bce5ed5e766423692a096607c95721426761dc2c",
       "license": "EPL-2.0",
       "dependencies": ["JUNIT-JUPITER-API", "APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
       "maven": {
         "groupId": "org.junit.jupiter",
         "artifactId": "junit-jupiter-engine",
-        "version": "5.8.1",
+        "version": "5.10.2",
       }
     },
 
     "JUNIT-VINTAGE-ENGINE": {
-      "digest": "sha512:6834862e5caf911526ed6bfc561c80f3b1724d8ba0e81873ba77a2541216a5c120c80fc5632978e5669ceb6558d503cdf4c11c246173d75d09603c524b56745b",
-      "sourceDigest": "sha512:42ee3409b1945b81169c07eb49ecdfcb178be11370c5f43135d0c8b311beeb0ccb72d44f542dcc615e6c00a3210041da61a33d6b00cb73f18cd259bc70340cfc",
+      "digest": "sha512:1833a242d9b42c506b133d51e22b82bfe66d20c809b39d8e7baaa185409365cc75bc5c7904c04ffae52a3785bee6577bba9093f7fe985610239c58a9a7ab76d7",
+      "sourceDigest": "sha512:155d73f8af171ed6fb220be1a2337adf59a2bc60398bc2754bf37c57f578c841675e9b895fc8bb3542ded5ffe9d40436d056642cabdf95220a07f55314f0cfea",
       "license": "EPL-2.0",
       "dependencies": ["JUNIT", "APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
       "maven": {
         "groupId": "org.junit.vintage",
         "artifactId": "junit-vintage-engine",
-        "version": "5.8.1",
+        "version": "5.10.2",
       }
     },
 
     "JUNIT-PLATFORM-LAUNCHER": {
-      "digest": "sha512:e62eb394b84e23287364c101757c44263ce76f99ca08fc7d14c6148b3b46dd0f53291cf6ec6355fbf2053325a0747491224f39cb139dac091fdea87f3e8c6ea7",
-      "sourceDigest": "sha512:ba3dfb71cb9720784742ee2431dd1df0dc1b465555aada6aa56a629d75b87b337358ecf3b862909f3c0faba36bfa9b8c98c636161bab274fbd708f8c53b6f9dc",
+      "digest": "sha512:764f1e1a978d8970524a22bf37f807d0a2b94a388abd79d23287ec931266f752e6fedf6599348fd6baf5fcef2105dddb315f680352532e8f2209b56e5d74f7ba",
+      "sourceDigest": "sha512:e9eccf15a8fc69e356c00eaa885e62c5e38163bc7092dd71a1b521230294ed1c6c8adbe54de5f6124c6dde81038171ef6605d49b2654a1d0f34881519de27996",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
       "maven": {
         "groupId": "org.junit.platform",
         "artifactId": "junit-platform-launcher",
-        "version": "1.8.1",
+        "version": "1.10.2",
       }
     },
 
     "JUNIT-PLATFORM-REPORTING": {
-      "digest": "sha512:f772e35a979c4573da43f39178e2f2e537aaa43cf417063fc0da2dcc639ba4566891a2b0725a3ae0e7e8797ea6c661a50121aeb613f19841e212b03833908200",
-      "sourceDigest": "sha512:d3662043251d855f39d49dfe3c38157c36d38a6ae0349e7c0d750e73fb96acd8cf6232bc2ed003288556136dd5649d0ab5b10477d21abc56995ffff59a3dd139",
+      "digest": "sha512:a0cf9741de3fe0a74527385595dde85acbfa06a8fd7bebc379ff6791d39e8ee2484d18a2cf7cc6520455a7ea3be55c1f0ef6d137e2e36a7e3e58a53113959763",
+      "sourceDigest": "sha512:a19f5d55142363cc01d3379db253ada5dec79fb38823ad4087e4573f0a897d172197466c98fbcc9dd449f96c7eeb661c8419d276bbbfbd63959f190be8795e16",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-LAUNCHER"],
       "maven": {
         "groupId": "org.junit.platform",
         "artifactId": "junit-platform-reporting",
-        "version": "1.8.1",
+        "version": "1.10.2",
       }
     },
 
     "JUNIT-PLATFORM-CONSOLE": {
-      "digest": "sha512:cce0227fdea265f28752934cf89cab7b601bb664cd7101fe9264e9c5cd73afe750ae5eda934c0e5e7c01ebb38ef4a16426be229fbfecaf124447593d766e340e",
-      "sourceDigest": "sha512:b815f3a02a803be5d0a98a8fc6d6f8d532262bb0b5696db24b2ff39887298a1a09ea9bb26726366c889ea4cd56d9f91f02d673f85a2ad908e6b953c36d87eed2",
+      "digest": "sha512:d3e7e4e31e7d0a9a7a0125e8c6f73219487c49e2bebae6196f07fe0fac9854c9b56b546b0aa51524bf87dfd7f1df7a49ba8f1de2df63f1bfab328ebccb1cdbfd",
+      "sourceDigest": "sha512:b7b5b5909b2df8774eeb39b8603dcb2209713784b9aab8563933447bc5c5a124e48faab7af4a724402326b80d9205128ab33fb4edddc61b65d9501bf988588e0",
       "license": "EPL-2.0",
       "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-REPORTING"],
       "maven": {
         "groupId": "org.junit.platform",
         "artifactId": "junit-platform-console",
-        "version": "1.8.1",
+        "version": "1.10.2",
       }
     },
 
