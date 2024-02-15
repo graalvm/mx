@@ -19294,7 +19294,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.11.1")  # GR-51975: use mach5 build ids for oraclejdk
+version = VersionSpec("7.12.0")  # Updated Junit Jupiter to version 5.10.2
 
 _mx_start_datetime = datetime.utcnow()
 
