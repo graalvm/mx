@@ -28,7 +28,7 @@ import argparse
 import os
 import re
 
-from . import mx
+from . import mx, mx_fetchjdk
 from datetime import datetime, date, timedelta
 
 
@@ -247,3 +247,31 @@ def _gc_layout_dists(suite, parsed_args):
                 archive_dir = os.path.join(dist_dir, "dists")
                 candidates.update({os.path.join(archive_dir, x): unknown_archives.get(x) for x in _listdir(archive_dir) if x in unknown_archives.keys()})
     return [(full_path, unknown_dists.get(dist), _get_size_in_bytes(full_path)) for full_path, dist in candidates.items()]
+
+
+@mx.command('mx', 'gc-jdks')
+def gc_dists(args):
+    """ Garbage collect mx distributions."""
+
+    parser = argparse.ArgumentParser(prog='mx gc-jdks', description='''Garbage collect JDKs downloaded by mx fetch-jdk.
+        By default, it collects all JDKs not referenced in common.json (see `--keep-current`).
+        ''')
+
+    def _gc_collect_candidates(parsed_args):
+        """Returns a list of collected layout distributions as a tuples of form (path, modification time, size in bytes)."""
+        settings = mx_fetchjdk._parse_args(["--list"])
+        jdks_dir = settings["jdks-dir"]
+        jdk_binaries = settings["jdk-binaries"]
+        current_jdks = [jdk_binary.get_final_path(jdks_dir) for jdk_binary in jdk_binaries.values()]
+
+        result = []
+        for entry in os.listdir(jdks_dir):
+            full_path = os.path.join(jdks_dir, entry)
+            if parsed_args.keep_current and os.path.realpath(full_path) in current_jdks:
+                continue
+            modtime = datetime.fromtimestamp(os.path.getmtime(full_path))
+            size = _get_size_in_bytes(full_path)
+            result.append((full_path, modtime, size))
+        return result
+
+    _gc_collect_generic(args, parser, _gc_collect_candidates)
