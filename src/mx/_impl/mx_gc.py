@@ -129,47 +129,41 @@ class TimeAction(argparse.Action):
             setattr(namespace, self.dest, td)
 
 
-@mx.command('mx', 'gc-dists')
-def gc_dists(args):
-    """ Garbage collect mx distributions."""
-
-    parser = argparse.ArgumentParser(prog='mx gc-dists', description='''Garbage collect layout distributions.
-        By default, it collects all found layout distributions that are *not* part of the current configuration (see `--keep-current`).
-        This command respects mx level suite filtering (e.g., `mx --suite my-suite gc-dists`).
-        ''', epilog='''If the environment variable `MX_GC_AFTER_BUILD` is set, %(prog)s will be executed after `mx build`
-        using the content of the environment variable as parameters.''')
+def _gc_collect_generic(args, parser, _gc_collect_candidates):
     # mutually exclusive groups do not support title and description - wrapping in another group as a workaround
-    action_group_desc = parser.add_argument_group('actions', 'What to do with the result. One of the following arguments is required.')
+    action_group_desc = parser.add_argument_group('actions',
+                                                  'What to do with the result. One of the following arguments is required.')
     action_group = action_group_desc.add_mutually_exclusive_group(required=True)
-    action_group.add_argument('-f', '--force', action='store_true', help='remove layout distributions without further questions')
-    action_group.add_argument('-n', '--dry-run', action='store_true', help='show what would be removed without actually doing anything')
-    action_group.add_argument('-i', '--interactive', action='store_true', help='ask for every layout distributions whether it should be removed')
-    keep_current_group_desc = parser.add_argument_group('current configuration handling', description='How to deal with the current configuration, i.e., what `mx build` would rebuild.')
+    action_group.add_argument('-f', '--force', action='store_true',
+                              help='remove candidates without further questions')
+    action_group.add_argument('-n', '--dry-run', action='store_true',
+                              help='show what would be removed without actually doing anything')
+    action_group.add_argument('-i', '--interactive', action='store_true',
+                              help='ask for every candidate whether it should be removed')
+    keep_current_group_desc = parser.add_argument_group('current configuration handling',
+                                                        description='How to deal with the current configuration, i.e., what `mx build` would rebuild.')
     keep_current_group = keep_current_group_desc.add_mutually_exclusive_group()
-    keep_current_group.add_argument('--keep-current', action='store_true', default=True, help='keep layout distributions of the current configuration (default)')
-    keep_current_group.add_argument('--no-keep-current', action='store_false', dest='keep_current', help='remove layout distributions of the current configuration')
+    keep_current_group.add_argument('--keep-current', action='store_true', default=True,
+                                    help='keep candidate referenced by current configuration (default)')
+    keep_current_group.add_argument('--no-keep-current', action='store_false', dest='keep_current',
+                                    help='remove candidate referenced by the current configuration')
     filter_group = parser.add_argument_group('result filters', description='Filter can be combined.')
     filter_group.add_argument('--reverse', action='store_true', help='reverse the result')
-    filter_group.add_argument('--older-than', action=TimeAction, help=f"only show results older than the specified point in time (format: {TimeAction.fmt.replace('%', '%%')})")
+    filter_group.add_argument('--older-than', action=TimeAction,
+                              help=f"only show results older than the specified point in time (format: {TimeAction.fmt.replace('%', '%%')})")
     try:
         parsed_args = parser.parse_args(args)
     except ValueError as ve:
         parser.error(str(ve))
-    suites = mx.suites(opt_limit_to_suite=True, includeBinary=False, include_mx=False)
-    c = []
-
-    for s in suites:
-        c += _gc_layout_dists(s, parsed_args)
-
+        return
+    c = _gc_collect_candidates(parsed_args)
     if not c:
         mx.log("Nothing to do!")
         return
-
     if parsed_args.older_than:
         c = [x for x in c if x[1] < parsed_args.older_than]
     # sort by mod date
     c = sorted(c, key=lambda x: x[1], reverse=parsed_args.reverse)
-
     # calculate max sizes
     max_path = 0
     max_mod_time = 0
@@ -192,11 +186,30 @@ def gc_dists(args):
                 mx.log('rm ' + path)
                 mx.rmtree(path)
                 size_sum += size
-
     if parsed_args.dry_run:
         mx.log('Would free ' + _format_bytes(size_sum))
     else:
         mx.log('Freed ' + _format_bytes(size_sum))
+
+
+@mx.command('mx', 'gc-dists')
+def gc_dists(args):
+    """ Garbage collect mx distributions."""
+
+    parser = argparse.ArgumentParser(prog='mx gc-dists', description='''Garbage collect layout distributions.
+        By default, it collects all found layout distributions that are *not* part of the current configuration (see `--keep-current`).
+        This command respects mx level suite filtering (e.g., `mx --suite my-suite gc-dists`).
+        ''', epilog='''If the environment variable `MX_GC_AFTER_BUILD` is set, %(prog)s will be executed after `mx build`
+        using the content of the environment variable as parameters.''')
+
+    def _gc_collect_candidates(parsed_args):
+        suites = mx.suites(opt_limit_to_suite=True, includeBinary=False, include_mx=False)
+        c = []
+        for s in suites:
+            c += _gc_layout_dists(s, parsed_args)
+        return c
+
+    _gc_collect_generic(args, parser, _gc_collect_candidates)
 
 
 def _gc_layout_dists(suite, parsed_args):
