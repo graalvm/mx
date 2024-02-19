@@ -65,6 +65,11 @@ def fetch_jdk(args):
     :return str: the JAVA_HOME for the JDK at the installation location denoted by `args`
     """
     settings = _parse_args(args)
+    if settings["list"]:
+        for jdk in sorted(settings["jdk-defs"].keys()):
+            mx.log(jdk)
+        # cannot use mx.abort as it always adds a newline
+        raise SystemExit(0)
 
     jdk_binary = settings["jdk-binary"]
     jdks_dir = settings["jdks-dir"]
@@ -400,11 +405,12 @@ def _parse_args(args):
     jdk_defs = _parse_jdk_defs(jdk_defs_location)
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, args.arch)
 
+    settings["list"] = args.list
+
     if args.list:
-        for jdk in sorted(jdk_defs.keys()):
-            mx.log(jdk)
-        # cannot use mx.abort as it always adds a newline
-        raise SystemExit(0)
+        settings["jdk-defs"] = jdk_defs
+        settings["jdk-binaries"] = jdk_binaries
+        return settings
 
     # use positional or option argument
     jdk_id = args.jdk_id_pos or args.jdk_id
