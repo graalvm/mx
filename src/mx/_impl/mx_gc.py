@@ -275,12 +275,29 @@ def gc_jdks(args):
         settings = mx_fetchjdk._parse_args(["--list"])
         jdks_dir = settings["jdks-dir"]
         jdk_binaries = settings["jdk-binaries"]
-        current_jdks = [jdk_binary.get_final_path(jdks_dir) for jdk_binary in jdk_binaries.values()]
+
+        # JDKs that should be kept (realpaths)
+        keep_jdks = set()
+
+        def _keep_jdk(jdk):
+            keep_jdks.add(os.path.realpath(jdk))
+
+        if parsed_args.keep_current:
+            # remove JDKs specified in common.json
+            for jdk_binary in jdk_binaries.values():
+                _keep_jdk(jdk_binary.get_final_path(jdks_dir))
+
+        # always keep the current JAVA_HOME and EXTRA_JAVA_HOMES entries
+        if mx._java_home():
+            _keep_jdk(mx._java_home())
+
+        for jdk in mx._extra_java_homes():
+            _keep_jdk(jdk)
 
         result = []
         for entry in os.listdir(jdks_dir):
             full_path = os.path.join(jdks_dir, entry)
-            if parsed_args.keep_current and os.path.realpath(full_path) in current_jdks:
+            if os.path.realpath(full_path) in keep_jdks:
                 continue
             modtime = datetime.fromtimestamp(os.path.getmtime(full_path))
             size = _get_size_in_bytes(full_path)
