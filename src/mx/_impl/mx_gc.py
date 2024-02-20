@@ -129,7 +129,14 @@ class TimeAction(argparse.Action):
             setattr(namespace, self.dest, td)
 
 
-def _gc_collect_generic(args, parser, _gc_collect_candidates):
+class CollectionCandidate(object):
+    def __init__(self, path, modification_time, size_in_bytes):
+        self.path = path
+        self.modification_time = modification_time
+        self.size_in_bytes = size_in_bytes
+
+
+def _gc_collect_generic(args, parser, collect_candidates):
     # mutually exclusive groups do not support title and description - wrapping in another group as a workaround
     action_group_desc = parser.add_argument_group('actions',
                                                   'What to do with the result. One of the following arguments is required.')
@@ -156,19 +163,22 @@ def _gc_collect_generic(args, parser, _gc_collect_candidates):
     except ValueError as ve:
         parser.error(str(ve))
         return
-    c = _gc_collect_candidates(parsed_args)
-    if not c:
+    candidates = collect_candidates(parsed_args)
+    if not candidates:
         mx.log("Nothing to do!")
         return
     if parsed_args.older_than:
-        c = [x for x in c if x[1] < parsed_args.older_than]
+        candidates = [x for x in candidates if x.modification_time < parsed_args.older_than]
     # sort by mod date
-    c = sorted(c, key=lambda x: x[1], reverse=parsed_args.reverse)
+    candidates = sorted(candidates, key=lambda x: x.modification_time, reverse=parsed_args.reverse)
     # calculate max sizes
     max_path = 0
     max_mod_time = 0
     max_size = 0
-    for path, mod_time, size in c:
+    for candidate in candidates:
+        path = candidate.path
+        mod_time = candidate.modification_time
+        size = candidate.size_in_bytes
         max_path = max(len(path), max_path)
         max_mod_time = max(len(_format_datetime(mod_time)), max_mod_time)
         max_size = max(len(_format_bytes(size)), max_size)
@@ -176,7 +186,10 @@ def _gc_collect_generic(args, parser, _gc_collect_candidates):
     msg_fmt = '{0:<' + str(max_path) + '} modified {1:<' + str(max_mod_time + len(' ago')) +'}  {2:<' + str(max_size) + '}'
 
     size_sum = 0
-    for path, mod_time, size in c:
+    for candidate in candidates:
+        path = candidate.path
+        mod_time = candidate.modification_time
+        size = candidate.size_in_bytes
         if parsed_args.dry_run:
             mx.log(msg_fmt.format(path, _format_datetime(mod_time) + ' ago', _format_bytes(size)))
             size_sum += size
@@ -246,11 +259,11 @@ def _gc_layout_dists(suite, parsed_args):
                 unknown_archives = {_to_archive_name(d) + ext: d for d in unknown_dists.keys()}
                 archive_dir = os.path.join(dist_dir, "dists")
                 candidates.update({os.path.join(archive_dir, x): unknown_archives.get(x) for x in _listdir(archive_dir) if x in unknown_archives.keys()})
-    return [(full_path, unknown_dists.get(dist), _get_size_in_bytes(full_path)) for full_path, dist in candidates.items()]
+    return [CollectionCandidate(full_path, unknown_dists.get(dist), _get_size_in_bytes(full_path)) for full_path, dist in candidates.items()]
 
 
 @mx.command('mx', 'gc-jdks')
-def gc_dists(args):
+def gc_jdks(args):
     """ Garbage collect mx distributions."""
 
     parser = argparse.ArgumentParser(prog='mx gc-jdks', description='''Garbage collect JDKs downloaded by mx fetch-jdk.
@@ -271,7 +284,7 @@ def gc_dists(args):
                 continue
             modtime = datetime.fromtimestamp(os.path.getmtime(full_path))
             size = _get_size_in_bytes(full_path)
-            result.append((full_path, modtime, size))
+            result.append(CollectionCandidate(full_path, modtime, size))
         return result
 
     _gc_collect_generic(args, parser, _gc_collect_candidates)
