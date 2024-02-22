@@ -296,7 +296,6 @@ def choose_jdks(jdk_cache_path=default_jdk_cache_path, only_list=False):
         if only_list:
             os.unlink(tmp_cache_path)
         else:
-            os.unlink(jdk_cache_path)
             os.rename(tmp_cache_path, jdk_cache_path)
             choices = {str(index):jdk for index, jdk in choices}
             jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
