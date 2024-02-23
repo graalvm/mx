@@ -33,6 +33,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -47,6 +48,7 @@ import org.junit.runner.JUnitCore;
 import org.junit.runner.Request;
 import org.junit.runner.Result;
 import org.junit.runner.Runner;
+import org.junit.runner.manipulation.Filter;
 import org.junit.runner.notification.Failure;
 import org.junit.runner.notification.RunListener;
 import org.junit.runner.notification.RunNotifier;
@@ -270,8 +272,20 @@ public class MxJUnitWrapper {
     }
 
     public static Result runRequest(JUnitCore junitCore, JUnitSystem system, MxJUnitConfig config, MxJUnitRequest mxRequest) {
+        return runRequest(junitCore, system, config, mxRequest, Filter.ALL);
+    }
+
+    public static Result runRequest(JUnitCore junitCore, JUnitSystem system, MxJUnitConfig config, MxJUnitRequest mxRequest, Filter filter) {
+        Request request = mxRequest.getRequest();
+        final int classesCount;
+        if (filter != Filter.ALL) {
+            request = request.filterWith(filter);
+            classesCount = findTestClasses(request.getRunner().getDescription(), new HashSet<>()).size();
+        } else {
+            classesCount = mxRequest.classes.size();
+        }
+
         final TextRunListener textListener;
-        int classesCount = mxRequest.classes.size();
         if (config.veryVerbose) {
             textListener = new VerboseTextListener(system, classesCount, VerboseTextListener.SHOW_ALL_TESTS);
         } else if (config.verbose) {
@@ -318,7 +332,6 @@ public class MxJUnitWrapper {
 
         junitCore.addListener(TextRunListener.createRunListener(mxListener, mxRequest.missingClasses));
 
-        Request request = mxRequest.getRequest();
         if (mxRequest.methodName == null) {
             if (config.maxClassFailures > 0) {
                 Runner runner = request.getRunner();
@@ -374,6 +387,16 @@ public class MxJUnitWrapper {
         }));
 
         return junitCore.run(request);
+    }
+
+    private static Set<String> findTestClasses(Description desc, Set<String> classes) {
+        if (desc.isTest()) {
+            classes.add(desc.getClassName());
+        }
+        for (Description child : desc.getChildren()) {
+            findTestClasses(child, classes);
+        }
+        return classes;
     }
 
     private static PrintStream getResultStream(JUnitSystem system, String file) {
