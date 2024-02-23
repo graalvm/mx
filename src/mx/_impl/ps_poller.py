@@ -67,7 +67,7 @@ def _poll_session(sid, out_file):
         ps_proc = subprocess.Popen(args, stdout=out_file)
         ps_return_code = ps_proc.wait()
         if ps_return_code != 0:
-            print(f"Command {ps_proc.args} failed with return code {return_code}!")
+            print(f"Command {ps_proc.args} failed with return code {ps_return_code}!")
         return ps_return_code
     except:
         print(f"An exception occurred when trying to start subprocess with {args}")

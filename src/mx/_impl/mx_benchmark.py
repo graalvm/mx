@@ -2776,6 +2776,9 @@ class PsrecordTracker(Tracker):
         def parseResults(self, text):
             rows = super().parseResults(text)
             rows = rows[1:]  # first row contains malformatted (unquoted) headings
+
+            self.tracker.most_recent_text_output = None
+
             if not rows:
                 return []
             values = sorted(float(r["rss_mb"]) for r in rows)
@@ -2868,6 +2871,7 @@ class RssPercentilesTracker(Tracker):
             temp_text_output = self.tracker.most_recent_text_output
             if temp_text_output is not None:
                 os.remove(temp_text_output)
+                self.tracker.most_recent_text_output = None
                 mx.log(f"Temporary output file {temp_text_output} deleted.")
 
             values = []
