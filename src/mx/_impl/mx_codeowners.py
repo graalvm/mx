@@ -218,6 +218,11 @@ Can be executed in three modes.
   only). In other words, it prints possible reviewers for the whole
   pull request.
 
+* Switch -a (and -b BRANCH too) internally calls git diff master to
+  query list of modified files. This also prints files modified on master
+  in the meantime: consider using explicit hash of the branch-point commit
+  if your branch is not newly created or is not after a fresh rebase.
+
 Any of these modes can be accompanied by -s that enables reviewers suggestions.
 When reviewer suggestions are turned on, the tool also prints a concrete list
 of people that should review the modifications.
