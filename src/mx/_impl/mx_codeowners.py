@@ -31,19 +31,14 @@ __all__ = [
 
 import argparse
 import fnmatch
-import logging
+import json
 import os
 
 from . import mx
 from . import mx_stoml
 
 class _TomlParsingException(Exception):
-    def __init__(self, cause):
-        Exception.__init__()
-        self.cause = cause
-
-    def __str__(self):
-        return str(self.cause)
+    pass
 
 def _load_toml_from_fd(fd):
     try:
@@ -109,13 +104,13 @@ class FileOwners:
     def _parse_ownership(self, fd, name):
         try:
             tree = _load_toml_from_fd(fd)
-            logging.debug("Tree is %s", tree)
+            mx.logv(f"Tree is {tree}")
             for rule in tree.get('rule', []):
                 if not 'files' in rule:
-                    logging.warning("Ignoring rule %s in %s as it contains no files", rule, name)
+                    mx.log_error(f"Ignoring rule {rule} in {name} as it contains no files")
                     continue
                 if (not 'any' in rule) and (not 'all' in rule):
-                    logging.warning("Ignoring rule %s in %s as it contains no owner specification", rule, name)
+                    mx.log_error(f"Ignoring rule {rule} in {name} as it contains no owner specification")
                     continue
 
                 rule['files'] = _whitespace_split(rule['files'])
@@ -129,7 +124,7 @@ class FileOwners:
                         yield pat, mandatory_owners, "all"
 
         except _TomlParsingException as e:
-            logging.warning("Ignoring invalid input from %s: %s", name, e)
+            mx.abort(f"Invalid input from {name}: {e}")
 
     def _parse_ownership_from_files(self, files):
         for fo in files:
@@ -160,7 +155,7 @@ class FileOwners:
                     result["all"] = sorted(owners)
                 if "any" in modifiers:
                     result["any"] = sorted(owners)
-        logging.debug("File %s owned by %s (looked into %s)", filepath, result, owners_files)
+        mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
 
 def _summarize_owners(all_owners):
@@ -197,7 +192,7 @@ def _git_diff_name_only(extra_args=None):
     return list(filter(lambda x: x != '', out.split('\0')))
 
 def _git_get_repo_root_or_cwd():
-    rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'])
+    rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'], False)
     if rc != 0:
         return '.'
     else:
@@ -222,6 +217,20 @@ Can be executed in three modes.
   modified with comparison to given BRANCH (or to master with -a
   only). In other words, it prints possible reviewers for the whole
   pull request.
+
+* Switch -a (and -b BRANCH too) internally calls git diff master to
+  query list of modified files. This also prints files modified on master
+  in the meantime: consider using explicit hash of the branch-point commit
+  if your branch is not newly created or is not after a fresh rebase.
+
+Any of these modes can be accompanied by -s that enables reviewers suggestions.
+When reviewer suggestions are turned on, the tool also prints a concrete list
+of people that should review the modifications.
+
+It is possible to specify existing reviewers with -r (and author of the changes
+with -p): in that case the tool checks that the existing list of reviewers is
+complete and if not, suggests further reviewers to cover the modified files
+(-s is implied when -r or -p are used).
 """
 
 _MX_CODEOWNERS_HELP2 = """The ownership is read from OWNERS.toml files that can be added to any
@@ -267,7 +276,30 @@ def codeowners(args):
     parser.add_argument('files', metavar='FILENAME', nargs='*', help='File names to list owners of (relative to current work dir).')
     parser.add_argument('-a', dest='all_changes', action='store_true', default=False, help='Print reviewers for this branch against master.')
     parser.add_argument('-b', dest='upstream_branch', metavar='BRANCH', default=None, help='Print reviewers for this branch against BRANCH.')
+    parser.add_argument('-r', dest='existing_reviewers', metavar='PR-REVIEWER', default=[], action='append', help='Existing reviewer (can be specified multiple times).')
+    parser.add_argument('-p', dest='author', metavar='PR-AUTHOR', default=None, help='Author of the pull-request')
+    parser.add_argument('-s', dest='suggest_reviewers', default=False, action='store_true', help='Suggest reviewers for pull-request')
+    parser.add_argument('-j', dest='json_dump', default=None, metavar='FILENAME.json', help='Store details in JSON file.')
     args = parser.parse_args(args)
+
+    repro_data = {
+        'version': 1,
+        'mx_version': str(mx.version),
+        'files': [],
+        'owners': {},
+        'branch': None,
+        'pull_request': {
+            'reviewers': args.existing_reviewers,
+            'author': args.author,
+            'suggestion': {
+                'add': [],
+                'details': {
+                    'all': [],
+                    'any': [],
+                },
+            }
+        }
+    }
 
     if args.upstream_branch:
         args.all_changes = True
@@ -277,6 +309,9 @@ def codeowners(args):
     if args.all_changes and args.files:
         mx.abort("Do not specify list of files with -b or -a")
 
+    if args.author or args.existing_reviewers:
+        args.suggest_reviewers = True
+
     owners = FileOwners(_git_get_repo_root_or_cwd())
 
     if args.all_changes:
@@ -285,21 +320,79 @@ def codeowners(args):
     elif not args.files:
         # No arguments, query list of currently modified files
         args.files = _git_diff_name_only()
+    repro_data['files'] = args.files
 
     file_owners = {f: owners.get_owners_of(os.path.abspath(f)) for f in args.files}
+    repro_data['owners'] = file_owners
+
     reviewers = _summarize_owners(file_owners.values())
 
     if reviewers['all']:
-        print("Mandatory reviewers (all of these must review):")
+        mx.log("Mandatory reviewers (all of these must review):")
         for i in reviewers['all']:
-            mx.log(" o " + i)
+            if i in args.existing_reviewers:
+                mx.log(" o " + i + " (already reviews)")
+            else:
+                mx.log(" o " + i)
     if reviewers['any']:
-        print("Any-of reviewers (at least one from each line):")
+        mx.log("Any-of reviewers (at least one from each line):")
         for i in reviewers['any']:
-            mx.log(" o " + ' or '.join(i))
+            if _is_some_item_in_set(args.existing_reviewers, set(i)):
+                mx.log(" o " + ' or '.join(i) + ' (one already reviews)')
+            else:
+                mx.log(" o " + ' or '.join(i))
 
     if len(reviewers["all"]) == 0 and len(reviewers["any"]) == 0:
         mx.log("No specific reviewer requested by OWNERS.toml files for the given changeset.")
+
+
+    if args.suggest_reviewers:
+        mx.log("")
+        mx.log("Reviewers summary for this pull-request")
+
+        missing_mandatory = []
+        for i in reviewers['all']:
+            if (not i in args.existing_reviewers) and (i != args.author):
+                missing_mandatory.append(i)
+
+        mx.log(" o Mandatory reviewers")
+        repro_data['pull_request']['suggestion']['details']['all'] = missing_mandatory
+        repro_data['pull_request']['suggestion']['add'].extend(missing_mandatory)
+        if missing_mandatory:
+            mx.log("   - Add following reviewers: " + ' and '.join(missing_mandatory))
+        else:
+            mx.log("   - All mandatory reviewers already assigned.")
+
+        suggested_optional = []
+        for gr in reviewers['any']:
+            gr_set = set(gr)
+            gr_set.discard(args.author)
+            if not gr_set:
+                continue
+
+            covered_by_mandatory = _is_some_item_in_set(missing_mandatory, gr_set)
+            covered_by_existing = _is_some_item_in_set(args.existing_reviewers, gr_set)
+            covered_by_suggestions = _is_some_item_in_set(suggested_optional, gr_set)
+            if covered_by_mandatory or covered_by_existing or covered_by_suggestions:
+                continue
+            suggested_optional.append(list(gr_set)[0])
+
+        mx.log(" o Any-of reviewers")
+        repro_data['pull_request']['suggestion']['details']['any'] = suggested_optional
+        repro_data['pull_request']['suggestion']['add'].extend(suggested_optional)
+        if suggested_optional:
+            mx.log("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
+        else:
+            mx.log("   - All are already assigned or are among the mandatory ones.")
+        if suggested_optional or missing_mandatory:
+            mx.log(" o Suggested modifications: add the following reviewers")
+            for i in sorted(suggested_optional + missing_mandatory):
+                mx.log("   - " + i)
+        else:
+            mx.log(" o Looks like all reviewers are already assigned.")
+
+
+    repro_data['pull_request']['suggestion']['add'] = list(sorted(repro_data['pull_request']['suggestion']['add']))
 
     num_files_changed = len(file_owners.keys())
     num_owned_files = len([f for f, o in file_owners.items() if o])
@@ -307,10 +400,14 @@ def codeowners(args):
     if num_files_changed == 0:
         mx.warn("The changeset is empty!")
     else:
-        print(f"\n{num_owned_files}/{num_files_changed} of the files have ownership defined by one or more OWNERS.toml file(s)")
+        mx.log(f"\n{num_owned_files}/{num_files_changed} of the files have ownership defined by one or more OWNERS.toml file(s)")
         if num_owned_files < num_files_changed:
             mx.log("Consider adding ownership for the files with no ownership! (mx verbose mode shows details)")
 
         import pprint
         mx.logv("Ownership of each file:")
         mx.logv(pprint.pformat(file_owners, indent=2))
+
+    if args.json_dump:
+        with open(args.json_dump, 'wt') as f:
+            json.dump(repro_data, f, indent=4)

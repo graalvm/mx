@@ -19294,7 +19294,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.13.2")  # Support using a JUnit Filter via MxJUnitWrapper
+version = VersionSpec("7.14.0")  # GR-42796: Code owners can suggest pull request reviewers
 
 _mx_start_datetime = datetime.utcnow()
 
