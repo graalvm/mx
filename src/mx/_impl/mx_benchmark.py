@@ -43,6 +43,7 @@ __all__ = [
     "vm_registries",
     "Rule",
     "BaseRule",
+    "FixedRule",
     "StdOutRule",
     "CSVBaseRule",
     "CSVFixedFileRule",
@@ -868,6 +869,19 @@ class BaseRule(Rule):
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
+
+
+class FixedRule(Rule):
+    """
+    Rule that creates a fixed datapoint without parsing anything.
+    """
+
+    def __init__(self, datapoint: DataPoint):
+        super().__init__()
+        self.datapoint = datapoint
+
+    def parse(self, _) -> Iterable[DataPoint]:
+        return [self.datapoint]
 
 
 class StdOutRule(BaseRule):
