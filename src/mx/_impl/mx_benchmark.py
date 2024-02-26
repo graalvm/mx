@@ -971,7 +971,7 @@ class JsonBaseRule(BaseRule):
     """
     keys: Collection[str]
 
-    def __init__(self, replacement, keys : Collection[str]):
+    def __init__(self, replacement, keys: Collection[str]):
         super(JsonBaseRule, self).__init__(replacement)
         self.keys = keys
         assert len(keys) == len(set(keys)), f"Duplicate keys in list {keys}"
@@ -1218,6 +1218,22 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
+        flaky = False
+        for pat in self.flakySuccessPatterns():
+            if compiled(pat).search(out):
+                flaky = True
+        if not flaky:
+            if retcode is not None and not self.validateReturnCode(retcode):
+                self.on_fail(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
+            for pat in self.failurePatterns():
+                m = compiled(pat).search(out)
+                if m:
+                    self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
+
+            success_patterns = self.successPatterns()
+            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
+                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+
         datapoints: List[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
         for t in self._trackers:
@@ -1237,22 +1253,6 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 if "is-default-bench-suite-version" not in datapoint:
                     datapoint["is-default-bench-suite-version"] = str(self.isDefaultSuiteVersion()).lower()
             datapoints.extend(parsedpoints)
-
-        flaky = False
-        for pat in self.flakySuccessPatterns():
-            if compiled(pat).search(out):
-                flaky = True
-        if not flaky:
-            if retcode is not None and not self.validateReturnCode(retcode):
-                self.on_fail(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
-            for pat in self.failurePatterns():
-                m = compiled(pat).search(out)
-                if m:
-                    self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
-
-            success_patterns = self.successPatterns()
-            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
-                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
