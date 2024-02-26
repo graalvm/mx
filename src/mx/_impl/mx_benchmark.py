@@ -876,6 +876,8 @@ class StdOutRule(BaseRule):
     A parsing pattern is a regex that may contain any number of named groups,
     as shown in the example:
 
+    ::
+
         r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
 
     The above parsing regex captures the benchmark name into a variable `benchmark`
@@ -884,10 +886,10 @@ class StdOutRule(BaseRule):
 
     def __init__(self, pattern, replacement):
         super(StdOutRule, self).__init__(replacement)
-        self.pattern = pattern
+        self.pattern: re.Pattern = pattern if isinstance(pattern, re.Pattern) else re.compile(pattern, re.MULTILINE)
 
     def parseResults(self, text):
-        return (m.groupdict() for m in re.finditer(self.pattern, text, re.MULTILINE))
+        return (m.groupdict() for m in re.finditer(self.pattern, text))
 
 
 class CSVBaseRule(BaseRule):
