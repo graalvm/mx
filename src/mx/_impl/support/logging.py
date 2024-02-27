@@ -64,7 +64,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
     if vars(_opts).get("quiet"):
         return
     if msg is None:
-        print()
+        print(end=end)
     else:
         # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
         # > A '\n' character is written at the end, unless the print statement
@@ -108,16 +108,16 @@ def logvv(msg: Optional[str] = None, end="\n") -> None:
         log(msg, end=end)
 
 
-def log_error(msg: Optional[str] = None) -> None:
+def log_error(msg: Optional[str] = None, end="\n") -> None:
     """
     Write an error message to the console.
     All script output goes through this method thus allowing a subclass
     to redirect it.
     """
     if msg is None:
-        print(file=sys.stderr)
+        print(file=sys.stderr, end=end)
     else:
-        print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
+        print(colorize(str(msg), stream=sys.stderr), file=sys.stderr, end=end)
 
 
 def log_deprecation(msg: Optional[str] = None) -> None:
