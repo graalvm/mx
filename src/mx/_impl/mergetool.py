@@ -42,11 +42,11 @@ def mergetool_suite_import(args):
             """
             A `git mergetool` to fix mx suite import update conflicts in suite.py files.
 
-            The tool collects resets all suite import revisions of LOCAL to the revisions in BASE and thus, resolving
-            the merge conflict. After updating the imports (if any), `diff3` is called to resolve the remaining conflicts.
+            The tool resets all suite import revisions to the LOCAL revisions and thus, resolving the merge conflict.
+            After updating the imports (if any), `diff3` is called to resolve the remaining conflicts.
 
             Note that the tool is only meant to resolve the conflict. It is not guaranteed that the import update
-            is semantically correct. For example, the imports in the merged file might be older than the previous import.
+            is semantically correct. For example, the imports in the merged file might be older than the merged-in imports.
             Tools like `mx scheckimports` can be used to fix the imported revisions after the merge.
 
             To use the mergetool via `git`, add the following entry to your `.gitconfig`:
@@ -121,33 +121,44 @@ def mergetool_suite_import(args):
         return {s["name"]: s["version"] for s in suite_imports if "version" in s}
 
     local_imports = read_suite_imports(local)
+    remote_imports = read_suite_imports(remote)
     base_imports = read_suite_imports(base)
     local_import_dict = to_import_dict(local_imports)
+    remote_import_dict = to_import_dict(remote_imports)
     base_import_dict = to_import_dict(base_imports)
 
     _assert_or_fallback(
-        set(local_import_dict.keys()) == set(base_import_dict.keys()),
-        f"Cannot merge files which import different suites: {local_import_dict.keys()} vs {base_import_dict.keys()}",
+        set(local_import_dict.keys()) == set(remote_import_dict.keys()),
+        f"Cannot merge files which import different suites: {local_import_dict.keys()} vs {remote_import_dict.keys()}",
     )
 
-    mismatches = [s for s in local_import_dict.keys() if local_import_dict[s] != base_import_dict[s]]
+    mismatches = [s for s in local_import_dict.keys() if local_import_dict[s] != remote_import_dict[s]]
     _assert_or_fallback(mismatches, "Not import mismatches. Falling back to diff3")
 
     # fix mismatches
-    with open(local, mode="r+b") as fp:
-        local_content = fp.read()
+    with open(remote, mode="r+b") as fp:
+        remote_content = fp.read()
+    with open(base, mode="r+b") as fp:
+        base_content = fp.read()
 
     for s in mismatches:
         local_rev = local_import_dict[s].encode()
+        remote_rev = remote_import_dict[s].encode()
         base_rev = base_import_dict[s].encode()
-        local_content = local_content.replace(local_rev, base_rev)
+        remote_content = remote_content.replace(remote_rev, local_rev)
+        base_content = base_content.replace(base_rev, local_rev)
 
     new_local = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w+b", delete=False) as new_local_fp:
-            new_local_fp.write(local_content)
-            new_local = new_local_fp.name
-        ret = _run_diff3(new_local, base, remote, merged)
+        # fmt: off
+        with tempfile.NamedTemporaryFile(mode="w+b", delete=False) as new_remote_fp, \
+              tempfile.NamedTemporaryFile(mode="w+b", delete=False) as new_base_fp:
+            # fmt: on
+            new_remote_fp.write(remote_content)
+            new_remote = new_remote_fp.name
+            new_base_fp.write(base_content)
+            new_base = new_base_fp.name
+        ret = _run_diff3(local, new_base, new_remote, merged)
         sys.exit(ret)
     finally:
         if new_local:
