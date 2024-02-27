@@ -314,7 +314,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod
-from typing import Callable, IO, AnyStr, Union, Iterable
+from typing import Callable, IO, AnyStr, Union, Iterable, Any
 
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
@@ -13231,7 +13231,7 @@ def _list2cmdline(seq):
 
 _subprocess_start_time = None
 
-RedirectStream = Union[None, Callable[[str], None], IO[AnyStr]]
+RedirectStream = Union[None, Callable[[str], Any], IO[AnyStr]]
 """
 Type alias for the redirected streams in :meth:`run`.
 """
