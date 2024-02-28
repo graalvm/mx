@@ -8916,9 +8916,8 @@ class NativeBuildTask(AbstractNativeBuildTask):
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
         elif (is_darwin() and get_arch() == 'amd64' and is_continuous_integration()) and not _opts.cpu_count:
-            # work around a bug on macOS versions before Big Sur where make randomly fails in our CI (GR-6892) if compilation is too parallel
-            if int(platform.mac_ver()[0].split('.')[0]) < 11:
-                self.parallelism = 1
+            # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
+            self.parallelism = 1
         self._newestOutput = None
 
     def __str__(self):
@@ -19294,7 +19293,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.14.1")  # mergetool-suite-import should reset to LOCAL import revision
+version = VersionSpec("7.14.2")  # revert GR-51052
 
 _mx_start_datetime = datetime.utcnow()
 
