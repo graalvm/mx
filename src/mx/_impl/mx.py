@@ -1812,49 +1812,49 @@ class Dependency(SuiteConstituent):
     def getGlobalRegistry(self):
         if self.isProject():
             return _projects
-        if self.isLibrary():
+        if self.isLibrary() or self.isResourceLibrary():
             return _libs
         if self.isDistribution():
             return _dists
         if self.isJreLibrary():
             return _jreLibs
-        assert self.isJdkLibrary()
+        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
         return _jdkLibs
 
     def getGlobalRemovedRegistry(self):
         if self.isProject():
             return _removed_projects
-        if self.isLibrary():
+        if self.isLibrary() or self.isResourceLibrary():
             return _removed_libs
         if self.isDistribution():
             return _removed_dists
         if self.isJreLibrary():
             return _removed_jreLibs
-        assert self.isJdkLibrary()
+        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
         return _removed_jdkLibs
 
     def getSuiteRegistry(self):
         if self.isProject():
             return self.suite.projects
-        if self.isLibrary():
+        if self.isLibrary() or self.isResourceLibrary():
             return self.suite.libs
         if self.isDistribution():
             return self.suite.dists
         if self.isJreLibrary():
             return self.suite.jreLibs
-        assert self.isJdkLibrary()
+        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
         return self.suite.jdkLibs
 
     def getSuiteRemovedRegistry(self):
         if self.isProject():
             return self.suite.removed_projects
-        if self.isLibrary():
+        if self.isLibrary() or self.isResourceLibrary():
             return self.suite.removed_libs
         if self.isDistribution():
             return self.suite.removed_dists
         if self.isJreLibrary():
             return self.suite.removed_jreLibs
-        assert self.isJdkLibrary()
+        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
         return self.suite.removed_jdkLibs
 
     def get_output_base(self):
@@ -19293,7 +19293,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.14.2")  # revert GR-51052
+version = VersionSpec("7.14.3")  # resource libraries behave like libraries
 
 _mx_start_datetime = datetime.utcnow()
 
