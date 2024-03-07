@@ -369,15 +369,16 @@ class VmRegistry(object):
                     mx.abort(f"Could not find a {self.vm_type_name} to default to.\n{self.get_available_vm_configs_help()}")
                 vms.sort(key=lambda t: t[1:], reverse=True)
                 vm = vms[0][0]
-                if len(vms) == 1:
-                    notice = mx.log
-                    choice = vm
-                else:
-                    notice = mx.warn
-                    seen = set()
-                    choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
                 if not quiet:
-                    notice(f"Defaulting the {self.vm_type_name} to '{vm}'. Consider using --{self.short_vm_type_name} {choice}")
+                    if len(vms) == 1:
+                        notice = mx.log
+                        choice = vm
+                    else:
+                        notice = mx.warn
+                        # Deduplicates vm names while preserving order
+                        vm_names = dict.fromkeys((c[0] for c in vms)).keys()
+                        choice = f"[{'|'.join(vm_names)}]"
+                    notice(f"Defaulting the {self.vm_type_name} to '{vm}'. Consider using --{self.short_vm_type_name}={choice}")
         if vm_config is None:
             vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
@@ -388,15 +389,16 @@ class VmRegistry(object):
                 mx.abort(f"Could not find a {self.vm_type_name} config to default to for {self.vm_type_name} '{vm}'.\n{self.get_available_vm_configs_help()}")
             vm_configs.sort(key=lambda t: t[1:], reverse=True)
             vm_config = vm_configs[0][0]
-            if len(vm_configs) == 1:
-                notice = mx.log
-                choice = vm_config
-            else:
-                notice = mx.warn
-                seen = set()
-                choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
             if not quiet:
-                notice(f"Defaulting the {self.vm_type_name} config to '{vm_config}'. Consider using --{self.short_vm_type_name}-config {choice}.")
+                if len(vm_configs) == 1:
+                    notice = mx.log
+                    choice = vm_config
+                else:
+                    notice = mx.warn
+                    # Deduplicates config names while preserving order
+                    config_names = dict.fromkeys((c[0] for c in vm_configs)).keys()
+                    choice = f"[{'|'.join(config_names)}]"
+                notice(f"Defaulting the {self.vm_type_name} config to '{vm_config}'. Consider using --{self.short_vm_type_name}-config={choice}.")
         vm_object = self.get_vm(vm, vm_config)
 
         if check_guest_vm and not isinstance(vm_object, GuestVm):
