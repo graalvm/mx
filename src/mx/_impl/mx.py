@@ -8075,6 +8075,8 @@ class JavaBuildTask(ProjectBuildTask):
                         if name.endswith('.java'):
                             classfile = outputDir + path[len(sourceDir):-len('.java')] + '.class'
                             javafiles[path] = classfile
+                        elif is_darwin() and name == '.DS_Store':
+                            continue
                         else:
                             non_javafiles[path] = outputDir + path[len(sourceDir):]
 
@@ -14098,7 +14100,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
 
     mavenCommand = cmd_suffix(get_env('MAVEN_COMMAND', 'mvn'))
 
-    if is_windows():
+    if is_windows() or is_continuous_integration():
         extra_args += ['--batch-mode'] # prevent maven to color output
 
     mavenHome = get_env('MAVEN_HOME')
@@ -14942,7 +14944,7 @@ class JDKConfig(Comparable):
                     a = parts[0]
                     if a == 'requires':
                         module = parts[-1]
-                        modifiers = parts[1:-2] if len(parts) > 2 else []
+                        modifiers = parts[1:-1] if len(parts) > 2 else []
                         requires[module] = modifiers
                     elif a == 'boot':
                         boot = parts[1] == 'true'
@@ -19293,7 +19295,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.14.3")  # resource libraries behave like libraries
+version = VersionSpec("7.15.0")  # requires transitive
 
 _mx_start_datetime = datetime.utcnow()
 

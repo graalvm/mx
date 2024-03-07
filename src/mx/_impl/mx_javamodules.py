@@ -45,6 +45,7 @@ import shutil
 from . import mx_javacompliance
 from os.path import join, exists, dirname, basename, isdir, islink
 from collections import defaultdict
+from functools import partial
 
 from zipfile import ZipFile
 
@@ -562,21 +563,48 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         concealedRequires = {}
         base_uses = set()
 
-        modulepath = list()
+        modulepath = []
         with mx.Timer('requires', times):
             if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
                 module_deps = dist.archived_deps()
-                for dep in mx.classpath_entries(dist, includeSelf=False):
+                for dep, direct_requires, indirect_requires, requiredBy in (
+                    (dep, requiredBy.get(dist), indireq, requiredBy)
+                    for (dep, requiredBy, indireq) in module_path_entries(dist, jdk=jdk, includeSelf=False)
+                ):
+                    if direct_requires is not None:
+                        # direct distribution dependency that this this module *requires*.
+                        # we assume non-transitive "requires" by default, although that
+                        # may be overridden by an explicit "requires" entry in "moduleInfo"
+                        # to a "requires transitive" or "requires static" (see below).
+                        reads = True
+                        requires_modifiers = direct_requires
+                    elif indirect_requires:
+                        # inherited dependency declared as "requires transitive".
+                        # technically, it's already transitively required, regardless of whether
+                        # we declare it as "requires transitive" again or even just "requires",
+                        # so adding it mostly just makes the *implied readability* explicit.
+                        reads = True
+                        requires_modifiers = indirect_requires
+                    else:
+                        # an implicit dependency required by one of the transitive dependencies
+                        # of this module that needs to be on the module path but this module
+                        # does not explicitly *require* it and therefore cannot *read* it.
+                        reads = False
+                        requires_modifiers = None
+                        mx.logv(f"Skipping implicit non-readable module path dependency of {dist.name}: {dep} reachable via {requiredBy}")
+
                     if dep.isJARDistribution():
                         jmd = as_java_module(dep, jdk)
                         modulepath.append(jmd)
-                        requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
+                        if reads:
+                            requires[jmd.name] = requires_modifiers
                     elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
                         pass
                     elif dep.isLibrary():
                         jmd = get_library_as_module(dep, jdk)
                         modulepath.append(jmd)
-                        requires[jmd.name] = set()
+                        if reads:
+                            requires[jmd.name] = requires_modifiers
                     else:
                         mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
             else:
@@ -592,12 +620,6 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             for project in java_projects:
                 module_packages.update(project.defined_java_packages())
 
-                # Collect the required modules denoted by the dependencies of each project
-                entries = mx.classpath_entries(project, includeSelf=False)
-                for e in entries:
-                    e_module_name = e.get_declaring_module_name()
-                    if e_module_name and e_module_name != moduleName:
-                        requires.setdefault(e_module_name, set())
             for library in java_libraries:
                 module_packages.update(library.defined_java_packages())
 
@@ -758,6 +780,43 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         concealedRequires.setdefault(module, set()).update(packages)
                     for module in getattr(project, 'requires', []):
                         requires.setdefault(module, set())
+
+                    # check for missing requires based on imported packages.
+                    allmodules = modulepath + jdk_modules
+                    missing_requires = defaultdict(partial(defaultdict, list))
+                    for pkg in itertools.chain(project.imported_java_packages(projectDepsOnly=False), getattr(project, 'imports', [])):
+                        # Only consider packages not defined by the module we're creating. This handles the
+                        # case where we're creating a module that will upgrade an existing upgradeable
+                        # module in the JDK such as jdk.graal.compiler.
+                        if pkg not in module_packages:
+                            module, visibility = lookup_package(allmodules, pkg, moduleName)
+                            if module and module.name != moduleName and module.name != 'java.base':
+                                if module.name not in requires and module.name not in concealedRequires:
+                                    if module in jdk_modules:
+                                        # no explicit "requires" found; search for transitively required jdk modules.
+                                        # e.g.: requires jdk.management" implies requires transitive java.management.
+                                        if module in get_transitive_closure_from_requires(requires, allmodules):
+                                            mx.logv(f"Found module {module.name} required for imported package {pkg} in transitive closure of {moduleName}.")
+                                            continue
+
+                                    missing_requires[module][visibility].append(pkg)
+
+                    # automatically add missing requires, but print a warning
+                    if missing_requires:
+                        for required_module, reads in missing_requires.items():
+                            requires.setdefault(required_module.name, set())
+
+                            mx.warn(f"Module {moduleName} ({dist.qualifiedName()}) requires {required_module.name} ({required_module.dist.qualifiedName()}) in order to read " +
+                                    (", and ".join((f'{vis} package(s): {", ".join(pkgs)}' for vis, pkgs in reads.items()))))
+
+                        mx.warn('Module {moduleName} ({dist}): automatically included the following missing "requires": [{requires}]. '
+                                'To fix this warning, please explicitly declare them as "requires" or "distDependencies" in {dist} ({origin}), '
+                                'or as "requires transitive" in any of its transitive dependencies.'.format(
+                            moduleName=moduleName,
+                            dist=dist.qualifiedName(),
+                            requires=", ".join(sorted((f'"{mod.name}"' for mod in missing_requires))),
+                            origin=":".join(map(str, dist.origin())) or dist.suite.suite_py(),
+                        ))
 
                 if not module_info:
                     # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
@@ -942,17 +1001,21 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             assert '/' not in service
                             with open(full_path) as fp:
                                 serviceContent = fp.read()
-                            provides.setdefault(service, set()).update(provider.replace('$', '.') for provider in serviceContent.splitlines())
+                            # Strip comments (anything after '#') and whitespace, and skip blank lines
+                            stripped_lines = filter(None, (line.split('#', 1)[0].strip() for line in serviceContent.splitlines()))
+                            provides.setdefault(service, set()).update(provider.replace('$', '.') for provider in stripped_lines)
                             # Service types defined in the module are assumed to be used by the module
                             serviceClassfile = service.replace('.', '/') + '.class'
                             if exists(join(dest_dir, serviceClassfile)):
                                 uses.add(service)
 
                     def exported_package_exists(p):
-                        package_exists = exists(join(dest_dir, p.replace('.', os.sep)))
+                        package_dir = join(dest_dir, p.replace('.', os.sep))
+                        package_exists = exists(package_dir)
                         if not package_exists and dist.suite.getMxCompatibility().enforce_spec_compliant_exports():
                             pp = [proj for proj in java_projects if p in proj.defined_java_packages()][0]
-                            dist.abort(f'Modular multi-release JARs cannot export packages defined only by versioned projects: {p} is defined by {pp} with multiReleaseJarVersion={pp.multiReleaseJarVersion}')
+                            dist.abort(f'{package_dir} does not exist. Modular multi-release JARs cannot export packages defined only by versioned projects: '
+                                       f'{p} is defined by {pp} with multiReleaseJarVersion={getattr(pp, "multiReleaseJarVersion", None)}.')
                         return package_exists
 
                     # Exports of modular multi-release JARs must be exactly the same in all versions,
@@ -1113,9 +1176,18 @@ def get_transitive_closure(roots, observable_modules):
     Gets the transitive closure of the dependencies of a set of root modules
     (i.e. `roots`) with respect to a set of observable modules (i.e. `observable_modules`)
 
-    :param iterable roots: the roots modules (JavaModulesDescriptors or module names) for
+    :param iterable roots: the roots modules (JavaModuleDescriptors or module names) for
                            which the transitive closure is being requested
     :param iterable observable_modules: set of modules in which the transitive dependencies must exist
+    """
+    return get_transitive_closure_common(roots, observable_modules)
+
+def get_transitive_closure_common(roots, observable_modules, requiresPredicate=None):
+    """
+    Common implementation of `get_transitive_closure` and `get_transitive_closure_from_requires`.
+    :param requiresPredicate: an optional predicate that determines if the transitive closure
+                            should include edges with the given requires modifiers (default all)
+    :type requiresPredicate: Optional[Callable[[Collection[str]], bool]]
     """
     name_to_module = {m.name : m for m in observable_modules}
     transitive_closure = set()
@@ -1127,13 +1199,25 @@ def get_transitive_closure(roots, observable_modules):
     def add_transitive(mod):
         if mod not in transitive_closure:
             transitive_closure.add(mod)
-            for name in mod.requires.keys():
-                add_transitive(lookup_module(name))
+            for name, modifiers in mod.requires.items():
+                if requiresPredicate is None or requiresPredicate(modifiers):
+                    add_transitive(lookup_module(name))
     for root in roots:
         if isinstance(root, str):
             root = lookup_module(root)
         add_transitive(root)
     return transitive_closure
+
+def get_transitive_closure_from_requires(requires, observable_modules):
+    """
+    Gets the transitive closure from a set of requires (i.e. `requires`) of a root module
+    with respect to a set of observable modules (i.e. `observable_modules`)
+
+    :param iterable requires: the requires (JavaModuleDescriptors or module names) of the
+                              module for which the transitive closure is being requested
+    :param iterable observable_modules: set of modules in which the transitive dependencies must exist
+    """
+    return get_transitive_closure_common(requires, observable_modules, lambda modifiers: 'transitive' in modifiers)
 
 def parse_requiresConcealed_attribute(jdk, value, result, importer, context, modulepath=None):
     """
@@ -1214,3 +1298,185 @@ def requiredExports(distributions, jdk):
             target_module.collect_required_exports(required_exports)
 
     return required_exports
+
+def get_dependency_as_module(dep, jdk):
+    """
+    Gets the Java module descriptor created from a given distribution or library dependency.
+
+    :param JARDistribution|Library dep: a distribution or library that defines a Java module
+    :param JDKConfig jdk: a JDK with a version >= 9 that can be used to resolve references to JDK modules
+    :return: the descriptor for the module
+    :rtype: JavaModuleDescriptor
+    """
+    assert isinstance(dep, mx.ClasspathDependency), dep
+    if dep.isJARDistribution():
+        return as_java_module(dep, jdk)
+    elif dep.isLibrary():
+        return get_library_as_module(dep, jdk)
+    else:
+        mx.abort(f"{dep} is not a module JARDistribution or Library")
+
+def module_path_entries(names=None, jdk=None, includeSelf=True, includeProjects=True, excludes=None):
+    """
+    Gets the transitive set of dependencies that need to be on the module path
+    given the root set of (module) distributions, libraries, or projects in `names`.
+
+    :param names: the root ClasspathDependency(s) for which to get the module dependencies.
+    :type names: ClasspathDependency | str | Collection[ClasspathDependency | str]
+    :param bool includeSelf: whether to include any of the dependencies in `names` in the returned list
+    :param bool includeProjects: for a JARDistribution dependencies, specifies whether to include
+            dependencies only reachable via project dependency edges in the module path.
+    :return: an iterable of (Dependency, {Dependency: Requires}, Requires) tuples representing
+            the transitive set of dependencies that should be on the module path for something
+            depending on `names`, associated with the modules that directly (i.e. not transitively)
+            require or depend on the module, and a set of transitive `requires` qualifiers.
+    :rtype: Iterable[tuple[ClasspathDependency, Mapping[ClasspathDependency, Collection[str]], Collection[str]]]
+    """
+    if not names:
+        # all classpath dependencies that define a module.
+        roots = [
+            d for d in mx.dependencies()
+            if isinstance(d, mx.ClasspathDependency) and (d.isJARDistribution() or d.isLibrary()) and d.get_declaring_module_name() is not None
+        ]
+    elif isinstance(names, mx.Dependency):
+        roots = [names]
+    else:
+        if isinstance(names, str):
+            names = [names]
+        roots = [mx.dependency(n) for n in names]
+
+    if not roots:
+        return []
+
+    if invalid := [d for d in roots if not isinstance(d, mx.ClasspathDependency)]:
+        mx.abort('class path roots must be classpath dependencies: ' + str(invalid))
+
+    if excludes is None:
+        excludes = []
+    elif isinstance(excludes, mx.Dependency):
+        excludes = [excludes]
+    else:
+        if isinstance(excludes, str):
+            excludes = [excludes]
+        excludes = [mx.dependency(n) for n in excludes]
+
+    assert len(set(roots) & set(excludes)) == 0
+    transitive_keyword = jdk.get_transitive_requires_keyword()
+
+    def is_unavailable_root_dist(dist):
+        return dist.isJARDistribution() and dist in roots and (len(roots) == 1 or as_java_module(dist, jdk, fatalIfNotCreated=False) is None)
+
+    def merge_dicts(this: dict, other: dict, merge=set.union):
+        """Merges two dicts into a new dict of the same type, using `merge` to join values that appear in both dicts."""
+        if not other:
+            return this
+        if not this:
+            return other
+        merged = this.copy()
+        for key, val in other.items():
+            merged[key] = val if key not in merged else merge(merged[key], val)
+        return merged
+
+    mpEntries = {}
+    # {dst: {src: requires_modifiers}} mapping where src modules have a requires dependency on dst
+    backedges_by_dep = {}
+    backedges_by_name = {}
+    def _visitEdge(src, dst, edge):
+        if edge and (dst.isJARDistribution() or dst.isLibrary()):
+            if src.isJavaProject() and (module_distribution := src.get_declaring_module_distribution()) is not None:
+                src_mod = module_distribution
+            else:
+                src_mod = src
+            srcs = backedges_by_dep.setdefault(dst, {})
+            default_requires = [] # empty or {'transitive'}
+            srcs.setdefault(src_mod, set()).update(default_requires)
+    def _preVisit(dst, edge, visitProjects=False):
+        if not isinstance(dst, mx.ClasspathDependency):
+            return False
+        if dst in excludes:
+            return False
+        if edge and edge.src.isLayoutJARDistribution():
+            return False
+        if dst in roots:
+            return True
+        if edge and dst.isLibrary():
+            # library dependencies are a bit weird for being included in distributions by default.
+            # therefore, we only want to consider them if excluded from the distribution, and
+            # simply ignore any library dependencies from projects.
+            if edge.src.isJARDistribution():
+                return edge.kind == mx.DEP_EXCLUDED
+            elif edge.src.isProject():
+                return False
+        if edge and edge.src.isJARDistribution() and dst.isProject():
+            # skip projects of already visited distributions
+            # effectively, this means we only visit projects of the root distribution(s)
+            return visitProjects and edge.src not in backedges_by_dep
+        return True
+    def _visit(dep, edge):
+        if not includeSelf and dep in roots:
+            return
+        # Note: although we're only interested in module dependencies, libraries
+        # that do not define a module can still be included as automatic modules.
+        if (dep.isJARDistribution() and dep.get_declaring_module_name() is not None) or dep.isLibrary():
+            srcs = mpEntries.setdefault(dep, backedges_by_dep.get(dep))
+            assert srcs is not None or dep in roots, dep
+
+            if not is_unavailable_root_dist(dep):
+                # consider explicit requires of modules that are not in distDependencies as additional
+                # dependency edges since mx does not require transitive dependencies to be repeated.
+                moduleDesc = get_dependency_as_module(dep, jdk)
+                for name, modifiers in moduleDesc.requires.items():
+                    if transitive_keyword in modifiers:
+                        backedges_by_name.setdefault(name, {})[dep] = modifiers
+
+    # Although it should not make a difference, not visiting projects in the first pass seems more reliable
+    # in case of any ambiguities, and module information should be wholly provided by distributions anyway.
+    # In the optional second pass, we would only discover any modules that we missed for not being distDependencies
+    # and don't need to visit projects of already visited distributions for which we can use the module descriptor.
+    ignoredEdges = [mx.DEP_ANNOTATION_PROCESSOR, mx.DEP_BUILD]
+    mx.walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=ignoredEdges, visitEdge=_visitEdge)
+    if includeProjects:
+        mx.walk_deps(roots=roots, visit=_visit, preVisit=partial(_preVisit, visitProjects=True), ignoredEdges=ignoredEdges, visitEdge=_visitEdge)
+
+    def resolve_direct(dep, src, default_requires=None):
+        """resolve direct requires to `dep` from `src`"""
+        if not (src.isJARDistribution() or src.isLibrary()) or src.get_declaring_module_name() is None:
+            return []
+        if is_unavailable_root_dist(src):
+            # we cannot use as_java_module for the root JARDistribution yet (initialization cycle).
+            # while we could read the distribution's "moduleInfo" attribute to look for "requires" here,
+            # we are going to do that in make_java_module anyway after, so just return the default for now,
+            # and let make_java_module override it with any explicitly specified requires.
+            return default_requires if default_requires is not None else backedges_by_dep[dep].get(src, [])
+        else:
+            dstModuleDesc = get_dependency_as_module(dep, jdk)
+            srcModuleDesc = get_dependency_as_module(src, jdk)
+            return srcModuleDesc.requires.get(dstModuleDesc.name, [])
+
+    def resolve_indirect(dep, srcs):
+        """resolve indirect transitive requires to `dep`"""
+        all_requires = set()
+        for src, default_requires in srcs.items():
+            all_requires.update(resolve_direct(dep, src, default_requires))
+        return all_requires & {transitive_keyword}
+
+    def dep_with_requires(dep, srcs):
+        if srcs is None:
+            srcs = backedges_by_dep.get(dep, {})
+        if dep.isJARDistribution():
+            srcs = merge_dicts(srcs, backedges_by_name.get(dep.get_declaring_module_name(), {}))
+        return (
+            dep,
+            {src: resolve_direct(dep, src) for src in srcs},
+            resolve_indirect(dep, srcs),
+        )
+
+    if mx.get_opts().verbose:
+        for (dep, direct, indirect) in (dep_with_requires(*e) for e in mpEntries.items()):
+            mx.log("{prefix}Found module path entry: {dep} {indirect} required by {direct}".format(
+                prefix=f"{[*roots][0]}: " if len(roots) == 1 else "",
+                dep=dep.qualifiedName(),
+                direct={dep.qualifiedName(): list(modifiers) for dep, modifiers in direct.items()},
+                indirect="transitively" if indirect else "directly",
+            ))
+    return (dep_with_requires(*e) for e in mpEntries.items())
