@@ -167,7 +167,7 @@ local with(platform, java_release, timelimit="15:00") = {
         run: [
             [mx, "sclone", "--kind", "git", "--source", "https://github.com/graalvm/truffleruby.git", "--dest", "../truffleruby"],
             ["cd", "../truffleruby"],
-            ["bin/jt", "build", "--env", "native", "--native-images=truffleruby"],
+            ["bin/jt", "build", "--env", "native", "--native-images=lib:rubyvm"],
             ["bin/jt", "-u", "native", "ruby", "-v", "-e", 'puts "Hello Ruby!"'],
         ],
     },
