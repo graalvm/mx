@@ -1848,11 +1848,10 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 hooks = self.command_mapper_hooks
                 self.command_mapper_hooks = None
                 with mx.DisableJavaDebugging():
-                    # TODO undo
-                    java_version_out = mx.OutputCapture()
                     vm_opts = _get_vm_options_for_config_extraction(args)
                     vm_args = vm_opts + ["-version"]
                     mx.logv(f"Extracting vm info by calling : java {' '.join(vm_args)}")
+                    java_version_out = mx.TeeOutputCapture(mx.OutputCapture(), mx.logv)
                     code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
                     if code == 0:
                         command_output = java_version_out.data

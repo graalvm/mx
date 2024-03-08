@@ -9225,18 +9225,24 @@ class LinesOutputCapture:
     def __repr__(self):
         return os.linesep.join(self.lines)
 
+
 class TeeOutputCapture:
-    def __init__(self, underlying):
+    def __init__(self, underlying, printer=None):
         self.underlying = underlying
+        self._printer = printer or log
 
     def __call__(self, data):
-        log(data.rstrip())
+        self._printer(data.rstrip())
         self.underlying(data)
 
     def __repr__(self):
         if isinstance(self.underlying, (OutputCapture, LinesOutputCapture)):
             return repr(self.underlying)
         return object.__repr__(self)
+
+    @property
+    def data(self):
+        return self.underlying.data
 
 class PrefixCapture:
     def __init__(self, underlying, identifier):
