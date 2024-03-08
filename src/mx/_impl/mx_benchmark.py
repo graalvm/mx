@@ -138,8 +138,6 @@ def mx_benchmark_compatibility():
     return mx.primary_suite().getMxCompatibility()
 
 
-_profilers = {}
-
 
 class JVMProfiler(object):
     """
@@ -166,6 +164,9 @@ class JVMProfiler(object):
         set of arguments that will be inserted as a command prefix.
         """
         return [], None
+
+
+_profilers: Dict[str, JVMProfiler] = {}
 
 
 def register_profiler(obj):
