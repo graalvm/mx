@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -35,7 +35,7 @@ import os
 import shutil
 import pathlib
 
-from typing import cast, Callable
+from typing import cast, Callable, List
 from argparse import ArgumentParser
 
 from .mx_javacompliance import JavaCompliance
@@ -115,7 +115,7 @@ class ETMavenPOM:
         except KeyError:
             return default
 
-    def getall(self, path: str) -> list[ETMavenPOM]:
+    def getall(self, path: str) -> List[ETMavenPOM]:
         """
         Get all child elements matching 'path'.
         """
@@ -283,7 +283,7 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
             licenses = licenses.findall("license", namespaces=ns)
             if not licenses:
                 cb(f"Generated POM for {self} does not include licenses")
-            expected_licenses: list[mx.License] = cast(list[mx.License], list(self.theLicense))
+            expected_licenses: List[mx.License] = cast(List[mx.License], list(self.theLicense))
             if len(licenses) != expected_licenses:
                 cb(f"Generated POM for {self} has different licenses than suite")
             for pl in licenses:
@@ -581,7 +581,7 @@ class _MavenBuildTask(mx.BuildTask):
 
 
 @mx.command("mx", "maventests")
-def mvn_tests(args: list[str]):
+def mvn_tests(args: List[str]):
     """
     Run tests for maven projects in all suites.
     """
@@ -589,12 +589,12 @@ def mvn_tests(args: list[str]):
     parser.add_argument("--primary", action="store_true", help="limit command to primary suite")
     parser.add_argument("projects", nargs="*", default=[], help="MavenProjects to run tests in (all if omitted)")
     parsed_args = parser.parse_args(args)
-    suites: list[mx.Suite] = []
+    suites: List[mx.Suite] = []
     if parsed_args.primary and (primary_suite := mx.primary_suite()):
         suites = [primary_suite]
     else:
-        suites = cast(list[mx.Suite], mx.suites())
-    dists: list[MavenProject] = [d for s in suites for d in s.dists if isinstance(d, MavenProject)]
+        suites = cast(List[mx.Suite], mx.suites())
+    dists: List[MavenProject] = [d for s in suites for d in s.dists if isinstance(d, MavenProject)]
     if parsed_args.projects:
         dists = [d for d in dists if d.name in parsed_args.projects]
     rc = 0
