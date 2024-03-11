@@ -796,6 +796,8 @@ class BaseRule(Rule):
 
     A replacement template is a dictionary that describes how to create a measurement:
 
+    ::
+
         {
           "benchmark": ("<benchmark>", str),
           "metric.name": "time",
@@ -808,7 +810,7 @@ class BaseRule(Rule):
         }
 
     The tuples in the template shown above are replaced with a corresponding
-    value by looking up the keys surrounded with angled brackets (``<`` and ``>``)
+    value by looking up the variable surrounded with angled brackets (``<`` and ``>``)
     in the dictionary returned by :func:`parseResults` and converting it using
     the callable in the second element.
 
@@ -984,7 +986,29 @@ class JsonBaseRule(BaseRule):
     Keys in the JSON object containing periods ('.') cannot be matched. The period
     is interpreted as indexing into the object.
 
-    TODO example of how nested elements can be accessed
+    Example:
+
+    Given a JSON file:
+
+    ::
+
+        {
+            "key1": {
+                "key2": "value"
+            }
+        }
+
+    And a template:
+
+    ::
+
+        { "metric": ("<key1.key2>", str) }
+
+    This rule would generated:
+
+    ::
+
+        { "metric": "value" }
 
     :ivar keys: Only these keys are available in the replacement using ``<key>`` syntax
     """
@@ -995,14 +1019,17 @@ class JsonBaseRule(BaseRule):
         self.keys = keys
         assert len(keys) == len(set(keys)), f"Duplicate keys in list {keys}"
 
-    def parseResults(self, text):
+    def parseResults(self, text) -> Sequence[dict]:
         """
-        TODO document
-        Creates one dictionary per file
-        :param text:
-        :return:
+        Parses all json files (see :meth:`getJsonFiles`) and extracts the requested keys (see :attr:`keys`) and their
+        values into a dictionary.
+
+        Periods in keys are treated as accessing nested elements, so ``a.b`` would access key ``b`` in the value of the
+        top-level key ``a``.
+
+        Creates one dictionary per file.
         """
-        l = []
+        dicts = []
         for f in self.getJsonFiles(text):
             mx.logv(f"Parsing results using '{self.__class__.__name__}' on file: {f}")
             with open(f) as fp:
@@ -1016,9 +1043,10 @@ class JsonBaseRule(BaseRule):
                             break
                         current = current[component]
                     else:
+                        # Store the value only if the full key could be resolved in the json file
                         values[key] = str(current)
-                l.append(values)
-        return l
+                dicts.append(values)
+        return dicts
 
     def getJsonFiles(self, text):
         """Get the JSON files which should be parsed.
