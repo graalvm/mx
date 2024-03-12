@@ -26,7 +26,6 @@
 #
 
 try:
-    import defusedxml #pylint: disable=unused-import
     from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
