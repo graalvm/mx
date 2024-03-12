@@ -72,7 +72,7 @@ class ModuleInterceptor:
         """
         Logic how a given access is redirected.
 
-        Accesses are either not redirected (returns ``_thismdoule``, the proxy module that created the interceptor) or
+        Accesses are either not redirected (returns ``_this_module``, the proxy module that created the interceptor) or
         redirected to ``_target_module``, the module that is being proxied.
 
         Proxying is important to ensure changes to global variables are observed correctly.
@@ -85,7 +85,8 @@ class ModuleInterceptor:
         :param is_set: Whether this access is a set (True) or a get (False)
         :return: The python module on which this access should be performed on
         """
-        mem_name = f"{self.__dict__['_thisname']}.{name}"
+        module_name = self.__dict__["_thisname"]
+        mem_name = f"{module_name}.{name}"
 
         # We do not treat double underscore symbols (dunders) as internal
         if name.startswith("_") and not name.startswith("__"):
@@ -103,7 +104,27 @@ class ModuleInterceptor:
         if name in self.__dict__["_redirected_writes" if is_set else "_redirected_reads"]:
             return self.__dict__["_target_module"]
         else:
-            return self.__dict__["_this_module"]
+            # TODO GR-50312 GR-51531 Unconditionally return _this_module
+            # _target_module is only returned in this case to not break clients still accessing non-exported symbols
+            if name.startswith("__"):
+                return self.__dict__["_this_module"]
+            else:
+                stack = traceback.extract_stack()
+                mx.log_deprecation(
+                    f"Access to non-exported symbol detected: {mem_name}\n"
+                    "This usually means that you are trying to access a symbol that was either:\n"
+                    "- Itself imported by the target module\n"
+                    "\tIn that case, import the symbol directly from where it was defined instead of from the "
+                    f"{module_name} module\n"
+                    "- Defined in the target module but not exported (through __all__). These symbols were not meant "
+                    "to be accessed from client code\n"
+                    "\tMake sure you really need to access this symbol. "
+                    f"If you do, modify {self.__dict__['_target_module'].__name__}.__all__ to include {name}\n"
+                    "Turn on verbose mode (-v) to see the stack trace"
+                )
+                mx.logv("".join(stack.format()))
+
+                return self.__dict__["_target_module"]
 
     def __setattr__(self, name, value):
         target = self._get_target(name, True)
