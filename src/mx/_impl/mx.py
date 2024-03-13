@@ -322,6 +322,7 @@ if __name__ == '__main__':
     sys.modules['mx'] = sys.modules.pop('__main__')
 
 try:
+    # Use more secure defusedxml library, if available
     from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
