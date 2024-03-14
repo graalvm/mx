@@ -415,6 +415,9 @@ def codeowners(args):
 
 
 class OwnerStats:
+    COLOR_ALERT = "\033[31m"
+    COLOR_RESET = "\033[0m"
+
     def __init__(self):
         self.owned = {}
         self.orphan_files_count = 0
@@ -444,15 +447,21 @@ class OwnerStats:
         for name, details in other.owned.items():
             self._add_owner(name, details)
 
-    def oneline_all(self):
+    def get_orphan_stats(self, use_colors):
+        msg = 'no-one = {} files'.format(self.orphan_files_count)
+        if use_colors and self.orphan_files_count > 0:
+            msg = OwnerStats.COLOR_ALERT + msg + OwnerStats.COLOR_RESET
+        return msg
+
+    def oneline_all(self, use_colors=False):
         owned = [
             '{} = {} files'.format(owner, details['files'])
             for owner, details in self.owned.items()
         ]
-        return ', '.join(owned + ['no-one = {} files'.format(self.orphan_files_count)])
+        return ', '.join(owned + [self.get_orphan_stats(use_colors)])
 
-    def oneline_orphans_only(self):
-        return 'no-one = {} files'.format(self.orphan_files_count)
+    def oneline_orphans_only(self, use_colors=False):
+        return self.get_orphan_stats(use_colors)
 
 
 def _compute_owned_stats(owners, top):
@@ -524,12 +533,13 @@ def nocodeowners(args):
     """Show files not ownered by anybody (via OWNERS.toml files)."""
     parser = argparse.ArgumentParser(prog='mx nocodeowners', formatter_class=argparse.RawTextHelpFormatter, description=_MX_NOCODEOWNERS_HELP)
     parser.add_argument('-a', dest='print_everything', action='store_true', default=False, help='Print information about existing owners too.')
+    parser.add_argument('-c', dest='use_colors', action='store_true', default=False, help='Use colors.')
     args = parser.parse_args(args)
 
     if args.print_everything:
-        summary_function = lambda x: x.oneline_all()
+        summary_function = lambda x: x.oneline_all(args.use_colors)
     else:
-        summary_function = lambda x: x.oneline_orphans_only()
+        summary_function = lambda x: x.oneline_orphans_only(args.use_colors)
 
     root = '.' # _git_get_repo_root_or_cwd()
     owners = FileOwners(root)
