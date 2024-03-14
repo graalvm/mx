@@ -705,3 +705,15 @@ systems, and to `B` for all other systems.
 
 It is only possible to specify one of either the `os`, `arch` or `os_arch`
 options for any project.
+
+### Type hints
+
+Code in MX should make a best effort case to include typing information wherever
+it would otherwise not immediately be clear. Typing information should be
+compatible with the currently supported Python version. Typing information for
+built-in types can be taken from the `typing` package. Where required,
+`__future__` may be imported from the `annotations` package.
+
+Helpful links:
+* [PEP 484 - Type Hints](https://peps.python.org/pep-0484/)
+* [Support for type hints](https://docs.python.org/3.8/library/typing.html)
