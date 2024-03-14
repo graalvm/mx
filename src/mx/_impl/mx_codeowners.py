@@ -513,7 +513,7 @@ def _print_summary(subtree, get_stats_function, indent=0):
         print("{}{}{}{}".format(
             indent_str,
             entry['path'],
-            '/OWNERS.toml' if entry['has_owners'] else '',
+            '/OWNERS.toml' if entry['has_owners'] else '/',
             ' ({})'.format(get_stats_function(stats)) if stats else '',
         ))
         _print_summary(entry['sub'], get_stats_function, indent + 1)
