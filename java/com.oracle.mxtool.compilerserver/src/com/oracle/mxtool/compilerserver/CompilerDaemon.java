@@ -37,9 +37,9 @@ import java.util.concurrent.TimeUnit;
 
 public abstract class CompilerDaemon {
 
-    protected void logf(String commandLine, Object... args) {
+    protected void logf(String format, Object... args) {
         if (verbose) {
-            System.err.printf(commandLine, args);
+            System.err.printf(format, args);
         }
     }
 
@@ -106,18 +106,6 @@ public abstract class CompilerDaemon {
         int compile(String[] args) throws Exception;
     }
 
-    String join(String delim, String[] strings) {
-        if (strings.length == 0) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(strings[0]);
-        for (int i = 1; i < strings.length; i++) {
-            sb.append(delim);
-            sb.append(strings[i]);
-        }
-        return sb.toString();
-    }
-
     public class Connection implements Runnable {
 
         private final Socket connectionSocket;
@@ -136,7 +124,7 @@ public abstract class CompilerDaemon {
                 try {
                     String commandLine = input.readLine();
                     if (commandLine == null || commandLine.length() == 0) {
-                        logf("Shutting down\n");
+                        logf("Shutting down%n");
                         running = false;
                         while (threadPool.getActiveCount() > 1) {
                             threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
@@ -146,10 +134,14 @@ public abstract class CompilerDaemon {
                         System.exit(0);
                     } else {
                         String[] args = commandLine.split("\u0000");
-                        logf("Compiling %s\n", join(" ", args));
+                        logf("Compiling %s%n", String.join(" ", args));
 
                         int result = compiler.compile(args);
-                        logf("Result = %d\n", result);
+                        if (result != 0 && args.length != 0 && args[0].startsWith("GET / HTTP")) {
+                            // GR-52712
+                            System.err.printf("Failing compilation received on %s%n", connectionSocket);
+                        }
+                        logf("Result = %d%n", result);
 
                         output.write(result + "\n");
                     }

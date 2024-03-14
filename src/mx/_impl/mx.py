@@ -8681,17 +8681,20 @@ class CompilerDaemon(Daemon):
         response = str(f.readline())
         if response == '':
             # Compiler server process probably crashed
-            logv('[Compiler daemon process appears to have crashed]')
+            log('[Compiler daemon process appears to have crashed. ]')
             retcode = -1
         else:
             retcode = int(response)
         s.close()
         if retcode:
+            detailed_retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))
             if _opts.verbose:
                 if _opts.very_verbose:
-                    retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))
+                    retcode = detailed_retcode
                 else:
                     log('[exit code: ' + str(retcode) + ']')
+            elif retcode == 2:
+                retcode = detailed_retcode
             abort(retcode)
 
         return retcode
@@ -19295,7 +19298,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.15.1")  # list type subscripting is not available in Python <3.9
+version = VersionSpec("7.15.2")  # GR-52712 - improve diagnostics for JavacDaemon
 
 _mx_start_datetime = datetime.utcnow()
 
