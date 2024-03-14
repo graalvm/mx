@@ -32,6 +32,7 @@ __all__ = [
 import argparse
 import fnmatch
 import json
+import sys
 import os
 
 from . import mx
@@ -443,12 +444,15 @@ class OwnerStats:
         for name, details in other.owned.items():
             self._add_owner(name, details)
 
-    def oneline_format(self):
+    def oneline_all(self):
         owned = [
             '{} = {} files'.format(owner, details['files'])
             for owner, details in self.owned.items()
         ]
         return ', '.join(owned + ['no-one = {} files'.format(self.orphan_files_count)])
+
+    def oneline_orphans_only(self):
+        return 'no-one = {} files'.format(self.orphan_files_count)
 
 
 def _compute_owned_stats(owners, top):
@@ -462,29 +466,50 @@ def _compute_owned_stats(owners, top):
     return result
 
 
-def _show_non_owned(owners, current_dirname):
-    for filename in os.listdir(current_dirname):
+def _get_owned_directory_boundaries(curr_dir):
+    for filename in os.listdir(curr_dir):
         if filename in ['.git', ]:
             continue
-        filepath = os.path.join(current_dirname, filename)
+        filepath = os.path.join(curr_dir, filename)
         if not os.path.isdir(filepath):
-            owner = owners.get_owners_of(filepath)
-            if not owner:
-                stats = _compute_owned_stats(owners, filepath)
-                print("{} (non-owned, {})".format(filepath, stats.oneline_format()))
-        else:
-            report_message = None
-            if not os.path.exists(os.path.join(filepath, 'OWNERS.toml')):
-                report_message = "no OWNERS.toml"
-            else:
-                owner = owners.get_owners_of(os.path.join(filepath, '.'))
-                if not owner:
-                    report_message = "non owned"
-            if report_message:
-                stats = _compute_owned_stats(owners, filepath)
-                print("{} ({}, {})".format(filepath, report_message, stats.oneline_format()))
-            else:
-                _show_non_owned(owners, filepath)
+            continue
+        has_owners_toml = os.path.exists(os.path.join(filepath, 'OWNERS.toml'))
+        nested_info = list(_get_owned_directory_boundaries(filepath))
+        nested_has_owners = len(list(filter(lambda x : x['nested_has_owners'] or x['has_owners'], nested_info))) > 0
+        if not nested_has_owners:
+            nested_info = None
+        yield {
+            'name': filename,
+            'path': filepath,
+            'nested_has_owners': nested_has_owners,
+            'has_owners': has_owners_toml,
+            'sub': nested_info
+        }
+
+def _compute_owner_stats_for_subtree(owners, subtree):
+    # Modifies the structure in place!
+    if subtree is None:
+        return
+    for entry in subtree:
+        entry['stats'] = _compute_owned_stats(owners, entry['path'])
+        _compute_owner_stats_for_subtree(owners, entry['sub'])
+
+
+def _print_summary(subtree, get_stats_function, indent=0):
+    if subtree is None:
+        return
+    indent_str = "    " * indent
+    for entry in subtree:
+        stats = entry.get('stats', None)
+        print("{}{}{}{}".format(
+            indent_str,
+            entry['path'],
+            '/OWNERS.toml' if entry['has_owners'] else '',
+            ' ({})'.format(get_stats_function(stats)) if stats else '',
+        ))
+        _print_summary(entry['sub'], get_stats_function, indent + 1)
+
+
 
 _MX_NOCODEOWNERS_HELP = """Compute summaries of non-owned files via OWNERS.toml.
 
@@ -498,8 +523,17 @@ files (directories) are not owned by anybody.
 def nocodeowners(args):
     """Show files not ownered by anybody (via OWNERS.toml files)."""
     parser = argparse.ArgumentParser(prog='mx nocodeowners', formatter_class=argparse.RawTextHelpFormatter, description=_MX_NOCODEOWNERS_HELP)
+    parser.add_argument('-a', dest='print_everything', action='store_true', default=False, help='Print information about existing owners too.')
     args = parser.parse_args(args)
+
+    if args.print_everything:
+        summary_function = lambda x: x.oneline_all()
+    else:
+        summary_function = lambda x: x.oneline_orphans_only()
 
     root = '.' # _git_get_repo_root_or_cwd()
     owners = FileOwners(root)
-    _show_non_owned(owners, root)
+
+    tree = list(_get_owned_directory_boundaries(root))
+    _compute_owner_stats_for_subtree(owners, tree)
+    _print_summary(tree, summary_function)
