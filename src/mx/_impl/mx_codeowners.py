@@ -416,6 +416,7 @@ def codeowners(args):
 
 class OwnerStats:
     COLOR_ALERT = "\033[31m"
+    COLOR_OKAY = "\033[32m"
     COLOR_RESET = "\033[0m"
 
     def __init__(self):
@@ -453,6 +454,13 @@ class OwnerStats:
             msg = OwnerStats.COLOR_ALERT + msg + OwnerStats.COLOR_RESET
         return msg
 
+    def get_assigned_stats(self, use_colors):
+        counter = sum(details['files'] for details in self.owned.values())
+        msg = 'assigned = {} files'.format(counter)
+        if use_colors and counter > 0:
+            msg = OwnerStats.COLOR_OKAY + msg + OwnerStats.COLOR_RESET
+        return msg
+
     def oneline_all(self, use_colors=False):
         owned = [
             '{} = {} files'.format(owner, details['files'])
@@ -460,8 +468,8 @@ class OwnerStats:
         ]
         return ', '.join(owned + [self.get_orphan_stats(use_colors)])
 
-    def oneline_orphans_only(self, use_colors=False):
-        return self.get_orphan_stats(use_colors)
+    def oneline_brief(self, use_colors=False):
+        return self.get_assigned_stats(use_colors) + ', ' + self.get_orphan_stats(use_colors)
 
 
 def _compute_owned_stats(owners, top):
@@ -539,7 +547,7 @@ def nocodeowners(args):
     if args.print_everything:
         summary_function = lambda x: x.oneline_all(args.use_colors)
     else:
-        summary_function = lambda x: x.oneline_orphans_only(args.use_colors)
+        summary_function = lambda x: x.oneline_brief(args.use_colors)
 
     root = '.' # _git_get_repo_root_or_cwd()
     owners = FileOwners(root)
