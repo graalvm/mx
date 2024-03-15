@@ -8606,6 +8606,7 @@ class CompilerDaemon(Daemon):
     def __init__(self, jdk, jvmArgs, mainClass, toolJar, buildArgs=None):
         logv(f"Starting daemon for {jdk.java} [{', '.join(jvmArgs)}]")
         self.jdk = jdk
+        self.jvmArgs = jvmArgs
         if not buildArgs:
             buildArgs = []
         build(buildArgs + ['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
@@ -8671,12 +8672,18 @@ class CompilerDaemon(Daemon):
             if m:
                 self.port = int(m.group(1))
 
+    # See:
+    #   com.oracle.mxtool.compilerserver.CompilerDaemon.REQUEST_HEADER_COMPILE
+    #   com.oracle.mxtool.compilerserver.CompilerDaemon.REQUEST_HEADER_SHUTDOWN
+    header_compile = "MX DAEMON/COMPILE: "
+    header_shutdown = "MX DAEMON/SHUTDOWN"
+
     def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('127.0.0.1', self.port))
-        logv(f'Compile with {self.name()}: ' + ' '.join(compilerArgs))
+        logv(f'Compile with {self.name()}: {" ".join(compilerArgs)}')
         commandLine = u'\x00'.join(compilerArgs)
-        s.send((commandLine + '\n').encode('utf-8'))
+        s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
         f = s.makefile()
         response = str(f.readline())
         if response == '':
@@ -8702,7 +8709,7 @@ class CompilerDaemon(Daemon):
     def shutdown(self):
         if not self.closed:
             try:
-                self.connection.send('\n'.encode('utf8'))
+                self.connection.send(f'{CompilerDaemon.header_shutdown}\n'.encode('utf8'))
                 self.connection.close()
                 self.closed = True
                 logv('[Stopped ' + str(self) + ']')
@@ -8710,7 +8717,7 @@ class CompilerDaemon(Daemon):
                 logv('Error stopping ' + str(self) + ': ' + str(e))
 
     def __str__(self):
-        return self.name() + ' on port ' + str(self.port) + ' for ' + str(self.jdk)
+        return f"{self.name()} on port {self.port} for {self.jdk} with VM args {self.jvmArgs}"
 
 class JavacDaemon(CompilerDaemon):
     def __init__(self, jdk, jvmArgs):
