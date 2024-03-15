@@ -34,12 +34,22 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public abstract class CompilerDaemon {
 
-    protected void logf(String commandLine, Object... args) {
+    // These values are used in mx.py so keep in sync.
+    public static final String REQUEST_HEADER_COMPILE = "MX DAEMON/COMPILE: ";
+    public static final String REQUEST_HEADER_SHUTDOWN = "MX DAEMON/SHUTDOWN";
+
+    /**
+     * The deamon will shut down after receiving this many requests with an unrecognized header.
+     */
+    static final int MAX_UNRECOGNIZED_REQUESTS = 5;
+
+    protected void logf(String format, Object... args) {
         if (verbose) {
-            System.err.printf(commandLine, args);
+            System.err.printf(format, args);
         }
     }
 
@@ -47,6 +57,7 @@ public abstract class CompilerDaemon {
     private volatile boolean running;
     private ThreadPoolExecutor threadPool;
     private ServerSocket serverSocket;
+    private final AtomicInteger unrecognizedRequests = new AtomicInteger();
 
     public void run(String[] args) throws Exception {
         int jobsArg = -1;
@@ -106,18 +117,6 @@ public abstract class CompilerDaemon {
         int compile(String[] args) throws Exception;
     }
 
-    String join(String delim, String[] strings) {
-        if (strings.length == 0) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder(strings[0]);
-        for (int i = 1; i < strings.length; i++) {
-            sb.append(delim);
-            sb.append(strings[i]);
-        }
-        return sb.toString();
-    }
-
     public class Connection implements Runnable {
 
         private final Socket connectionSocket;
@@ -134,9 +133,9 @@ public abstract class CompilerDaemon {
                 OutputStreamWriter output = new OutputStreamWriter(connectionSocket.getOutputStream(), "UTF-8");
 
                 try {
-                    String commandLine = input.readLine();
-                    if (commandLine == null || commandLine.length() == 0) {
-                        logf("Shutting down\n");
+                    String request = input.readLine();
+                    if (request == null || request.equals(REQUEST_HEADER_SHUTDOWN)) {
+                        logf("Shutting down%n");
                         running = false;
                         while (threadPool.getActiveCount() > 1) {
                             threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
@@ -144,14 +143,27 @@ public abstract class CompilerDaemon {
                         serverSocket.close();
                         // Just to be sure...
                         System.exit(0);
-                    } else {
+                    } else if (request.startsWith(REQUEST_HEADER_COMPILE)) {
+                        String commandLine = request.substring(REQUEST_HEADER_COMPILE.length());
                         String[] args = commandLine.split("\u0000");
-                        logf("Compiling %s\n", join(" ", args));
+                        logf("Compiling %s%n", String.join(" ", args));
 
                         int result = compiler.compile(args);
-                        logf("Result = %d\n", result);
+                        if (result != 0 && args.length != 0 && args[0].startsWith("GET / HTTP")) {
+                            // GR-52712
+                            System.err.printf("Failing compilation received on %s%n", connectionSocket);
+                        }
+                        logf("Result = %d%n", result);
 
                         output.write(result + "\n");
+                    } else {
+                        System.err.printf("Unrecognized request (len=%d): \"%s\"%n", request.length(), request);
+                        int unrecognizedRequestCount = unrecognizedRequests.incrementAndGet();
+                        if (unrecognizedRequestCount > MAX_UNRECOGNIZED_REQUESTS) {
+                            System.err.printf("Shutting down after receiving %d unrecognized requests%n", unrecognizedRequestCount);
+                            System.exit(0);
+                        }
+                        output.write("-1\n");
                     }
                 } finally {
                     // close IO streams, then socket

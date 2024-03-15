@@ -31,7 +31,23 @@ public class JavacDaemon extends CompilerDaemon {
     private final class JavacCompiler implements Compiler {
         public int compile(String[] args) throws Exception {
             final Object receiver = javacMainClass.getDeclaredConstructor().newInstance();
-            return (Integer) compileMethod.invoke(receiver, new Object[]{args});
+            int result = (Integer) compileMethod.invoke(receiver, (Object) args);
+            if (result != 0 && result != 1) {
+                // @formatter:off
+                /*
+                 * com.sun.tools.javac.main.Main:
+                 *
+                 *     public enum Result {
+                 *        OK(0),        // Compilation completed with no errors.
+                 *        ERROR(1),     // Completed but reported errors.
+                 *        CMDERR(2),    // Bad command-line arguments
+                 *        SYSERR(3),    // System error or resource exhaustion.
+                 *        ABNORMAL(4);  // Compiler terminated abnormally
+                 */
+                // @formatter:on
+                System.err.printf("javac exited with exit code %d for args: '%s'%n", result, String.join("' '", args));
+            }
+            return result;
         }
     }
 
@@ -40,7 +56,7 @@ public class JavacDaemon extends CompilerDaemon {
 
     JavacDaemon() throws Exception {
         this.javacMainClass = Class.forName("com.sun.tools.javac.Main");
-        this.compileMethod = javacMainClass.getMethod("compile", new Class<?>[]{(new String[]{}).getClass()});
+        this.compileMethod = javacMainClass.getMethod("compile", String[].class);
     }
 
     @Override
