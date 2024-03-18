@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -133,6 +133,7 @@ def get_shell_commands(args, jdk, extra_jdks):
     return shell_commands.getvalue().strip()
 
 _ansi_color_table = {
+    # duplicates support/logging.py
     'black' : '30',
     'red' : '31',
     'green' : '32',

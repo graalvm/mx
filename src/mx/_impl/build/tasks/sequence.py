@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -23,19 +23,34 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+#
 
-from .. import mx
+from abc import abstractmethod
+from typing import Sequence
 
+from .task import Args, Dependency, Task
 
-def iter_projects(suite, fn):
-    processed_suites = {suite.name}
+__all__ = ["TaskSequence"]
 
-    def _mx_projects_suite(_, suite_import):
-        if suite_import.name in processed_suites:
-            return
-        processed_suites.add(suite_import.name)
-        dep_suite = mx.suite(suite_import.name)
-        fn(dep_suite, suite_import.name)
-        dep_suite.visit_imports(_mx_projects_suite)
+class TaskSequence(Task):
+    """A Task that executes a sequence of subtasks."""
 
-    suite.visit_imports(_mx_projects_suite)
+    def __init__(self, subject: Dependency, args: Args) -> None:
+        super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
+
+    def __str__(self) -> str:
+        def indent(s, padding='  '):
+            return padding + s.replace('\n', '\n' + padding)
+
+        return self.__class__.__name__ + '[\n' + indent('\n'.join(map(str, self.subtasks))) + '\n]'
+
+    @property
+    @abstractmethod
+    def subtasks(self) -> Sequence[Task]:
+        pass
+
+    def execute(self) -> None:
+        for subtask in self.subtasks:
+            assert subtask.subject == self.subject
+            subtask.deps += self.deps
+            subtask.execute()

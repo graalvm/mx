@@ -38,8 +38,6 @@ __all__ = [
     "command_function",
     "update_commands",
     "command",
-    "compare",
-    "Comparable",
     "DynamicVar",
     "DynamicVarScope",
     "ArgParser",
@@ -47,7 +45,6 @@ __all__ = [
     "remove_doubledash",
     "ask_question",
     "ask_yes_no",
-    "warn",
     "Timer",
     "glob_match_any",
     "glob_match",
@@ -62,9 +59,7 @@ __all__ = [
     "SuiteImportURLInfo",
     "SuiteImport",
     "primary_suite",
-    "SuiteConstituent",
     "License",
-    "Dependency",
     "Suite",
     "Repository",
     "SourceSuite",
@@ -74,7 +69,6 @@ __all__ = [
     "suites",
     "suite",
     "primary_or_specific_suites",
-    "ERROR_TIMEOUT",
     "download_file_exists",
     "download_file_with_sha1",
     "download_file_with_digest",
@@ -89,23 +83,9 @@ __all__ = [
     "is_cache_path",
     "relpath_or_absolute",
     "cpu_count",
-    "env_var_to_bool",
-    "str_to_bool",
-    "is_continuous_integration",
-    "is_darwin",
-    "is_linux",
-    "is_openbsd",
-    "is_sunos",
-    "is_windows",
-    "is_cygwin",
-    "get_os",
-    "get_os_variant",
-    "abort",
-    "abort_or_warn",
     "can_symlink",
     "getmtime",
     "stat",
-    "lstat",
     "open",
     "copytree",
     "copyfile",
@@ -114,7 +94,6 @@ __all__ = [
     "show_envs",
     "download",
     "update_file",
-    "nyi",
     "DEP_STANDARD",
     "DEP_BUILD",
     "DEP_ANNOTATION_PROCESSOR",
@@ -124,11 +103,6 @@ __all__ = [
     "DEBUG_WALK_DEPS_LINE",
     "DepEdge",
     "ClasspathDependency",
-    "Task",
-    "NoOpTask",
-    "TaskSequence",
-    "Buildable",
-    "BuildTask",
     "DistributionTemplate",
     "Distribution",
     "JMHArchiveParticipant",
@@ -157,7 +131,6 @@ __all__ = [
     "JavacLikeCompiler",
     "JavacCompiler",
     "JavacDaemonCompiler",
-    "Daemon",
     "CompilerDaemon",
     "JavacDaemon",
     "ECJCompiler",
@@ -245,7 +218,6 @@ __all__ = [
     "java_command",
     "run_java",
     "run_java_min_heap",
-    "waitOn",
     "run_maven",
     "run_mx",
     "list_to_cmd_line",
@@ -268,14 +240,6 @@ __all__ = [
     "disable_command_mapper_hooks",
     "enable_command_mapper_hooks",
     "JDKConfig",
-    "check_get_env",
-    "get_env",
-    "logv",
-    "logvv",
-    "log",
-    "colorize",
-    "log_error",
-    "log_deprecation",
     "expand_project_in_class_path_arg",
     "expand_project_in_args",
     "flock_cmd",
@@ -302,7 +266,6 @@ __all__ = [
     "archive",
     "checkoverlap",
     "canonicalizeprojects",
-    "TimeStampFile",
     "checkstyle",
     "help_",
     "verifyMultiReleaseProjects",
@@ -349,7 +312,7 @@ __all__ = [
 
 import sys
 import uuid
-from abc import ABCMeta, abstractmethod, abstractproperty
+from abc import ABCMeta, abstractmethod
 from typing import Callable, IO, AnyStr, Union, Iterable
 
 if __name__ == '__main__':
@@ -379,9 +342,9 @@ import filecmp
 import json
 import threading
 from collections import OrderedDict, namedtuple, deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
+from argparse import ArgumentParser, PARSER, REMAINDER, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO, StringIO, open as io_open
@@ -392,6 +355,18 @@ from stat import S_IWRITE
 from .mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
 import posixpath
+
+from .build.suite import Dependency, SuiteConstituent
+from .build.tasks import BuildTask, NoOpTask
+from .build.daemon import Daemon
+from .support.comparable import compare, Comparable
+from .support.envvars import env_var_to_bool, get_env
+from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn
+from .support.options import _opts, _opts_parsed_deferrables
+from .support.path import _safe_path, lstat
+from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
+from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
+from .support.timestampfile import TimeStampFile
 
 _mx_commands = MxCommands("mx")
 
@@ -675,57 +650,11 @@ def _function_code(f):
     # Python 3
     return f.__code__
 
-def _check_output_str(*args, **kwargs):
-    try:
-        return subprocess.check_output(*args, **kwargs).decode()
-    except subprocess.CalledProcessError as e:
-        if e.output:
-            e.output = e.output.decode()
-        if hasattr(e, 'stderr') and e.stderr:
-            e.stderr = e.stderr.decode()
-        raise e
-
 def _validate_absolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
     url = urllib.parse.urlsplit(urlstr)
     return url.scheme and (url.netloc or url.path)
-
-def _safe_path(path):
-    """
-    If not on Windows, this function returns `path`.
-    Otherwise, it return a potentially transformed path that is safe for file operations.
-    This works around the MAX_PATH limit on Windows:
-    https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
-    """
-    if is_windows():
-        if _opts.verbose and '/' in path:
-            warn(f"Forward slash in path on windows: {path}")
-            import traceback
-            traceback.print_stack()
-        path = normpath(path)
-        MAX_PATH = 260 # pylint: disable=invalid-name
-        path_len = len(path) + 1 # account for trailing NUL
-        if isabs(path) and path_len >= MAX_PATH:
-            if path.startswith('\\\\'):
-                if path[2:].startswith('?\\'):
-                    # if it already has a \\?\ don't do the prefix
-                    pass
-                else:
-                    # Only a UNC path has a double slash prefix.
-                    # Replace it with `\\?\UNC\'. For example:
-                    #
-                    #   \\Mac\Home\mydir
-                    #
-                    # becomes:
-                    #
-                    #   \\?\UNC\Mac\Home\mydir
-                    #
-                    path = '\\\\?\\UNC' + path[1:]
-            else:
-                path = '\\\\?\\' + path
-        path = str(path)
-    return path
 
 def atomic_file_move_with_fallback(source_path, destination_path):
     is_directory = isdir(source_path) and not islink(source_path)
@@ -798,32 +727,6 @@ def command(suite_name, command_name, usage_msg='', doc_function=None, props=Non
     return mx_command_decorator_factory
 
 ### ~~~~~~~~~~~~~ Language support
-
-# Support for comparing objects given removal of `cmp` function in Python 3.
-# https://portingguide.readthedocs.io/en/latest/comparisons.html
-def compare(a, b):
-    return (a > b) - (a < b)
-
-class Comparable(object):
-    def _checked_cmp(self, other, f):
-        compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
-        return f(compar, 0) if compar is not NotImplemented else compare(id(self), id(other))
-
-    def __lt__(self, other):
-        return self._checked_cmp(other, lambda a, b: a < b)
-    def __gt__(self, other):
-        return self._checked_cmp(other, lambda a, b: a > b)
-    def __eq__(self, other):
-        return self._checked_cmp(other, lambda a, b: a == b)
-    def __le__(self, other):
-        return self._checked_cmp(other, lambda a, b: a <= b)
-    def __ge__(self, other):
-        return self._checked_cmp(other, lambda a, b: a >= b)
-    def __ne__(self, other):
-        return self._checked_cmp(other, lambda a, b: a != b)
-
-    def __cmp__(self, other): # to override
-        raise TypeError("No override for compare")
 
 from .mx_javacompliance import JavaCompliance
 
@@ -1102,18 +1005,6 @@ def ask_question(question, options, default=None, answer=None):
 def ask_yes_no(question, default=None):
     """"""
     return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
-
-def warn(msg, context=None):
-    if _opts.warn and not _opts.quiet:
-        if context is not None:
-            if callable(context):
-                contextMsg = context()
-            elif hasattr(context, '__abort_context__'):
-                contextMsg = context.__abort_context__()
-            else:
-                contextMsg = str(context)
-            msg = contextMsg + ":\n" + msg
-        print(colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr), file=sys.stderr)
 
 class Timer():
     """
@@ -1646,80 +1537,6 @@ def primary_suite():
     return _primary_suite
 
 
-class SuiteConstituent(Comparable, metaclass=ABCMeta):
-    def __init__(self, suite, name, build_time=1):
-        """
-        :type name: str
-        :type suite: Suite
-        :type build_time: Expected build time in minutes (Used to schedule parallel jobs efficient)
-        """
-        self.name = name
-        self.suite = suite
-        self.build_time = build_time
-
-        # Should this constituent be visible outside its suite
-        self.internal = False
-
-    def origin(self):
-        """
-        Gets a 2-tuple (file, line) describing the source file where this constituent
-        is defined or None if the location cannot be determined.
-        """
-        suitepy = self.suite.suite_py()
-        if exists(suitepy):
-            import tokenize
-            with open(suitepy) as fp:
-                candidate = None
-                for t in tokenize.generate_tokens(fp.readline):
-                    _, tval, (srow, _), _, _ = t
-                    if candidate is None:
-                        if tval in ('"' + self.name + '"', "'" + self.name + "'"):
-                            candidate = srow
-                    else:
-                        if tval == ':':
-                            return (suitepy, srow)
-                        else:
-                            candidate = None
-
-    def __abort_context__(self):
-        """
-        Gets a description of where this constituent was defined in terms of source file
-        and line number. If no such description can be generated, None is returned.
-        """
-        loc = self.origin()
-        if loc:
-            path, lineNo = loc
-            return f'  File "{path}", line {lineNo} in definition of {self.name}'
-        return f'  {self.name}'
-
-    def _comparison_key(self):
-        return self.name, self.suite
-
-    def __cmp__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return compare(self._comparison_key(), other._comparison_key())
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return self._comparison_key() == other._comparison_key()
-
-    def __ne__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return self._comparison_key() != other._comparison_key()
-
-    def __hash__(self):
-        return hash(self._comparison_key())
-
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        return self.name
-
-
 class License(SuiteConstituent):
     def __init__(self, suite, name, fullname, url):
         SuiteConstituent.__init__(self, suite, name)
@@ -1731,297 +1548,6 @@ class License(SuiteConstituent):
         return self.name, self.url, self.fullname
 
 
-class Dependency(SuiteConstituent):
-    """
-    A dependency is a library, distribution or project specified in a suite.
-    The name must be unique across all Dependency instances.
-    """
-    def __init__(self, suite, name, theLicense, **kwArgs):
-        SuiteConstituent.__init__(self, suite, name)
-        if isinstance(theLicense, str):
-            theLicense = [theLicense]
-        self.theLicense = theLicense
-        self.__dict__.update(kwArgs)
-
-    def isBaseLibrary(self):
-        return isinstance(self, BaseLibrary)
-
-    def isLibrary(self):
-        return isinstance(self, Library)
-
-    def isResourceLibrary(self):
-        return isinstance(self, ResourceLibrary)
-
-    def isPackedResourceLibrary(self):
-        return isinstance(self, PackedResourceLibrary)
-
-    def isJreLibrary(self):
-        return isinstance(self, JreLibrary)
-
-    def isJdkLibrary(self):
-        return isinstance(self, JdkLibrary)
-
-    def isProject(self):
-        return isinstance(self, Project)
-
-    def isJavaProject(self):
-        return isinstance(self, JavaProject)
-
-    def isNativeProject(self):
-        return isinstance(self, AbstractNativeProject)
-
-    def isArchivableProject(self):
-        return isinstance(self, ArchivableProject)
-
-    def isDistribution(self):
-        return isinstance(self, Distribution)
-
-    def isJARDistribution(self):
-        return isinstance(self, JARDistribution)
-
-    def isPOMDistribution(self):
-        return isinstance(self, POMDistribution)
-
-    def isLayoutJARDistribution(self):
-        return isinstance(self, LayoutJARDistribution)
-
-    def isLayoutDirDistribution(self):
-        return isinstance(self, LayoutDirDistribution)
-
-    def isClasspathDependency(self):
-        return isinstance(self, ClasspathDependency)
-
-    def isTARDistribution(self):
-        return isinstance(self, AbstractTARDistribution)
-
-    def isZIPDistribution(self):
-        return isinstance(self, AbstractZIPDistribution)
-
-    def isLayoutDistribution(self):
-        return isinstance(self, LayoutDistribution)
-
-    def isProjectOrLibrary(self):
-        return self.isProject() or self.isLibrary()
-
-    def isPlatformDependent(self):
-        return False
-
-    def isJDKDependent(self):
-        return None
-
-    def getGlobalRegistry(self):
-        if self.isProject():
-            return _projects
-        if self.isLibrary() or self.isResourceLibrary():
-            return _libs
-        if self.isDistribution():
-            return _dists
-        if self.isJreLibrary():
-            return _jreLibs
-        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
-        return _jdkLibs
-
-    def getGlobalRemovedRegistry(self):
-        if self.isProject():
-            return _removed_projects
-        if self.isLibrary() or self.isResourceLibrary():
-            return _removed_libs
-        if self.isDistribution():
-            return _removed_dists
-        if self.isJreLibrary():
-            return _removed_jreLibs
-        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
-        return _removed_jdkLibs
-
-    def getSuiteRegistry(self):
-        if self.isProject():
-            return self.suite.projects
-        if self.isLibrary() or self.isResourceLibrary():
-            return self.suite.libs
-        if self.isDistribution():
-            return self.suite.dists
-        if self.isJreLibrary():
-            return self.suite.jreLibs
-        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
-        return self.suite.jdkLibs
-
-    def getSuiteRemovedRegistry(self):
-        if self.isProject():
-            return self.suite.removed_projects
-        if self.isLibrary() or self.isResourceLibrary():
-            return self.suite.removed_libs
-        if self.isDistribution():
-            return self.suite.removed_dists
-        if self.isJreLibrary():
-            return self.suite.removed_jreLibs
-        assert self.isJdkLibrary(), f"'{self}' has unexpected type '{type(self).__name__}'"
-        return self.suite.removed_jdkLibs
-
-    def get_output_base(self):
-        return self.suite.get_output_root(platformDependent=self.isPlatformDependent(), jdkDependent=self.isJDKDependent())
-
-    def getBuildTask(self, args):
-        """
-        Return a BuildTask that can be used to build this dependency.
-        :rtype : BuildTask
-        """
-        nyi('getBuildTask', self)
-
-    def abort(self, msg):
-        """
-        Aborts with given message prefixed by the origin of this dependency.
-        """
-        abort(msg, context=self)
-
-    def warn(self, msg):
-        """
-        Warns with given message prefixed by the origin of this dependency.
-        """
-        warn(msg, context=self)
-
-    def qualifiedName(self):
-        return f'{self.suite.name}:{self.name}'
-
-    def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None, visitEdge=None):
-        """
-        Walk the dependency graph rooted at this object.
-        See documentation for mx.walk_deps for more info.
-        """
-        if visited is not None:
-            if self in visited:
-                return
-        else:
-            visited = set()
-        if ignoredEdges is None:
-            # Default ignored edges
-            ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED, DEP_BUILD]
-        self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
-
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        _debug_walk_deps_helper(self, edge, ignoredEdges)
-        assert self not in visited, self
-        if not preVisit or preVisit(self, edge):
-            visited.add(self)
-            self._walk_deps_visit_edges(visited, edge, preVisit, visit, ignoredEdges, visitEdge)
-            if visit:
-                visit(self, edge)
-
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        nyi('_walk_deps_visit_edges', self)
-
-    def _walk_deps_visit_edges_helper(self, deps, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        for dep_type, dep_list in deps:
-            if not _is_edge_ignored(dep_type, ignoredEdges):
-                for dst in dep_list:
-                    out_edge = DepEdge(self, dep_type, in_edge)
-                    if visitEdge:
-                        visitEdge(self, dst, out_edge)
-                    if dst not in visited:
-                        dst._walk_deps_helper(visited, out_edge, preVisit, visit, ignoredEdges, visitEdge)
-
-    def getArchivableResults(self, use_relpath=True, single=False):
-        """
-        Generates (file_path, archive_path) tuples for all the build results of this dependency.
-        :param use_relpath: When `False` flattens all the results to the root of the archive
-        :param single: When `True` expects a single result.
-                        Might throw `ValueError` if that does not make sense for this dependency type.
-        :rtype: collections.Iterable[(str, str)]
-        """
-        nyi('getArchivableResults', self)
-
-    def contains_dep(self, dep, includeAnnotationProcessors=False):
-        """
-        Determines if the dependency graph rooted at this object contains 'dep'.
-        Returns the path from this object to 'dep' if so, otherwise returns None.
-        """
-        if dep == self:
-            return [self]
-        class FoundPath(StopIteration):
-            def __init__(self, path):
-                StopIteration.__init__(self)
-                self.path = path
-        def visit(path, d, edge):
-            if dep is d:
-                raise FoundPath(path)
-        try:
-            ignoredEdges = [DEP_EXCLUDED] if includeAnnotationProcessors else None
-            self.walk_deps(visit=visit, ignoredEdges=ignoredEdges)
-        except FoundPath as e:
-            return e.path
-        return None
-
-    """Only JavaProjects define Java packages"""
-    def defined_java_packages(self):
-        return []
-
-    def mismatched_imports(self):
-        return {}
-
-    def _extra_artifact_discriminant(self):
-        """
-        An extra string to help identify the current build configuration. It will be used in the generated path for the
-        built artifacts and will avoid unnecessary rebuilds when frequently changing this build configuration.
-        :rtype : str
-        """
-        return ''
-
-    def _resolveDepsHelper(self, deps, fatalIfMissing=True):
-        """
-        Resolves any string entries in 'deps' to the Dependency objects named
-        by the strings. The 'deps' list is updated in place.
-        """
-        if deps:
-            assert all((isinstance(d, (str, Dependency)) for d in deps))
-            if isinstance(deps[0], str):
-                resolvedDeps = []
-                for name in deps:
-                    if not isinstance(name, str):
-                        assert isinstance(name, Dependency)
-                        # already resolved
-                        resolvedDeps.append(name)
-                        continue
-                    s, _ = splitqualname(name)
-                    if s and s in _jdkProvidedSuites:
-                        logvv(f'[{self}: ignoring dependency {name} as it is provided by the JDK]')
-                        continue
-                    dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
-                    if not dep:
-                        continue
-                    if dep.isProject() and self.suite is not dep.suite:
-                        abort('cannot have an inter-suite reference to a project: ' + dep.name, context=self)
-                    if s is None and self.suite is not dep.suite:
-                        current_suite_dep = self.suite.dependency(dep.name, fatalIfMissing=False)
-                        if dep != current_suite_dep:
-                            raise abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
-                        dep = current_suite_dep  # prefer our version
-                    if self.suite is not dep.suite and dep.internal:
-                        abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
-                    selfJC = getattr(self, 'javaCompliance', None)
-                    depJC = getattr(dep, 'javaCompliance', None)
-                    if selfJC and depJC and selfJC.value < depJC.value:
-                        if self.suite.getMxCompatibility().checkDependencyJavaCompliance():
-                            abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
-                    resolvedDeps.append(dep)
-                deps[:] = resolvedDeps
-            assert all((isinstance(d, Dependency) for d in deps))
-
-    def get_output_root(self):
-        """
-        Gets the root of the directory hierarchy under which generated artifacts for this
-        dependency such as class files and annotation generated sources should be placed.
-        """
-        if self.suite._output_root_includes_config():
-            return join(self.get_output_base(), self.name)
-
-        # Legacy code
-        assert self.isProject(), self
-        if not self.subDir:
-            return join(self.get_output_base(), self.name)
-        names = self.subDir.split(os.sep)
-        parents = len([n for n in names if n == os.pardir])
-        if parents != 0:
-            return os.sep.join([self.get_output_base(), f'{self.suite}-parent-{parents}'] + names[parents:] + [self.name])
-        return join(self.get_output_base(), self.subDir, self.name)
 
 class Suite(object):
     """
@@ -4134,8 +3660,6 @@ from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_p
                            get_module_name, parse_requiresConcealed_attribute, \
                            as_java_module
 
-ERROR_TIMEOUT = 0x700000000 # not 32 bits
-
 
 def get_mx_path():
     """Absolute path to the mx executable"""
@@ -4415,124 +3939,24 @@ def cpu_count():
     else:
         return cpus
 
-
-def env_var_to_bool(name, default='false'):
-    """
-    :type name: str
-    :type default: str
-    :rtype: bool
-    """
-    val = get_env(name, default)
-    b = str_to_bool(val)
-    if isinstance(b, bool):
-        return b
-    else:
-        raise abort(f"Invalid boolean env var value {name}={val}; expected: <true | false>")
-
-
-def str_to_bool(val):
-    """
-    :type val: str
-    :rtype: str | bool
-    """
-    low_val = val.lower()
-    if low_val in ('false', '0', 'no'):
-        return False
-    elif low_val in ('true', '1', 'yes'):
-        return True
-    return val
-
-
-def is_continuous_integration():
-    return env_var_to_bool("CONTINUOUS_INTEGRATION")
-
-
-def is_darwin():
-    return sys.platform.startswith('darwin')
-
-
-def is_linux():
-    return sys.platform.startswith('linux')
-
-
-def is_openbsd():
-    return sys.platform.startswith('openbsd')
-
-
-def is_sunos():
-    return sys.platform.startswith('sunos')
-
-
-def is_windows():
-    return sys.platform.startswith('win32')
-
-
-def is_cygwin():
-    return sys.platform.startswith('cygwin')
-
-
-def get_os():
-    """
-    Get a canonical form of sys.platform.
-    """
-    if is_darwin():
-        return 'darwin'
-    elif is_linux():
-        return 'linux'
-    elif is_openbsd():
-        return 'openbsd'
-    elif is_sunos():
-        return 'solaris'
-    elif is_windows():
-        return 'windows'
-    elif is_cygwin():
-        return 'cygwin'
-    else:
-        abort('Unknown operating system ' + sys.platform)
-
-_os_variant = None
-
-
-def get_os_variant():
-    global _os_variant
-    if _os_variant is None:
-        if get_os() == 'linux':
-            try:
-                proc_output = _check_output_str(['ldd', '--version'], stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as e:
-                proc_output = e.output
-
-            if proc_output and 'musl' in proc_output:
-                _os_variant = 'musl'
-        if _os_variant is None:
-            _os_variant = ''
-        logv(f"OS variant detected: {_os_variant if _os_variant else 'none'}")
-    return _os_variant
-
-
-def _is_process_alive(p):
-    if isinstance(p, subprocess.Popen):
-        return p.poll() is None
-    assert isinstance(p, multiprocessing.Process), p
-    return p.is_alive()
-
-
 def _send_sigquit():
     try:
         from psutil import Process, NoSuchProcess
 
-        def _get_args(p):
+        def _get_args_impl(p):
             try:
                 proc = Process(p.pid)
                 return proc.cmdline()
             except NoSuchProcess:
                 return None
+        _get_args = _get_args_impl
     except ImportError:
 
-        def _get_args(p):
+        def _get_args_fallback(p):
             if isinstance(p, subprocess.Popen):
                 return p.args
             return None
+        _get_args = _get_args_fallback
 
     for p, args in _currentSubprocesses:
         if p is None or not _is_process_alive(p):
@@ -4555,76 +3979,6 @@ def _send_sigquit():
             else:
                 os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
-
-
-def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
-    """
-    Aborts the program with a SystemExit exception.
-    If `codeOrMessage` is a plain integer, it specifies the system exit status;
-    if it is None, the exit status is zero; if it has another type (such as a string),
-    the object's value is printed and the exit status is 1.
-
-    The `context` argument can provide extra context for an error message.
-    If `context` is callable, it is called and the returned value is printed.
-    If `context` defines a __abort_context__ method, the latter is called and
-    its return value is printed. Otherwise str(context) is printed.
-    """
-    if threading.current_thread() is threading.main_thread():
-        if is_continuous_integration() or _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
-            logv('sending SIGQUIT to subprocesses on abort')
-            _send_sigquit()
-
-        for p, args in _currentSubprocesses:
-            if _is_process_alive(p):
-                if is_windows():
-                    p.terminate()
-                else:
-                    _kill_process(p.pid, killsig)
-                time.sleep(0.1)
-            if _is_process_alive(p):
-                try:
-                    if is_windows():
-                        p.terminate()
-                    else:
-                        _kill_process(p.pid, signal.SIGKILL)
-                except BaseException as e:
-                    if _is_process_alive(p):
-                        log_error(f"error while killing subprocess {p.pid} \"{' '.join(args)}\": {e}")
-
-    sys.stdout.flush()
-    if is_continuous_integration() or (_opts and hasattr(_opts, 'verbose') and _opts.verbose):
-        import traceback
-        traceback.print_stack()
-    if context is not None:
-        if callable(context):
-            contextMsg = context()
-        elif hasattr(context, '__abort_context__'):
-            contextMsg = context.__abort_context__()
-        else:
-            contextMsg = str(context)
-    else:
-        contextMsg = ""
-
-    if isinstance(codeOrMessage, int):
-        # Log the context separately so that SystemExit
-        # communicates the intended exit status
-        error_message = contextMsg
-        error_code = codeOrMessage
-    elif contextMsg:
-        error_message = contextMsg + ":\n" + codeOrMessage
-        error_code = 1
-    else:
-        error_message = codeOrMessage
-        error_code = 1
-    log_error(error_message)
-    raise SystemExit(error_code)
-
-
-def abort_or_warn(message, should_abort, context=None):
-    if should_abort:
-        abort(message, context)
-    else:
-        warn(message, context)
 
 
 def _suggest_http_proxy_error(e):
@@ -4697,13 +4051,6 @@ def stat(name):
     Wrapper for builtin open function that handles long path names on Windows.
     """
     return os.stat(_safe_path(name))
-
-
-def lstat(name):
-    """
-    Wrapper for builtin open function that handles long path names on Windows.
-    """
-    return os.lstat(_safe_path(name))
 
 
 def open(name, mode='r', encoding='utf-8'):  # pylint: disable=redefined-builtin
@@ -5079,7 +4426,6 @@ _annotationProcessorProjects = None
 # TODO GR-49766 remove when refactoring testing
 _mx_tests_suite = None
 _suitemodel = None
-_opts = Namespace()
 _sorted_extra_java_homes = []
 _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
@@ -5090,14 +4436,6 @@ _urlrewrites = []  # list of URLRewrite objects
 _original_environ = dict(os.environ)
 _original_directory = os.getcwd()
 _jdkProvidedSuites = set()
-
-# List of functions to run after options have been parsed
-_opts_parsed_deferrables = []
-
-
-def nyi(name, obj):
-    abort(f'{name} is not implemented for {obj.__class__.__name__}')
-    raise NotImplementedError()
 
 
 def _first(g):
@@ -5374,284 +4712,6 @@ def _get_jni_gen(pname):
     return join(p.suite.dir, p.jni_gen_dir())
 
 mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
-
-### ~~~~~~~~~~~~~ Build
-
-
-class Task(object, metaclass=ABCMeta):
-    """A task executed during a build.
-
-    :type deps: list[Task]
-    :param Dependency subject: the dependency for which this task is executed
-    :param list[str] args: arguments of the build command
-    :param int parallelism: the number of CPUs used when executing this task
-    """
-
-    def __init__(self, subject, args, parallelism):
-        self.subject = subject
-        self.args = args
-        self.parallelism = parallelism
-        self.deps = []
-        self.proc = None
-
-    def __str__(self):
-        nyi('__str__', self)
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def name(self):
-        return self.subject.name
-
-    @property
-    def build_time(self):
-        return getattr(self.subject, "build_time", 1)
-
-    def initSharedMemoryState(self):
-        pass
-
-    def pushSharedMemoryState(self):
-        pass
-
-    def pullSharedMemoryState(self):
-        pass
-
-    def cleanSharedMemoryState(self):
-        pass
-
-    def prepare(self, daemons):
-        """
-        Perform any task initialization that must be done in the main process.
-        This will be called just before the task is launched.
-        The 'daemons' argument is a dictionary for storing any persistent state
-        that might be shared between tasks.
-        """
-
-    @abstractmethod
-    def execute(self):
-        """Executes this task."""
-
-
-class NoOpTask(Task):
-    def __init__(self, subject, args):
-        super(NoOpTask, self).__init__(subject, args, 1)
-
-    def __str__(self):
-        return 'NoOp'
-
-    def execute(self):
-        pass
-
-
-class TaskSequence(Task):  #pylint: disable=R0921
-    """A Task that executes a sequence of subtasks."""
-
-    def __init__(self, subject, args):
-        super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
-
-    def __str__(self):
-        def indent(s, padding='  '):
-            return padding + s.replace('\n', '\n' + padding)
-
-        return self.__class__.__name__ + '[\n' + indent('\n'.join(map(str, self.subtasks))) + '\n]'
-
-    @abstractproperty
-    def subtasks(self):
-        """:rtype: typing.Sequence[Task]"""
-
-    def execute(self):
-        for subtask in self.subtasks:
-            assert subtask.subject == self.subject
-            subtask.deps += self.deps
-            subtask.execute()
-
-
-class Buildable(object):
-    """A mixin for Task subclasses that can be built."""
-    built = False
-
-    def initSharedMemoryState(self):
-        self._builtBox = multiprocessing.Value('b', 1 if self.built else 0)
-
-    def pushSharedMemoryState(self):
-        self._builtBox.value = 1 if self.built else 0
-
-    def pullSharedMemoryState(self):
-        self.built = bool(self._builtBox.value)
-
-    def cleanSharedMemoryState(self):
-        self._builtBox = None
-
-    # @abstractmethod should be abstract but subclasses in some suites miss this method
-    def newestOutput(self):
-        """
-        Gets a TimeStampFile representing the build output file for this task
-        with the newest modification time or None if no build output file exists.
-        """
-        nyi('newestOutput', self)
-
-class BuildTask(Buildable, Task):
-    """A Task used to build a dependency."""
-
-    def __init__(self, subject, args, parallelism):
-        super(BuildTask, self).__init__(subject, args, parallelism)
-        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                     subject._extra_artifact_discriminant(), self.name)
-
-    def _persist_deps(self):
-        """
-        Saves the dependencies for this task's subject to a file.
-        """
-        if self.deps:
-            with SafeFileCreation(self._saved_deps_path) as sfc:
-                with open(sfc.tmpPath, 'w') as f:
-                    for d in self.deps:
-                        print(d.subject.name, file=f)
-        elif exists(self._saved_deps_path):
-            os.remove(self._saved_deps_path)
-
-    def _deps_changed(self):
-        """
-        Returns True if there are saved dependencies for this task's subject and
-        they have changed since the last time it was built.
-        """
-        if exists(self._saved_deps_path):
-            with open(self._saved_deps_path) as f:
-                last_deps = f.read().splitlines()
-                curr_deps = [d.subject.name for d in self.deps]
-                if last_deps != curr_deps:
-                    return True
-        return False
-
-    def execute(self):
-        """
-        Execute the build task.
-        """
-        if self.buildForbidden():
-            self.logSkip()
-            return
-        buildNeeded = False
-        if self.args.clean and not self.cleanForbidden():
-            self.logClean()
-            self.clean()
-            buildNeeded = True
-            reason = 'clean'
-        if not buildNeeded:
-            updated = [dep for dep in self.deps if getattr(dep, 'built', False)]
-            if updated:
-                buildNeeded = True
-                if not _opts.verbose:
-                    reason = f'dependency {updated[0].subject} updated'
-                else:
-                    reason = 'dependencies updated: ' + ', '.join(str(u.subject) for u in updated)
-        if not buildNeeded and self._deps_changed():
-            buildNeeded = True
-            reason = 'dependencies were added, removed or re-ordered'
-        if not buildNeeded:
-            newestInput = None
-            newestInputDep = None
-            for dep in self.deps:
-                depNewestOutput = getattr(dep, 'newestOutput', lambda: None)()
-                if depNewestOutput and (not newestInput or depNewestOutput.isNewerThan(newestInput)):
-                    newestInput = depNewestOutput
-                    newestInputDep = dep
-            if newestInputDep:
-                logvv(f'Newest dependency for {self.subject.name}: {newestInputDep.subject.name} ({newestInput})')
-
-            if get_env('MX_BUILD_SHALLOW_DEPENDENCY_CHECKS') is None:
-                shallow_dependency_checks = self.args.shallow_dependency_checks is True
-            else:
-                shallow_dependency_checks = get_env('MX_BUILD_SHALLOW_DEPENDENCY_CHECKS') == 'true'
-                if self.args.shallow_dependency_checks is not None and shallow_dependency_checks is True:
-                    warn('Explicit -s argument to build command is overridden by MX_BUILD_SHALLOW_DEPENDENCY_CHECKS')
-
-            if newestInput and shallow_dependency_checks and not self.subject.isNativeProject():
-                newestInput = None
-            if __name__ != self.__module__ and not self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
-                newestInput = newestInput.timestamp if newestInput else float(0)
-            buildNeeded, reason = self.needsBuild(newestInput)
-        if buildNeeded:
-            if not self.args.clean and not self.cleanForbidden():
-                self.clean(forBuild=True)
-            start_time = time.time()
-            self.logBuild(reason)
-            try:
-                _built = self.build()
-            except:
-                # In concurrent builds, this helps identify on the console which build failed
-                log(self._timestamp() + f"{self}: Failed due to error: {sys.exc_info()[1]}")
-                raise
-            self._persist_deps()
-            # The build task is `built` if the `build()` function returns True or None (legacy)
-            self.built = _built or _built is None
-            self.logBuildDone(time.time() - start_time)
-            logv(f'Finished {self}')
-        else:
-            self.logSkip(reason)
-
-    def _timestamp(self):
-        if self.args.print_timing:
-            return time.strftime('[%H:%M:%S] ')
-        return ''
-
-    def logBuild(self, reason=None):
-        if reason:
-            log(self._timestamp() + f'{self}... [{reason}]')
-        else:
-            log(self._timestamp() + f'{self}...')
-
-    def logBuildDone(self, duration):
-        timestamp = self._timestamp()
-        if timestamp:
-            duration = str(timedelta(seconds=duration))
-            # Strip hours if 0
-            if duration.startswith('0:'):
-                duration = duration[2:]
-            log(timestamp + f'{self} [duration: {duration}]')
-
-    def logClean(self):
-        log(f'Cleaning {self.name}...')
-
-    def logSkip(self, reason=None):
-        if reason:
-            logv(f'[{reason} - skipping {self.name}]')
-        else:
-            logv(f'[skipping {self.name}]')
-
-    def needsBuild(self, newestInput):
-        """
-        Returns True if the current artifacts of this task are out dated.
-        The 'newestInput' argument is either None or a TimeStampFile
-        denoting the artifact of a dependency with the most recent modification time.
-        Apart from 'newestInput', this method does not inspect this task's dependencies.
-        """
-        if self.args.force:
-            return (True, 'forced build')
-        return (False, 'unimplemented')
-
-    def buildForbidden(self):
-        if not self.args.only:
-            return False
-        projectNames = self.args.only.split(',')
-        return self.subject.name not in projectNames
-
-    def cleanForbidden(self):
-        return False
-
-    @abstractmethod
-    def build(self):
-        """
-        Build the artifacts.
-        """
-        nyi('build', self)
-
-    @abstractmethod
-    def clean(self, forBuild=False):
-        """
-        Clean the build artifacts.
-        """
-        nyi('clean', self)
 
 
 ### ~~~~~~~~~~~~~ Distribution, Archive, Dependency
@@ -8597,10 +7657,6 @@ class JavacDaemonCompiler(JavacCompiler):
         if not self.daemon:
             self.daemon = JavacDaemon(self.jdk, jvmArgs)
             daemons[key] = self.daemon
-
-class Daemon:
-    def shutdown(self):
-        pass
 
 class CompilerDaemon(Daemon):
     def __init__(self, jdk, jvmArgs, mainClass, toolJar, buildArgs=None):
@@ -13981,64 +13037,6 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
     return 0 if lastSuccess is not None else 2
 
 
-def _kill_process(pid, sig):
-    """
-    Sends the signal `sig` to the process identified by `pid`. If `pid` is a process group
-    leader, then signal is sent to the process group id.
-    """
-    try:
-        logvv(f'[{os.getpid()} sending {sig} to {pid}]')
-        pgid = os.getpgid(pid)
-        if pgid == pid:
-            os.killpg(pgid, sig)
-        else:
-            os.kill(pid, sig)
-        return True
-    except Exception as e:  # pylint: disable=broad-except
-        log('Error killing subprocess ' + str(pid) + ': ' + str(e))
-        return False
-
-
-def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True, on_timeout=None):
-    try:
-        return process.wait(timeout)
-    except subprocess.TimeoutExpired:
-        if on_timeout:
-            on_timeout(process)
-        log_error(f'Process timed out after {timeout} seconds: {cmd_line}')
-        process.kill()
-        return ERROR_TIMEOUT
-
-
-# Makes the current subprocess accessible to the abort() function
-# This is a list of tuples of the subprocess.Popen or
-# multiprocessing.Process object and args.
-_currentSubprocesses = []
-
-def _addSubprocess(p, args):
-    entry = (p, args)
-    logvv(f'[{os.getpid()}: started subprocess {p.pid}: {args}]')
-    _currentSubprocesses.append(entry)
-    return entry
-
-def _removeSubprocess(entry):
-    if entry and entry in _currentSubprocesses:
-        try:
-            _currentSubprocesses.remove(entry)
-        except:
-            pass
-
-def waitOn(p):
-    if is_windows():
-        # on windows use a poll loop, otherwise signal does not get handled
-        retcode = None
-        while retcode is None:
-            retcode = p.poll()
-            time.sleep(0.05)
-    else:
-        retcode = p.wait()
-    return retcode
-
 def _parse_http_proxy(envVarNames):
     """
     Parses the value of the first existing environment variable named
@@ -15058,124 +14056,6 @@ class JDKConfig(Comparable):
         :rtype: list
         """
         return [jmd for jmd in self.get_modules() if jmd.boot]
-
-def check_get_env(key):
-    """
-    Gets an environment variable, aborting with a useful message if it is not set.
-    """
-    value = get_env(key)
-    if value is None:
-        abort('Required environment variable ' + key + ' must be set')
-    return value
-
-def get_env(key, default=None):
-    """
-    Gets an environment variable.
-    :param default: default values if the environment variable is not set.
-    :type default: str | None
-    """
-    value = os.getenv(key, default)
-    return value
-
-### ~~~~~~~~~~~~~ Logging
-def logv(msg=None, end='\n'):
-    if vars(_opts).get('verbose') is None:
-        def _deferrable():
-            logv(msg, end=end)
-        _opts_parsed_deferrables.append(_deferrable)
-        return
-
-    if _opts.verbose:
-        log(msg, end=end)
-
-def logvv(msg=None, end='\n'):
-    if vars(_opts).get('very_verbose') is None:
-        def _deferrable():
-            logvv(msg, end=end)
-        _opts_parsed_deferrables.append(_deferrable)
-        return
-
-    if _opts.very_verbose:
-        log(msg, end=end)
-
-def log(msg=None, end='\n'):
-    """
-    Write a message to the console.
-    All script output goes through this method thus allowing a subclass
-    to redirect it.
-    """
-    if vars(_opts).get('quiet'):
-        return
-    if msg is None:
-        print()
-    else:
-        # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
-        # > A '\n' character is written at the end, unless the print statement
-        # > ends with a comma.
-        #
-        # In CPython, the normal print statement (without comma) is compiled to
-        # two bytecode instructions: PRINT_ITEM, followed by PRINT_NEWLINE.
-        # Each of these bytecode instructions is executed atomically, but the
-        # interpreter can suspend the thread between the two instructions.
-        #
-        # If the print statement is followed by a comma, the PRINT_NEWLINE
-        # instruction is omitted. By manually adding the newline to the string,
-        # there is only a single PRINT_ITEM instruction which is executed
-        # atomically, but still prints the newline.
-        print(str(msg), end=end)
-
-# https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
-_ansi_color_table = {
-    'black' : '30',
-    'red' : '31',
-    'green' : '32',
-    'yellow' : '33',
-    'blue' : '34',
-    'magenta' : '35',
-    'cyan' : '36'
-    }
-
-def colorize(msg, color='red', bright=True, stream=sys.stderr):
-    """
-    Wraps `msg` in ANSI escape sequences to make it print to `stream` with foreground font color
-    `color` and brightness `bright`. This method returns `msg` unchanged if it is None,
-    if it already starts with the designated escape sequence or the execution environment does
-    not support color printing on `stream`.
-    """
-    if msg is None:
-        return None
-    code = _ansi_color_table.get(color, None)
-    if code is None:
-        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.keys()))
-    if bright:
-        code += ';1'
-    color_on = '\033[' + code + 'm'
-    if not msg.startswith(color_on):
-        isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
-        if isUnix and hasattr(stream, 'isatty') and stream.isatty():
-            return color_on + msg + '\033[0m'
-    return msg
-
-def log_error(msg=None):
-    """
-    Write an error message to the console.
-    All script output goes through this method thus allowing a subclass
-    to redirect it.
-    """
-    if msg is None:
-        print(file=sys.stderr)
-    else:
-        print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
-
-
-def log_deprecation(msg=None):
-    """
-    Write an deprecation warning to the console.
-    """
-    if msg is None:
-        print(file=sys.stderr)
-    else:
-        print(colorize(str(f"[MX DEPRECATED] {msg}"), color='yellow', stream=sys.stderr), file=sys.stderr)
 
 ### ~~~~~~~~~~~~~ Project
 
@@ -16630,105 +15510,6 @@ def canonicalizeprojects(args):
                 log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: []')
     return len(nonCanonical)
 
-
-"""
-Represents a file and its modification time stamp at the time the TimeStampFile is created.
-"""
-class TimeStampFile:
-    def __init__(self, path, followSymlinks=True):
-        """
-        :type path: str
-        :type followSymlinks: bool | str
-        """
-        assert isinstance(path, str), path + ' # type=' + str(type(path))
-        self.path = path
-        if exists(path):
-            if followSymlinks == 'newest':
-                self.timestamp = max(getmtime(path), lstat(path).st_mtime)
-            elif followSymlinks:
-                self.timestamp = getmtime(path)
-            else:
-                self.timestamp = lstat(path).st_mtime
-        else:
-            self.timestamp = None
-
-    @staticmethod
-    def newest(paths):
-        """
-        Creates a TimeStampFile for the file in `paths` with the most recent modification time.
-        Entries in `paths` that do not correspond to an existing file are ignored.
-        """
-        ts = None
-        for path in paths:
-            if exists(path):
-                if not ts:
-                    ts = TimeStampFile(path)
-                elif ts.isOlderThan(path):
-                    ts = TimeStampFile(path)
-        return ts
-
-    def isOlderThan(self, arg):
-        if not self.timestamp:
-            return True
-        if isinstance(arg, (int, float)):
-            return self.timestamp < arg
-        if isinstance(arg, TimeStampFile):
-            if arg.timestamp is None:
-                return False
-            else:
-                return arg.timestamp > self.timestamp
-        if isinstance(arg, list):
-            files = arg
-        else:
-            files = [arg]
-        for f in files:
-            if not os.path.exists(f):
-                return True
-            if getmtime(f) > self.timestamp:
-                return True
-        return False
-
-    def isNewerThan(self, arg):
-        """
-        Returns True if self represents an existing file whose modification time
-        is more recent than the modification time(s) represented by `arg`. If `arg`
-        is a list, then it's treated as a list of path names.
-        """
-        if not self.timestamp:
-            return False
-        if isinstance(arg, (int, float)):
-            return self.timestamp > arg
-        if isinstance(arg, TimeStampFile):
-            if arg.timestamp is None:
-                return False
-            else:
-                return arg.timestamp < self.timestamp
-        if isinstance(arg, list):
-            files = arg
-        else:
-            files = [arg]
-        for f in files:
-            if self.timestamp < getmtime(f):
-                return False
-        return True
-
-    def exists(self):
-        return exists(self.path)
-
-    def __str__(self):
-        if self.timestamp:
-            ts = time.strftime('[%Y-%m-%d %H:%M:%S]', time.localtime(self.timestamp))
-        else:
-            ts = '[does not exist]'
-        return self.path + ts
-
-    def touch(self):
-        if exists(self.path):
-            os.utime(self.path, None)
-        else:
-            ensure_dir_exists(dirname(self.path))
-            open(self.path, 'a')
-        self.timestamp = getmtime(self.path)
 
 ### ~~~~~~~~~~~~~ commands
 
@@ -19305,7 +18086,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.15.2")  # GR-52712 - improve diagnostics for JavacDaemon
+version = VersionSpec("7.16.0")  # [GR-52605] Extract some code from mx.py
 
 _mx_start_datetime = datetime.utcnow()
 

@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -23,19 +23,49 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+#
 
-from .. import mx
+from __future__ import annotations
+
+__all__ = ["get_env", "check_get_env", "env_var_to_bool", "str_to_bool"]
+
+import os
+from typing import TypeVar
+
+from .logging import abort
 
 
-def iter_projects(suite, fn):
-    processed_suites = {suite.name}
+def check_get_env(key) -> str:
+    """
+    Gets an environment variable, aborting with a useful message if it is not set.
+    """
+    value = get_env(key)
+    if value is None:
+        return abort(f"Required environment variable '{key}' must be set")
+    return value
 
-    def _mx_projects_suite(_, suite_import):
-        if suite_import.name in processed_suites:
-            return
-        processed_suites.add(suite_import.name)
-        dep_suite = mx.suite(suite_import.name)
-        fn(dep_suite, suite_import.name)
-        dep_suite.visit_imports(_mx_projects_suite)
 
-    suite.visit_imports(_mx_projects_suite)
+Ty = TypeVar("Ty")
+
+
+def get_env(key: str, default: Ty = None) -> str | Ty:
+    """
+    Gets an environment variable.
+    :param default: default values if the environment variable is not set.
+    """
+    value = os.getenv(key, default)
+    return value
+
+
+def str_to_bool(val: str) -> bool:
+    low_val = val.lower()
+    if low_val in ("false", "0", "no"):
+        return False
+    elif low_val in ("true", "1", "yes"):
+        return True
+    return abort(f"Unexpected string to bool value {val}")
+
+
+def env_var_to_bool(name: str, default: str = "false") -> bool:
+    val = get_env(name, default)
+    return str_to_bool(val)

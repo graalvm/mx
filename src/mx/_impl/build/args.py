@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -23,19 +23,19 @@
 # questions.
 #
 # ----------------------------------------------------------------------------------------------------
+#
 
-from .. import mx
+from argparse import Namespace
+from dataclasses import dataclass
+from typing import Optional
 
-
-def iter_projects(suite, fn):
-    processed_suites = {suite.name}
-
-    def _mx_projects_suite(_, suite_import):
-        if suite_import.name in processed_suites:
-            return
-        processed_suites.add(suite_import.name)
-        dep_suite = mx.suite(suite_import.name)
-        fn(dep_suite, suite_import.name)
-        dep_suite.visit_imports(_mx_projects_suite)
-
-    suite.visit_imports(_mx_projects_suite)
+@dataclass(repr = False)
+class ArgsNamespace(Namespace):
+    verbose: bool = False
+    very_verbose: bool = False
+    warn: bool = True
+    quiet: bool = False
+    answer: Optional[str] = None
+    """Answer all questions with 'y' or 'n'"""
+    java_dbg_port: Optional[int] = None
+    clean: bool = False

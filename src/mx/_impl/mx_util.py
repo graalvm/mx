@@ -44,6 +44,7 @@ import os.path
 import errno
 import sys
 import tempfile
+from typing import Optional
 from os.path import dirname, exists, join, isdir, basename
 
 min_required_python_version = (3, 8)
@@ -128,7 +129,12 @@ class SafeFileCreation(object):
         shutil.copy(src, sfc.tmpPath)
 
     """
-    def __init__(self, path, companion_patterns=None):
+
+    _tmp_fd: Optional[int]
+    _tmp_path: Optional[str]
+    path: str
+
+    def __init__(self, path: str, companion_patterns=None):
         self.path = path
         self.companion_patterns = companion_patterns or []
 
@@ -138,29 +144,33 @@ class SafeFileCreation(object):
             ensure_dir_exists(path_dir)
             # Temporary file must be on the same file system as self.path for os.rename to be atomic.
             fd, tmp = tempfile.mkstemp(suffix=basename(self.path), dir=path_dir)
-            self.tmpFd = fd
-            self.tmpPath = tmp
+            self._tmp_fd = fd
+            self._tmp_path = tmp
         else:
-            self.tmpFd = None
-            self.tmpPath = None
+            self._tmp_fd = None
+            self._tmp_path = None
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.path is None:
             return
+
+        assert self._tmp_fd is not None
+
         # Windows will complain about tmp being in use by another process
         # when calling os.rename if we don't close the file descriptor.
-        os.close(self.tmpFd)
+        os.close(self._tmp_fd)
+        self._tmp_fd = None
 
-        def _handle_file(tmpPath, path):
-            if exists(tmpPath):
+        def _handle_file(tmp_path, path):
+            if exists(tmp_path):
                 if exc_value:
                     # If an error occurred, delete the temp file
                     # instead of renaming it
-                    os.remove(tmpPath)
+                    os.remove(tmp_path)
                 else:
                     # Correct the permissions on the temporary file which is created with restrictive permissions
-                    os.chmod(tmpPath, 0o666 & ~_current_umask)
+                    os.chmod(tmp_path, 0o666 & ~_current_umask)
                     if sys.platform.startswith('win32'):
                         try:
                             if exists(path):
@@ -169,17 +179,29 @@ class SafeFileCreation(object):
                                 except (FileNotFoundError, PermissionError):
                                     # Another process removed or re-created it in the meantime
                                     pass
-                            os.rename(tmpPath, path)
+                            os.rename(tmp_path, path)
                         except FileExistsError:
                             # This is how atomic file rename is "supported" on Windows:
                             # the process loosing a file rename race gets this error.
-                            os.remove(tmpPath)
+                            os.remove(tmp_path)
                     else:
                         # Atomic if path does not already exist.
-                        os.rename(tmpPath, path)
+                        os.rename(tmp_path, path)
         _handle_file(self.tmpPath, self.path)
         for companion_pattern in self.companion_patterns:
             _handle_file(companion_pattern.format(path=self.tmpPath), companion_pattern.format(path=self.path))
+
+        self._tmp_path = None
+
+    @property
+    def tmpPath(self) -> str:
+        assert self._tmp_path is not None
+        return self._tmp_path
+
+    @property
+    def tmpFd(self) -> int:
+        assert self._tmp_fd is not None
+        return self._tmp_fd
 
 # Internal test support
 
