@@ -6,6 +6,7 @@ LINK = link
 LIB = lib
 ML = ml64
 CFLAGS =
+CXXFLAGS =
 LDFLAGS =
 
 rule cc
@@ -14,7 +15,7 @@ rule cc
   deps = msvc
 
 rule cxx
-  command = $CL -nologo -showIncludes $includes $CFLAGS $cflags -c $in -Fo$out
+  command = $CL -nologo -showIncludes $includes $CXXFLAGS $cflags -c $in -Fo$out
   description = CXX $out
   deps = msvc
 
@@ -35,6 +36,6 @@ rule asm
   description = ASM $out
 
 rule cpp
-  command = $CL -nologo -showIncludes -EP -P $includes $CFLAGS $cflags -c $in -Fi$out
+  command = $CL -nologo -showIncludes -EP -P $includes $CXXFLAGS $cflags -c $in -Fi$out
   description = CPP $out
   deps = msvc

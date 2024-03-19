@@ -5,6 +5,7 @@ CC = gcc
 CXX = g++
 AR = ar
 CFLAGS =
+CXXFLAGS =
 LDFLAGS =
 
 rule cc
@@ -14,7 +15,7 @@ rule cc
   deps = gcc
 
 rule cxx
-  command = $CXX -MMD -MF $out.d $includes $CFLAGS $cflags -c $in -o $out
+  command = $CXX -MMD -MF $out.d $includes $CXXFLAGS $cflags -c $in -o $out
   description = CXX $out
   depfile = $out.d
   deps = gcc
