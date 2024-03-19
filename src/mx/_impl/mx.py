@@ -16061,7 +16061,7 @@ def _get_javadoc_module_args(projects, jdk):
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
 
-def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True, mayBuild=True, quietForNoPackages=False):
+def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True, mayBuild=True, quietForNoPackages=False, useCodesnippetDoclet=False):
     """generate javadoc for some/all Java projects"""
 
     parser = ArgumentParser(prog='mx javadoc') if parser is None else parser
@@ -16146,13 +16146,27 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if p.isJavaProject() and not is_multirelease_jar_overlay(p):
                 snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
-    snippetslib = library('CODESNIPPET-DOCLET_1.0').get_path(resolve=True)
 
-    ap = []
-    for sp in snippetsPatterns:
-        ap += ['-snippetclasses', sp]
+    snippetArgs = []
+    if useCodesnippetDoclet:
+        snippetslib = library('CODESNIPPET-DOCLET_1.0').get_path(resolve=True)
+        snippetArgs += [
+            '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
+            '-docletpath', snippetslib,
+            '-snippetpath', snippets,
+            '-hiddingannotation', 'java.lang.Deprecated',
+        ]
+        ap = []
+        for sp in snippetsPatterns:
+            ap += ['-snippetclasses', sp]
 
-    snippetsPatterns = ap
+        snippetsPatterns = ap
+    else:
+        snippetArgs += [
+            '--snippet-path=' + snippets,
+            ]
+        snippetsPatterns = []
+        verifySincePresent = []
 
     if not projects:
         log('All projects were skipped.')
@@ -16203,7 +16217,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     continue
                 abort('No packages to generate javadoc for!')
 
-            # windowTitle onloy applies to the standard doclet processor
+            # windowTitle only applies to the standard doclet processor
             windowTitle = []
             if stdDoclet:
                 windowTitle = ['-windowtitle', p.name + ' javadoc']
@@ -16224,15 +16238,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-d', out,
                      '-overview', overviewFile,
                      '-sourcepath', sp,
-                     '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
-                     '-docletpath', snippetslib,
-                     '-snippetpath', snippets,
-                     '-hiddingannotation', 'java.lang.Deprecated',
+                     *snippetArgs,
                      '-source', str(jdk.javaCompliance)] +
                      _get_javadoc_module_args([p], jdk) +
                      snippetsPatterns +
                      jdk.javadocLibOptions([]) +
-                     ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
+                     ['-Xdoclint:none'] +
                      links +
                      extraArgs +
                      nowarnAPI +
@@ -16343,15 +16354,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-quiet',
              '-notimestamp',
              '-d', out,
-             '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
-             '-docletpath', snippetslib,
-             '-snippetpath', snippets,
-             '-hiddingannotation', 'java.lang.Deprecated',
+             *snippetArgs,
              '-sourcepath', sp] +
              _get_javadoc_module_args(projects, jdk) +
              verifySincePresent +
              snippetsPatterns +
-             ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
+             ['-Xdoclint:none'] +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
              groupargs +
              links +
@@ -18134,7 +18142,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.19.1")  # GR-48481: Support POMDistribution in classpath_entries.
+version = VersionSpec("7.19.2")  # [GR-48400] Migrate Truffle doclet usage to JDK 21 javadoc builtin features.
 
 _mx_start_datetime = datetime.utcnow()
 
