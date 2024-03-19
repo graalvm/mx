@@ -1,13 +1,13 @@
 # Ninja rules for a MSVC toolchain found on the path
 
 # These variables can be overwritten to use a different toolchain than the one on the PATH
-CL = cl
-LINK = link
-LIB = lib
-ML = ml64
-CFLAGS =
-CXXFLAGS =
-LDFLAGS =
+CL = <cl:cl>
+LINK = <link:link>
+LIB = <lib:lib>
+ML = <ml:ml64>
+CFLAGS = <cflags: >
+CXXFLAGS = <cxxflags: >
+LDFLAGS = <ldflags: >
 
 rule cc
   command = $CL -nologo -showIncludes $includes $CFLAGS $cflags -c $in -Fo$out

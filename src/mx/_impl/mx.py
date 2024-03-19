@@ -14359,6 +14359,18 @@ def build(cmd_args, parser=None):
     parser.add_argument('--force-deprecation-as-warning-for-dependencies', action='store_true', help='never treat deprecation warnings as errors irrespective of --warning-as-error for projects outside of the primary suite')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
+    if is_windows():
+        parser.add_argument('--alt-cl', help="name of the 'cl' executable. See 'ninja-toolchains/msvc.ninja'", metavar='<path>')
+        parser.add_argument('--alt-link', help="name of the 'link' executable. See 'ninja-toolchains/msvc.ninja'", metavar='<path>')
+        parser.add_argument('--alt-lib', help="name of the 'lib' executable. See 'ninja-toolchains/msvc.ninja'", metavar='<path>')
+        parser.add_argument('--alt-ml', help="name of the 'ml' executable. See 'ninja-toolchains/msvc.ninja'", metavar='<path>')
+    else:
+        parser.add_argument('--alt-cc', help="name of the 'gcc' executable. See 'ninja-toolchains/gcc.ninja'", metavar='<path>')
+        parser.add_argument('--alt-cxx', help="name of the 'g++' executable. See 'ninja-toolchains/gcc.ninja'", metavar='<path>')
+        parser.add_argument('--alt-ar', help="name of the 'ar' executable. See 'ninja-toolchains/gcc.ninja'", metavar='<path>')
+    parser.add_argument('--alt-cflags', help="additional cflags. See 'ninja-toolchains/gcc.ninja' and 'ninja-toolchains/msvc.ninja'", metavar='<path>')
+    parser.add_argument('--alt-cxxflags', help="additional cxxflags. See 'ninja-toolchains/gcc.ninja' and 'ninja-toolchains/msvc.ninja'", metavar='<path>')
+    parser.add_argument('--alt-ldflags', help="additional ldflags. See 'ninja-toolchains/gcc.ninja' and 'ninja-toolchains/msvc.ninja'", metavar='<path>')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
     daemon_group = parser.add_mutually_exclusive_group()
     daemon_group.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
@@ -18118,7 +18130,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.17.0")  # [GR-50022] Benchmarking improvements
+version = VersionSpec("7.18.0")  # support custom native compilers
 
 _mx_start_datetime = datetime.utcnow()
 

@@ -1006,6 +1006,16 @@ suite = {
       },
       "graalCompilerSourceEdition": "ignore",
     },
+    "com.oracle.gcc.ninja.toolchain": {
+      "class": "NinjaToolchainTemplate",
+      "template": "ninja-toolchains/gcc.ninja_template",
+      "output_file": "gcc.ninja_template",
+    },
+    "com.oracle.msvc.ninja.toolchain": {
+      "class": "NinjaToolchainTemplate",
+      "template": "ninja-toolchains/msvc.ninja_template",
+      "output_file": "msvc.ninja_template",
+    },
    },
 
   "distributions" : {
@@ -1042,7 +1052,7 @@ suite = {
       "platformDependent": False,
       "description": "ninja rules for a GCC toolchain found on the PATH",
       "layout": {
-        "toolchain.ninja": "file:ninja-toolchains/gcc.ninja",
+        "toolchain.ninja": "dependency:com.oracle.gcc.ninja.toolchain",
       },
       "maven": False,
       "graalCompilerSourceEdition": "ignore",
@@ -1053,7 +1063,7 @@ suite = {
       "platformDependent": False,
       "description": "ninja rules for a MSVC toolchain found on the PATH",
       "layout": {
-        "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+        "toolchain.ninja": "dependency:com.oracle.msvc.ninja.toolchain",
       },
       "maven": False,
       "graalCompilerSourceEdition": "ignore",
