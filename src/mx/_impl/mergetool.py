@@ -132,7 +132,11 @@ def mergetool_suite_import(args):
         f"Cannot merge files which import different suites: {local_import_dict.keys()} vs {remote_import_dict.keys()}",
     )
 
-    mismatches = [s for s in local_import_dict.keys() if local_import_dict[s] != remote_import_dict[s]]
+    mismatches = [
+        s
+        for s in local_import_dict.keys()
+        if local_import_dict[s] != remote_import_dict[s] and local_import_dict[s] != base_import_dict[s]
+    ]
     _assert_or_fallback(mismatches, "Not import mismatches. Falling back to diff3")
 
     # fix mismatches
