@@ -108,13 +108,23 @@ def mergetool_suite_import(args):
     _assert_or_fallback("suite.py" in os.path.basename(merged), "Only merge suite.py files. Falling back to diff3")
 
     def read_suite_imports(filename):
-        with open(filename) as local_fp:
+        with open(filename) as suite_fp:
             my_globals = {}
             my_locals = {}
+            suite_content = suite_fp.read()
             try:
-                exec(local_fp.read(), my_globals, my_locals)  # pylint: disable=exec-used
+                exec(suite_content, my_globals, my_locals)  # pylint: disable=exec-used
             except Exception as ex:  # pylint: disable=broad-except
-                _fallback(f"Cannot load suite file {filename}: {ex}")
+                msg = f"Cannot load suite file {filename}"
+                if any((x.startswith("<<<<<<<<<") for x in suite_content.splitlines())):
+                    msg += textwrap.dedent("""
+                      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                      Hint: conflict marker detected.
+                      Try using a non-recursive merge strategy, e.g.:
+                        git merge -s resolve
+                      >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+                      """)
+                _fallback(msg)
             return my_locals.get("suite", {}).get("imports", {}).get("suites")
 
     def to_import_dict(suite_imports):
