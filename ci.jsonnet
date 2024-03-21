@@ -160,26 +160,19 @@ local with(platform, java_release, timelimit="15:00") = {
         ],
     },
 
-    build_truffleruby:: self.with_name("gate-build-truffleruby") + common.deps.sulong + common.deps.truffleruby + {
-        environment+: {
-            PATH: "$BUILD_DIR/main:$PATH", # add ./mx on PATH
-        },
-        run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/graalvm/truffleruby.git", "--dest", "../truffleruby"],
-            ["cd", "../truffleruby"],
-            ["bin/jt", "build", "--env", "native", "--native-images=lib:rubyvm"],
-            ["bin/jt", "-u", "native", "ruby", "-v", "-e", 'puts "Hello Ruby!"'],
-        ],
-    },
-
-    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.deps.sulong + {
+    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.deps.sulong + common.deps.truffleruby + {
         packages+: {
             make: ">=" + versions.make,
         },
         run: [
             [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
         ] + self.java_home_in_env("../graal/vm", "vm") + [
+            # Test the ce env file
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
+            # Also test building Truffle languages
+            [mx, "-p", "../graal/vm", "--dy", "truffleruby", "sforceimports"],
+            [mx, "-p", "../graal/vm", "--dy", "truffleruby", "--env", "../../../truffleruby/mx.truffleruby/native", "graalvm-show"],
+            [mx, "-p", "../graal/vm", "--dy", "truffleruby", "--env", "../../../truffleruby/mx.truffleruby/native", "build"],
         ],
     },
 
@@ -239,8 +232,7 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.linux_amd64, self.primary_jdk_version).bench_test,
         with(common.linux_amd64, self.primary_jdk_version).jmh_test,
         with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").proftool_test,
-        with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").build_truffleruby,
-        with(common.linux_amd64, self.primary_jdk_version, timelimit="20:00").build_graalvm_ce,
+        with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").build_graalvm_ce,
         with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
         with(common.linux_amd64, self.primary_jdk_version).version_update_check,
         with(common.linux_amd64, self.primary_jdk_version).post_merge_tag_version,
