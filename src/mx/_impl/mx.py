@@ -18105,7 +18105,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.16.3")  # [GR-42261] Introduce `PrefixCapture`.
+version = VersionSpec("7.16.4")  # mx mergetool-suite-import warn about conflict marker
 
 _mx_start_datetime = datetime.utcnow()
 
