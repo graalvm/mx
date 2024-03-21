@@ -3653,6 +3653,7 @@ from . import mx_ideconfig # pylint: disable=unused-import
 from . import mx_ide_eclipse
 from . import mx_compdb
 from . import mergetool
+from . import sync_ci
 from .pyformat import pyformat
 
 from .mx_javamodules import make_java_module # pylint: disable=unused-import
@@ -17761,6 +17762,7 @@ update_commands("mx", {
     'maven-install' : [maven_install, ''],
     'maven-url': [maven_url, '<repository id> <distribution name>'],
     'mergetool-suite-import': [mergetool.mergetool_suite_import, ''],
+    'mx-sync-common-ci': [sync_ci.mx_sync_common_ci, 'Download common CI files from github'],
     'minheap' : [run_java_min_heap, ''],
     'projectgraph': [projectgraph, ''],
     'projects': [show_projects, ''],
