@@ -100,5 +100,5 @@ if new_version and old_version:
         raise SystemExit(f"Version update does not go forward ({new_tag} < {to_branch_tag})")
 else:
     raise SystemExit(
-        f"Could not find mx version update in the PR (based on `git diff {merge_base}..{from_branch}`).\n\nPlease bump the value of the `version` field near the bottom of mx.py."
+        f"Could not find mx version update in the PR (based on `git diff {merge_base}..{from_branch}`).\n\nPlease bump the value of the `version` field near the bottom of src/mx/_impl/mx.py"
     )
