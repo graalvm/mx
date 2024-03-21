@@ -117,13 +117,15 @@ def mergetool_suite_import(args):
             except Exception as ex:  # pylint: disable=broad-except
                 msg = f"Cannot load suite file {filename}"
                 if any((x.startswith("<<<<<<<<<") for x in suite_content.splitlines())):
-                    msg += textwrap.dedent("""
+                    msg += textwrap.dedent(
+                        """
                       <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                       Hint: conflict marker detected.
                       Try using a non-recursive merge strategy, e.g.:
                         git merge -s resolve
                       >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                      """)
+                      """
+                    )
                 _fallback(msg)
             return my_locals.get("suite", {}).get("imports", {}).get("suites")
 
