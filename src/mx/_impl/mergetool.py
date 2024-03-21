@@ -115,7 +115,7 @@ def mergetool_suite_import(args):
             try:
                 exec(suite_content, my_globals, my_locals)  # pylint: disable=exec-used
             except Exception as ex:  # pylint: disable=broad-except
-                msg = f"Cannot load suite file {filename}"
+                msg = f"Cannot load suite file {filename}: {ex}"
                 if any((x.startswith("<<<<<<<<<") for x in suite_content.splitlines())):
                     msg += textwrap.dedent(
                         """
