@@ -422,6 +422,7 @@ class OwnerStats:
     def __init__(self):
         self.owned = {}
         self.orphan_files_count = 0
+        self.owned_files_count = 0
 
     def _add_owner(self, name, details = None):
         if details is None:
@@ -438,6 +439,7 @@ class OwnerStats:
         if not ownership:
             self.orphan_files_count = self.orphan_files_count + 1
             return
+        self.owned_files_count = self.owned_files_count + 1
         for name in ownership.get('any', []):
             self._add_owner(name)
         for name in ownership.get('all', []):
@@ -445,6 +447,7 @@ class OwnerStats:
 
     def merge_with(self, other):
         self.orphan_files_count = self.orphan_files_count + other.orphan_files_count
+        self.owned_files_count = self.owned_files_count + other.owned_files_count
         for name, details in other.owned.items():
             self._add_owner(name, details)
 
@@ -455,9 +458,8 @@ class OwnerStats:
         return msg
 
     def get_assigned_stats(self, use_colors):
-        counter = sum(details['files'] for details in self.owned.values())
-        msg = 'assigned = {} files'.format(counter)
-        if use_colors and counter > 0:
+        msg = 'assigned = {} files'.format(self.owned_files_count)
+        if use_colors and self.owned_files_count > 0:
             msg = OwnerStats.COLOR_OKAY + msg + OwnerStats.COLOR_RESET
         return msg
 
