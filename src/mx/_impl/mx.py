@@ -9232,6 +9232,20 @@ class TeeOutputCapture:
             return repr(self.underlying)
         return object.__repr__(self)
 
+class PrefixCapture:
+    def __init__(self, underlying, identifier):
+        self.underlying = underlying
+        self.identifier = identifier
+
+    def __call__(self, pid, data):
+        # to avoid multiple line breaks on Windows, rstrip() and add a single \n
+        self.underlying(f'[{self.identifier}:{pid}] {data.rstrip()}\n')
+
+    def __repr__(self):
+        if isinstance(self.underlying, (OutputCapture, LinesOutputCapture)):
+            return repr(self.underlying)
+        return object.__repr__(self)
+
 class HgConfig(VC):
     has_hg = None
     """
@@ -13312,10 +13326,15 @@ def run(
         else:
             start_new_session, creationflags = (False, 0)
 
-        def redirect(stream, f):
-            for line in iter(stream.readline, b''):
-                f(line.decode())
+        def redirect(pid, stream, f):
+            if isinstance(f, PrefixCapture):
+                for line in iter(stream.readline, b''):
+                    f(pid, line.decode())
+            else:
+                for line in iter(stream.readline, b''):
+                    f(line.decode())
             stream.close()
+
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
         stdin_pipe = None if stdin is None else subprocess.PIPE
@@ -13326,12 +13345,12 @@ def run(
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
-            t = Thread(target=redirect, args=(p.stdout, out))
+            t = Thread(target=redirect, args=(p.pid, p.stdout, out))
             # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if callable(err):
-            t = Thread(target=redirect, args=(p.stderr, err))
+            t = Thread(target=redirect, args=(p.pid, p.stderr, err))
             # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
@@ -18086,7 +18105,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.16.2")  # Fix CI
+version = VersionSpec("7.16.3")  # [GR-42261] Introduce `PrefixCapture`.
 
 _mx_start_datetime = datetime.utcnow()
 
