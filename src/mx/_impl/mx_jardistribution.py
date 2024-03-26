@@ -40,7 +40,7 @@ from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
-from . import mx, mx_util
+from . import mx, mx_util, mx_javamodules
 from . import mx_subst
 from .support import path
 
@@ -158,7 +158,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
         compliance = self.maxJavaCompliance()
-        if compliance is not None and compliance < '9' and mx.get_module_name(self):
+        if compliance is not None and compliance < '9' and mx_javamodules.get_module_name(self):
             # if it is modular, bump compliance to 9+ to get a module-info file
             jdk9 = mx.get_jdk('9+', cancel='No module-info will be generated for modular JAR distributions')
             if jdk9:
@@ -220,7 +220,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         ]
         jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance >= '9':
-            info = mx.get_java_module_info(self)
+            info = mx_javamodules.get_java_module_info(self)
             if info:
                 _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
                 paths.append(pickle_path)
@@ -439,7 +439,6 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             for info in in_zf.infolist():
                 if info.filename.startswith('META-INF/versions/'):
                     if jdk9_or_later:
-                        from . import mx_javamodules
                         m = mx_javamodules._versioned_re.match(info.filename)
                         if m:
                             version = int(m.group(1))
@@ -504,11 +503,11 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 f.writelines((l + os.linesep for l in self.stripConfig))
         else:
             cp_entries = mx.classpath_entries(self, includeSelf=False)
-            self_jmd = mx.as_java_module(self, jdk) if mx.get_java_module_info(self) else None
-            dep_modules = frozenset(e for e in cp_entries if e.isJARDistribution() and mx.get_java_module_info(e))
-            dep_module_names = frozenset((mx.get_java_module_info(e)[0] for e in dep_modules))
+            self_jmd = mx.as_java_module(self, jdk) if mx_javamodules.get_java_module_info(self) else None
+            dep_modules = frozenset(e for e in cp_entries if e.isJARDistribution() and mx_javamodules.get_java_module_info(e))
+            dep_module_names = frozenset((mx_javamodules.get_java_module_info(e)[0] for e in dep_modules))
 
-            dep_jmds = frozenset((mx.as_java_module(e, jdk) for e in cp_entries if e.isJARDistribution() and mx.get_java_module_info(e)))
+            dep_jmds = frozenset((mx.as_java_module(e, jdk) for e in cp_entries if e.isJARDistribution() and mx_javamodules.get_java_module_info(e)))
             dep_jars = mx.classpath(self, includeSelf=False, includeBootClasspath=False, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
 
             # Add jmods from the JDK except those overridden by dependencies
@@ -595,7 +594,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
-            if mx.get_java_module_info(self):
+            if mx_javamodules.get_java_module_info(self):
                 # Module info change triggers a rebuild.
                 for name in dir(self):
                     if name == 'moduleInfo' or name.startswith('moduleInfo:'):
@@ -627,7 +626,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
-            info = mx.get_java_module_info(self)
+            info = mx_javamodules.get_java_module_info(self)
             if info:
                 _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
                 res = mx._needsUpdate(newestInput, pickle_path)
@@ -671,7 +670,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         return None
 
     def get_declaring_module_name(self):
-        return mx.get_module_name(self)
+        return mx_javamodules.get_module_name(self)
 
 def _get_proguard_cp(suite=None):
     """
