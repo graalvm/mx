@@ -1,11 +1,12 @@
 # Ninja rules for a GCC toolchain found on the path
 
 # These variables can be overwritten to use a different toolchain than the one on the PATH
-CC = gcc
-CXX = g++
-AR = ar
-CFLAGS =
-LDFLAGS =
+CC = <cc:gcc>
+CXX = <cxx:g++>
+AR = <ar:ar>
+CFLAGS = <cflags: >
+CXXFLAGS = <cxxflags: >
+LDFLAGS = <ldflags: >
 
 rule cc
   command = $CC -MMD -MF $out.d $includes $CFLAGS $cflags -c $in -o $out
@@ -14,7 +15,7 @@ rule cc
   deps = gcc
 
 rule cxx
-  command = $CXX -MMD -MF $out.d $includes $CFLAGS $cflags -c $in -o $out
+  command = $CXX -MMD -MF $out.d $includes $CXXFLAGS $cflags -c $in -o $out
   description = CXX $out
   depfile = $out.d
   deps = gcc
