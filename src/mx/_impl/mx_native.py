@@ -1142,7 +1142,7 @@ class NinjaToolchainTemplateBuildTask(mx.BuildTask):
         return False, 'up to date'
 
     def build(self):
-        mx.ensure_dir_exists(self.subject.get_output_root())
+        mx_util.ensure_dir_exists(self.subject.get_output_root())
         with open(self.subject.output_file, "w") as f:
             f.write(self.contents())
 
