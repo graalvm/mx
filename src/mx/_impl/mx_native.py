@@ -35,6 +35,7 @@ __all__ = [
     "NinjaBuildTask",
     "NinjaManifestGenerator",
     "DefaultNativeProject",
+    "NinjaToolchainTemplate",
 ]
 
 import abc
