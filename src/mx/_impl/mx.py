@@ -89,6 +89,7 @@ __all__ = [
     "open",
     "copytree",
     "copyfile",
+    "move",
     "rmtree",
     "clean",
     "show_envs",
@@ -313,7 +314,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod
-from typing import Callable, IO, AnyStr, Union, Iterable
+from typing import Callable, IO, AnyStr, Union, Iterable, Any
 
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
@@ -4073,6 +4074,10 @@ def copytree(src, dst, symlinks=False, ignore=None):
 
 def copyfile(src, dst):
     shutil.copyfile(_safe_path(src), _safe_path(dst))
+
+
+def move(src, dst):
+    shutil.move(_safe_path(src), _safe_path(dst))
 
 
 def rmtree(path, ignore_errors=False):
@@ -9220,18 +9225,24 @@ class LinesOutputCapture:
     def __repr__(self):
         return os.linesep.join(self.lines)
 
+
 class TeeOutputCapture:
-    def __init__(self, underlying):
+    def __init__(self, underlying, printer=None):
         self.underlying = underlying
+        self._printer = printer or log
 
     def __call__(self, data):
-        log(data.rstrip())
+        self._printer(data.rstrip())
         self.underlying(data)
 
     def __repr__(self):
         if isinstance(self.underlying, (OutputCapture, LinesOutputCapture)):
             return repr(self.underlying)
         return object.__repr__(self)
+
+    @property
+    def data(self):
+        return self.underlying.data
 
 class PrefixCapture:
     def __init__(self, underlying, identifier):
@@ -13226,7 +13237,7 @@ def _list2cmdline(seq):
 
 _subprocess_start_time = None
 
-RedirectStream = Union[None, Callable[[str], None], IO[AnyStr]]
+RedirectStream = Union[None, Callable[[str], Any], IO[AnyStr]]
 """
 Type alias for the redirected streams in :meth:`run`.
 """
@@ -18107,7 +18118,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.16.4")  # mx mergetool-suite-import warn about conflict marker
+version = VersionSpec("7.17.0")  # [GR-50022] Benchmarking improvements
 
 _mx_start_datetime = datetime.utcnow()
 

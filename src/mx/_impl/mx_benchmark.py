@@ -43,6 +43,7 @@ __all__ = [
     "vm_registries",
     "Rule",
     "BaseRule",
+    "FixedRule",
     "StdOutRule",
     "CSVBaseRule",
     "CSVFixedFileRule",
@@ -102,24 +103,24 @@ __all__ = [
     "DataPoints",
 ]
 
-import sys
 import json
 import os.path
 import platform
 import re
+import shlex
+import shutil
 import socket
+import sys
+import tempfile
 import time
 import traceback
 import uuid
-import tempfile
-import shutil
 import zipfile
-import shlex
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
-from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List
+from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List, Collection
 
 from . import mx
 
@@ -136,8 +137,6 @@ def mx_benchmark_compatibility():
     """
     return mx.primary_suite().getMxCompatibility()
 
-
-_profilers = {}
 
 
 class JVMProfiler(object):
@@ -165,6 +164,9 @@ class JVMProfiler(object):
         set of arguments that will be inserted as a command prefix.
         """
         return [], None
+
+
+_profilers: Dict[str, JVMProfiler] = {}
 
 
 def register_profiler(obj):
@@ -368,15 +370,16 @@ class VmRegistry(object):
                     mx.abort(f"Could not find a {self.vm_type_name} to default to.\n{self.get_available_vm_configs_help()}")
                 vms.sort(key=lambda t: t[1:], reverse=True)
                 vm = vms[0][0]
-                if len(vms) == 1:
-                    notice = mx.log
-                    choice = vm
-                else:
-                    notice = mx.warn
-                    seen = set()
-                    choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
                 if not quiet:
-                    notice(f"Defaulting the {self.vm_type_name} to '{vm}'. Consider using --{self.short_vm_type_name} {choice}")
+                    if len(vms) == 1:
+                        notice = mx.log
+                        choice = vm
+                    else:
+                        notice = mx.warn
+                        # Deduplicates vm names while preserving order
+                        vm_names = dict.fromkeys((c[0] for c in vms)).keys()
+                        choice = f"[{'|'.join(vm_names)}]"
+                    notice(f"Defaulting the {self.vm_type_name} to '{vm}'. Consider using --{self.short_vm_type_name}={choice}")
         if vm_config is None:
             vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
@@ -387,15 +390,16 @@ class VmRegistry(object):
                 mx.abort(f"Could not find a {self.vm_type_name} config to default to for {self.vm_type_name} '{vm}'.\n{self.get_available_vm_configs_help()}")
             vm_configs.sort(key=lambda t: t[1:], reverse=True)
             vm_config = vm_configs[0][0]
-            if len(vm_configs) == 1:
-                notice = mx.log
-                choice = vm_config
-            else:
-                notice = mx.warn
-                seen = set()
-                choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
             if not quiet:
-                notice(f"Defaulting the {self.vm_type_name} config to '{vm_config}'. Consider using --{self.short_vm_type_name}-config {choice}.")
+                if len(vm_configs) == 1:
+                    notice = mx.log
+                    choice = vm_config
+                else:
+                    notice = mx.warn
+                    # Deduplicates config names while preserving order
+                    config_names = dict.fromkeys((c[0] for c in vm_configs)).keys()
+                    choice = f"[{'|'.join(config_names)}]"
+                notice(f"Defaulting the {self.vm_type_name} config to '{vm_config}'. Consider using --{self.short_vm_type_name}-config={choice}.")
         vm_object = self.get_vm(vm, vm_config)
 
         if check_guest_vm and not isinstance(vm_object, GuestVm):
@@ -792,6 +796,8 @@ class BaseRule(Rule):
 
     A replacement template is a dictionary that describes how to create a measurement:
 
+    ::
+
         {
           "benchmark": ("<benchmark>", str),
           "metric.name": "time",
@@ -804,7 +810,7 @@ class BaseRule(Rule):
         }
 
     The tuples in the template shown above are replaced with a corresponding
-    value by looking up the keys surrounded with angled brackets (``<`` and ``>``)
+    value by looking up the variable surrounded with angled brackets (``<`` and ``>``)
     in the dictionary returned by :func:`parseResults` and converting it using
     the callable in the second element.
 
@@ -835,7 +841,7 @@ class BaseRule(Rule):
 
     def parse(self, text) -> Iterable[DataPoint]:
         datapoints: List[DataPoint] = []
-        capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
+        capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_.]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(self.parseResults(text)):
             datapoint = {}
@@ -864,11 +870,23 @@ class BaseRule(Rule):
                     # Convert to the requested type
                     inst = vtype(v)
                 if not isinstance(inst, (str, int, float, bool)):
-                    if type(inst).__name__ != 'long': # Python2: int(x) can result in a long
-                        raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
+                    raise RuntimeError(f"Object '{inst}' has unknown type: {type(inst)}")
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
+
+
+class FixedRule(Rule):
+    """
+    Rule that creates a fixed datapoint without parsing anything.
+    """
+
+    def __init__(self, datapoint: DataPoint):
+        super().__init__()
+        self.datapoint = datapoint
+
+    def parse(self, _) -> Iterable[DataPoint]:
+        return [self.datapoint]
 
 
 class StdOutRule(BaseRule):
@@ -876,6 +894,8 @@ class StdOutRule(BaseRule):
 
     A parsing pattern is a regex that may contain any number of named groups,
     as shown in the example:
+
+    ::
 
         r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
 
@@ -885,10 +905,10 @@ class StdOutRule(BaseRule):
 
     def __init__(self, pattern, replacement):
         super(StdOutRule, self).__init__(replacement)
-        self.pattern = pattern
+        self.pattern: re.Pattern = pattern if isinstance(pattern, re.Pattern) else re.compile(pattern, re.MULTILINE)
 
     def parseResults(self, text):
-        return (m.groupdict() for m in re.finditer(self.pattern, text, re.MULTILINE))
+        return (m.groupdict() for m in re.finditer(self.pattern, text))
 
 
 class CSVBaseRule(BaseRule):
@@ -960,19 +980,73 @@ class CSVStdOutFileRule(CSVBaseRule):
 
 
 class JsonBaseRule(BaseRule):
-    """Parses JSON files and creates a measurement result using the replacement."""
+    """
+    Parses JSON files and creates a measurement result using the replacement.
 
-    def __init__(self, replacement, keys):
+    Keys in the JSON object containing periods ('.') cannot be matched. The period
+    is interpreted as indexing into the object.
+
+    Example:
+
+    Given a JSON file:
+
+    ::
+
+        {
+            "key1": {
+                "key2": "value"
+            }
+        }
+
+    And a template:
+
+    ::
+
+        { "metric": ("<key1.key2>", str) }
+
+    This rule would generated:
+
+    ::
+
+        { "metric": "value" }
+
+    :ivar keys: Only these keys are available in the replacement using ``<key>`` syntax
+    """
+    keys: Collection[str]
+
+    def __init__(self, replacement, keys: Collection[str]):
         super(JsonBaseRule, self).__init__(replacement)
         self.keys = keys
+        assert len(keys) == len(set(keys)), f"Duplicate keys in list {keys}"
 
-    def parseResults(self, text):
-        l = []
+    def parseResults(self, text) -> Sequence[dict]:
+        """
+        Parses all json files (see :meth:`getJsonFiles`) and extracts the requested keys (see :attr:`keys`) and their
+        values into a dictionary.
+
+        Periods in keys are treated as accessing nested elements, so ``a.b`` would access key ``b`` in the value of the
+        top-level key ``a``.
+
+        Creates one dictionary per file.
+        """
+        dicts = []
         for f in self.getJsonFiles(text):
             mx.logv(f"Parsing results using '{self.__class__.__name__}' on file: {f}")
             with open(f) as fp:
-                l = l + [{k: str(v)} for k, v in json.load(fp).items() if k in self.keys]
-        return l
+                json_obj = json.load(fp)
+                values = {}
+                for key in self.keys:
+                    components = key.split(".")
+                    current = json_obj
+                    for component in components:
+                        if component not in current:
+                            break
+                        current = current[component]
+                    else:
+                        # Store the value only if the full key could be resolved in the json file
+                        values[key] = str(current)
+                dicts.append(values)
+        return dicts
 
     def getJsonFiles(self, text):
         """Get the JSON files which should be parsed.
@@ -1191,6 +1265,22 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
+        flaky = False
+        for pat in self.flakySuccessPatterns():
+            if compiled(pat).search(out):
+                flaky = True
+        if not flaky:
+            if retcode is not None and not self.validateReturnCode(retcode):
+                self.on_fail(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
+            for pat in self.failurePatterns():
+                m = compiled(pat).search(out)
+                if m:
+                    self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
+
+            success_patterns = self.successPatterns()
+            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
+                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+
         datapoints: List[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
         for t in self._trackers:
@@ -1210,22 +1300,6 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 if "is-default-bench-suite-version" not in datapoint:
                     datapoint["is-default-bench-suite-version"] = str(self.isDefaultSuiteVersion()).lower()
             datapoints.extend(parsedpoints)
-
-        flaky = False
-        for pat in self.flakySuccessPatterns():
-            if compiled(pat).search(out):
-                flaky = True
-        if not flaky:
-            if retcode is not None and not self.validateReturnCode(retcode):
-                self.on_fail(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
-            for pat in self.failurePatterns():
-                m = compiled(pat).search(out)
-                if m:
-                    self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
-
-            success_patterns = self.successPatterns()
-            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
-                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         return datapoints
 
@@ -1803,13 +1877,13 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 hooks = self.command_mapper_hooks
                 self.command_mapper_hooks = None
                 with mx.DisableJavaDebugging():
-                    java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
                     vm_opts = _get_vm_options_for_config_extraction(args)
                     vm_args = vm_opts + ["-version"]
                     mx.logv(f"Extracting vm info by calling : java {' '.join(vm_args)}")
+                    java_version_out = mx.TeeOutputCapture(mx.OutputCapture(), mx.logv)
                     code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
                     if code == 0:
-                        command_output = java_version_out.underlying.data
+                        command_output = java_version_out.data
                         gc, initial_heap, max_heap = _get_gc_info(command_output)
                         vm_info["platform.gc"] = gc
                         vm_info["platform.initial-heap-size"] = initial_heap

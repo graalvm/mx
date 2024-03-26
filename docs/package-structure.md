@@ -32,7 +32,7 @@ in the `_impl` directory.
 
 The main goals of this restructuring are:
 
-* Modernize the codebase by using the de-factor standard python package structure.
+* Modernize the codebase by using the de-facto standard python package structure.
 * Allow for refactoring, while keeping the public API intact (through the use of proxies)
   * This means we can take our time to restructure mx and define a new public API
 * Limit the public API
