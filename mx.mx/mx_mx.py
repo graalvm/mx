@@ -1,1 +1,1 @@
-from mx_native import NinjaToolchainTemplate  #pylint: disable=unused-import
+from mx_native import NinjaToolchainTemplate  # pylint: disable=unused-import
