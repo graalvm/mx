@@ -36,7 +36,7 @@ import traceback
 from types import ModuleType
 from typing import List, Optional
 
-from .._impl import mx
+import mx
 
 # Stores accesses to internal symbols
 _internal_accesses = set()
@@ -109,7 +109,6 @@ class ModuleInterceptor:
             if name.startswith("__"):
                 return self.__dict__["_this_module"]
             else:
-                stack = traceback.extract_stack()
                 mx.log_deprecation(
                     f"Access to non-exported symbol detected: {mem_name}\n"
                     "This usually means that you are trying to access a symbol that was either:\n"
@@ -122,7 +121,7 @@ class ModuleInterceptor:
                     f"If you do, modify {self.__dict__['_target_module'].__name__}.__all__ to include {name}\n"
                     "Turn on verbose mode (-v) to see the stack trace"
                 )
-                mx.logv("".join(stack.format()))
+                mx.logv("".join(traceback.extract_stack().format()))
 
                 return self.__dict__["_target_module"]
 
