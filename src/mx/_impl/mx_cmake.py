@@ -123,7 +123,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
                     raise
 
     def _toolchain_config(self):
-        return {"CMAKE_TOOLCHAIN_FILE": mx.join(tc.get_output(), 'cmake', 'toolchain.cmake') for tc in [self._cmake_toolchain] if tc}
+        return {"CMAKE_TOOLCHAIN_FILE": os.path.join(tc.get_output(), 'cmake', 'toolchain.cmake') for tc in [self._cmake_toolchain] if tc}
 
     def cmake_config(self):
         cfgArgs = [CMakeNinjaProject.config_entry(k, v) for k, v in sorted({**self._cmake_config_raw, **self._toolchain_config()}.items())]
@@ -134,7 +134,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
     def sourceDir(self, create=False):
         src_dir = self.source_dirs()[0]
         if self._symlink_source:
-            src_link = mx.join(self.out_dir, 'src')
+            src_link = os.path.join(self.out_dir, 'src')
 
             if create:
                 def checklink():
@@ -206,7 +206,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         return [mx_subst.as_engine(replaceVar).substitute(rt, dependency=self) for rt in self.results]
 
     def _archivable_results(self, target_arch, use_relpath, single):
-        out_dir_arch = mx.join(self.out_dir, target_arch)
+        out_dir_arch = os.path.join(self.out_dir, target_arch)
         for _result in self.getResults():
             yield self._archivable_result(use_relpath, out_dir_arch, _result)
 

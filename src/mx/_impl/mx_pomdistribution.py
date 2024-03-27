@@ -29,6 +29,7 @@ __all__ = [
     "POMDistribution",
 ]
 
+import os
 from os import remove
 from os.path import exists, join
 
@@ -59,7 +60,7 @@ class POMDistribution(mx.Distribution):
         pass
 
     def exists(self):
-        return mx.exists(self.output_witness())
+        return os.path.exists(self.output_witness())
 
     def remoteExtension(self):
         return 'pom'

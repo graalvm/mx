@@ -33,9 +33,10 @@ from __future__ import annotations
 import atexit
 import sys
 import traceback
+from types import ModuleType
 from typing import List, Optional
 
-from .._impl import mx
+import mx
 
 # Stores accesses to internal symbols
 _internal_accesses = set()
@@ -45,20 +46,51 @@ _exit_handler_set = False
 
 class ModuleInterceptor:
     def __init__(self, thisname, targetname, allowed_internal_reads, allowed_writes=None):
+        """
+        This class mimics a python module and intercepts all accesses, that's why we have to set our instance fields
+        through ``__dict__``.
+        """
+        allowed_internal_reads = allowed_internal_reads or []
+        allowed_writes = allowed_writes or []
+        this_module = sys.modules[thisname]
+        target_module = sys.modules[targetname]
+
         self.__dict__["_thisname"] = thisname
-        self.__dict__["_allowed_internal_reads"] = allowed_internal_reads or []
-        self.__dict__["_allowed_writes"] = allowed_writes or []
-        self.__dict__["_thismodule"] = sys.modules[thisname]
-        self.__dict__["_othermodule"] = sys.modules[targetname]
+        self.__dict__["_allowed_internal_reads"] = allowed_internal_reads
+        self.__dict__["_allowed_writes"] = allowed_writes
+        self.__dict__["_this_module"] = this_module
+        self.__dict__["_target_module"] = target_module
+        # Set of names for which reads should be redirected to the target module
+        # Only allowed internal reads are redirected, everything else does not need to be, they either are accesses to
+        # symbols already present in the proxy or to non-exported symbols
+        self.__dict__["_redirected_reads"] = set(allowed_internal_reads)
+        # Set of names for which writes should be redirected to the target module
+        self.__dict__["_redirected_writes"] = set(allowed_writes)
 
-    def _get_target(self, name, is_set: bool):
-        if name.startswith("__"):
-            return self.__dict__["_thismodule"]
+    def _get_target(self, name, is_set: bool) -> ModuleType:
+        """
+        Logic how a given access is redirected.
 
-        mem_name = f"{self.__dict__['_thisname']}.{name}"
+        Accesses are either not redirected (returns ``_this_module``, the proxy module that created the interceptor) or
+        redirected to ``_target_module``, the module that is being proxied.
 
-        if name.startswith("_"):
-            if not is_set and name not in self.__dict__["_allowed_internal_reads"]:
+        Proxying is important to ensure changes to global variables are observed correctly.
+        If client code changes a global variable in mx, that write should happen in the module where the symbol was
+        defined and not in the proxy, otherwise internal code may not see the write.
+
+        Changes to global variables changed by mx itself are not observable in the client, they will see the value as it
+        was when it was first imported in the proxy.
+
+        :param name: The name of the symbol being accessed
+        :param is_set: Whether this access is a set (True) or a get (False)
+        :return: The python module on which this access should be performed on
+        """
+        module_name = self._thisname
+        mem_name = f"{module_name}.{name}"
+
+        # We do not treat double underscore symbols (dunders) as internal
+        if name.startswith("_") and not name.startswith("__"):
+            if not is_set and name not in self._allowed_internal_reads:
                 mx.abort(f"Disallowed read of internal symbol detected: {mem_name}")
 
             _internal_accesses.add(mem_name)
@@ -66,12 +98,33 @@ class ModuleInterceptor:
             mx.logv(f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name}")
             mx.logvv("".join(stack.format()))
 
-        if is_set and name not in self.__dict__["_allowed_writes"]:
+        if is_set and name not in self._allowed_writes:
             mx.abort(f"Disallowed write to {mem_name}")
 
-        if not hasattr(self.__dict__["_thismodule"], name):
-            return self.__dict__["_othermodule"]
-        return self.__dict__["_thismodule"]
+        redirected_symbols = self._redirected_writes if is_set else self._redirected_reads
+        if name in redirected_symbols:
+            return self._target_module
+        else:
+            # TODO GR-50312 GR-51531 Unconditionally return _this_module
+            # _target_module is only returned in this case to not break clients still accessing non-exported symbols
+            if name.startswith("__") or hasattr(self._this_module, name):
+                return self._this_module
+            else:
+                mx.log_deprecation(
+                    f"Access to non-exported symbol detected: {mem_name}\n"
+                    "This usually means that you are trying to access a symbol that was either:\n"
+                    "- Itself imported by the target module\n"
+                    "\tIn that case, import the symbol directly from where it was defined instead of from the "
+                    f"{module_name} module\n"
+                    "- Defined in the target module but not exported (through __all__). These symbols were not meant "
+                    "to be accessed from client code\n"
+                    "\tMake sure you really need to access this symbol. "
+                    f"If you do, modify {self._target_module.__name__}.__all__ to include {name}\n"
+                    "Turn on verbose mode (-v) to see the stack trace"
+                )
+                mx.logv("".join(traceback.extract_stack().format()))
+
+                return self._target_module
 
     def __setattr__(self, name, value):
         target = self._get_target(name, True)
@@ -91,10 +144,8 @@ def redirect(
     thisname: str, allowed_internal_reads: Optional[List[str]] = None, allowed_writes: Optional[List[str]] = None
 ):
     """
-    Redirects all attribute accesses on the ``thisname`` module to the
-    ``mx._impl.{thisname}`` module.
-
-    The only exception are builtins (names starting with two underscores).
+    Redirects attribute accesses on the ``thisname`` module to the ``mx._impl.{thisname}`` module.
+    For the exact rules which accesses are redirected, see :class:`ModuleInterceptor`
 
     Produces warnings for accesses to internal symbols (which should not be accessed from the outside) that are not
     explicitly allowed in ``allowed_internal_reads``.

@@ -156,6 +156,7 @@ __all__ = [
     "OutputCapture",
     "LinesOutputCapture",
     "TeeOutputCapture",
+    "PrefixCapture",
     "HgConfig",
     "GitConfig",
     "BinaryVC",
@@ -309,6 +310,7 @@ __all__ = [
     "current_mx_command",
     "main",
     "version",
+    "JavaCompliance", # Re-export from mx_javacompliance
 ]
 
 import sys
@@ -321,7 +323,7 @@ if __name__ == '__main__':
     sys.modules['mx'] = sys.modules.pop('__main__')
 
 try:
-    import defusedxml #pylint: disable=unused-import
+    # Use more secure defusedxml library, if available
     from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
@@ -18130,7 +18132,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.18.0")  # support custom native compilers
+version = VersionSpec("7.19.0")  # [GR-51531]
 
 _mx_start_datetime = datetime.utcnow()
 

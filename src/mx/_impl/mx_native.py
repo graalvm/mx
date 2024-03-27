@@ -35,6 +35,7 @@ __all__ = [
     "NinjaBuildTask",
     "NinjaManifestGenerator",
     "DefaultNativeProject",
+    "NinjaToolchainTemplate",
 ]
 
 import abc
@@ -563,7 +564,7 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
             for toolchain in self.toolchains:
                 subdir = toolchain.spec.target.subdir
                 for file_path, archive_path in self._archivable_results(subdir, use_relpath, single):
-                    yield file_path, mx.join(subdir, archive_path)
+                    yield file_path, os.path.join(subdir, archive_path)
         elif self.toolchain_kind:
             assert len(self.toolchains) == 1
             yield from self._archivable_results(self.toolchains[0].spec.target.subdir, use_relpath, single)
@@ -574,9 +575,9 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
             yield from self._archivable_results_no_arch(use_relpath)
 
     def _archivable_result(self, use_relpath, base_dir, file_path):
-        assert not mx.isabs(file_path)
-        archive_path = file_path if use_relpath else mx.basename(file_path)
-        return mx.join(base_dir, file_path), archive_path
+        assert not os.path.isabs(file_path)
+        archive_path = file_path if use_relpath else os.path.basename(file_path)
+        return os.path.join(base_dir, file_path), archive_path
 
     @abc.abstractmethod
     def _archivable_results(self, target_arch, use_relpath, single):
@@ -658,7 +659,7 @@ class NinjaProject(MultitargetProject):
             dep = mx.library('NINJA', False)
             if dep:
                 deps.append(dep)
-                Ninja.binary = mx.join(dep.get_path(False), 'ninja')
+                Ninja.binary = os.path.join(dep.get_path(False), 'ninja')
             else:
                 # necessary until GR-13214 is resolved
                 mx.warn('Make `ninja` binary available via PATH to build native projects.')
@@ -668,7 +669,7 @@ class NinjaProject(MultitargetProject):
         except ImportError:
             dep = mx.library('NINJA_SYNTAX')
             deps.append(dep)
-            module_path = mx.join(dep.get_path(False), f'ninja_syntax-{dep.version}')
+            module_path = os.path.join(dep.get_path(False), f'ninja_syntax-{dep.version}')
             mx_util.ensure_dir_exists(module_path)  # otherwise, import machinery will ignore it
             sys.path.append(module_path)
 
@@ -733,7 +734,7 @@ class NinjaProject(MultitargetProject):
                 # group files by extension
                 grouping = collections.defaultdict(list)
                 for f in files:
-                    grouping[os.path.splitext(f)[1]].append(mx.join(rel_root, f))
+                    grouping[os.path.splitext(f)[1]].append(os.path.join(rel_root, f))
                 for ext in grouping.keys():
                     source_files[ext] += grouping[ext]
 
@@ -755,7 +756,7 @@ class NinjaBuildTask(TargetArchBuildTask):
     def __init__(self, args, project, target_arch, ninja_targets=None, **kwArgs):
         super(NinjaBuildTask, self).__init__(args, project, target_arch, **kwArgs)
         self._reason = None
-        self._manifest = mx.join(self.out_dir, Ninja.default_manifest)
+        self._manifest = os.path.join(self.out_dir, Ninja.default_manifest)
         self.ninja = Ninja(self.out_dir, self.parallelism, targets=ninja_targets)
 
     def __str__(self):
@@ -766,7 +767,7 @@ class NinjaBuildTask(TargetArchBuildTask):
         if is_needed:
             return True, self._reason
 
-        if not mx.exists(self._manifest):
+        if not os.path.exists(self._manifest):
             self._reason = 'no build manifest'
             return True, self._reason
 
@@ -775,19 +776,19 @@ class NinjaBuildTask(TargetArchBuildTask):
         return is_needed, self._reason
 
     def newestOutput(self):
-        return mx.TimeStampFile.newest([mx.join(self.out_dir, self.subject._target)])
+        return mx.TimeStampFile.newest([os.path.join(self.out_dir, self.subject._target)])
 
     def build(self):
-        if not mx.exists(self._manifest) \
+        if not os.path.exists(self._manifest) \
                 or self._reason is None \
-                or mx.basename(self._manifest) in self._reason \
+                or os.path.basename(self._manifest) in self._reason \
                 or 'phony' in self._reason:
             with mx_util.SafeFileCreation(self._manifest) as sfc:
                 output_dir = os.path.dirname(sfc.tmpPath)
                 tmpfilename = os.path.basename(sfc.tmpPath)
                 self.subject.generate_manifest_for_task(self, output_dir, tmpfilename)
 
-                if mx.exists(self._manifest) \
+                if os.path.exists(self._manifest) \
                         and not filecmp.cmp(self._manifest, sfc.tmpPath, shallow=False):
                     self.ninja.clean()
 
@@ -890,7 +891,7 @@ class NinjaManifestGenerator(object):
 
     @staticmethod
     def _resolve(path):
-        return mx.join('$project', path)
+        return os.path.join('$project', path)
 
     def _generate(self):
         self.comment('Generated by mx. Do not edit.')
@@ -979,7 +980,7 @@ class DefaultNativeProject(NinjaProject):
         except KeyError:
             mx.abort(f'"native" should be one of {list(self._kinds.keys())}, but "{kind}" is given')
 
-        include_dir = mx.join(self.dir, self.include)
+        include_dir = os.path.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
             mx.abort('include directory must have a flat structure')
 
@@ -992,7 +993,7 @@ class DefaultNativeProject(NinjaProject):
 
     def target_libs(self, target):
         if self.kind == 'static_lib':
-            yield mx.join(self.out_dir, target.subdir, self._target)
+            yield os.path.join(self.out_dir, target.subdir, self._target)
 
     def resolveDeps(self):
         super(DefaultNativeProject, self).resolveDeps()
@@ -1018,7 +1019,7 @@ class DefaultNativeProject(NinjaProject):
                 def quote(path):
                     return f'"{path}"' if ' ' in path else path
 
-                return f'-fdebug-prefix-map={quote(prefix_dir)}={quote(mx.basename(prefix_dir))}'
+                return f'-fdebug-prefix-map={quote(prefix_dir)}={quote(os.path.basename(prefix_dir))}'
 
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
             default_cflags += [add_debug_prefix(self.suite.get_output_root())]
@@ -1071,7 +1072,7 @@ class DefaultNativeProject(NinjaProject):
                 )
             gen.include_dirs(collections.OrderedDict.fromkeys(
                 # remove the duplicates while maintaining the ordering
-                [mx.dirname(h_file) for h_file in self.h_files] + list(itertools.chain.from_iterable(
+                [os.path.dirname(h_file) for h_file in self.h_files] + list(itertools.chain.from_iterable(
                     getattr(d, 'include_dirs', []) for d in self.buildDependencies))
             ).keys())
 
@@ -1092,11 +1093,11 @@ class DefaultNativeProject(NinjaProject):
                 link(self._target, object_files + dep_libs)
 
     def _archivable_results(self, target_arch, use_relpath, single):
-        yield self._archivable_result(use_relpath, mx.join(self.out_dir, target_arch), self._target)
+        yield self._archivable_result(use_relpath, os.path.join(self.out_dir, target_arch), self._target)
 
     def _archivable_results_no_arch(self, use_relpath):
-        for header in os.listdir(mx.join(self.dir, self.include)):
-            yield self._archivable_result(use_relpath, self.dir, mx.join(self.include, header))
+        for header in os.listdir(os.path.join(self.dir, self.include)):
+            yield self._archivable_result(use_relpath, self.dir, os.path.join(self.include, header))
 
 
 class NinjaToolchainTemplate(mx.Project):
@@ -1142,7 +1143,7 @@ class NinjaToolchainTemplateBuildTask(mx.BuildTask):
         return False, 'up to date'
 
     def build(self):
-        mx.ensure_dir_exists(self.subject.get_output_root())
+        mx_util.ensure_dir_exists(self.subject.get_output_root())
         with open(self.subject.output_file, "w") as f:
             f.write(self.contents())
 
