@@ -61,10 +61,9 @@ class ModuleInterceptor:
         self.__dict__["_this_module"] = this_module
         self.__dict__["_target_module"] = target_module
         # Set of names for which reads should be redirected to the target module
-        # Only symbols exported by the module and the allowed internal reads are redirected, everything else does not
-        # need to be (such accesses shouldn't happen in the first place, since they either access non-exported symbols
-        # or indirect imports).
-        self.__dict__["_redirected_reads"] = set(target_module.__all__ + allowed_internal_reads)
+        # Only allowed internal reads are redirected, everything else does not need to be, they either are accesses to
+        # symbols already present in the proxy or to non-exported symbols
+        self.__dict__["_redirected_reads"] = set(allowed_internal_reads)
         # Set of names for which writes should be redirected to the target module
         self.__dict__["_redirected_writes"] = set(allowed_writes)
 
@@ -78,8 +77,9 @@ class ModuleInterceptor:
         Proxying is important to ensure changes to global variables are observed correctly.
         If client code changes a global variable in mx, that write should happen in the module where the symbol was
         defined and not in the proxy, otherwise internal code may not see the write.
-        If mx code changes a global variable, client code accessing that variable through a proxy should read the
-        updated value, so such accesses need to be redirected to the original module.
+
+        Changes to global variables changed by mx itself are not observable in the client, they will see the value as it
+        was when it was first imported in the proxy.
 
         :param name: The name of the symbol being accessed
         :param is_set: Whether this access is a set (True) or a get (False)
@@ -106,7 +106,7 @@ class ModuleInterceptor:
         else:
             # TODO GR-50312 GR-51531 Unconditionally return _this_module
             # _target_module is only returned in this case to not break clients still accessing non-exported symbols
-            if name.startswith("__"):
+            if name.startswith("__") or hasattr(self.__dict__["_this_module"], name):
                 return self.__dict__["_this_module"]
             else:
                 mx.log_deprecation(
