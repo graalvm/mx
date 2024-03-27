@@ -47,7 +47,7 @@ _exit_handler_set = False
 class ModuleInterceptor:
     def __init__(self, thisname, targetname, allowed_internal_reads, allowed_writes=None):
         """
-        This class mimics a python module and intercepts all accesses, that's why we have to access our instance fields
+        This class mimics a python module and intercepts all accesses, that's why we have to set our instance fields
         through ``__dict__``.
         """
         allowed_internal_reads = allowed_internal_reads or []
@@ -85,12 +85,12 @@ class ModuleInterceptor:
         :param is_set: Whether this access is a set (True) or a get (False)
         :return: The python module on which this access should be performed on
         """
-        module_name = self.__dict__["_thisname"]
+        module_name = self._thisname
         mem_name = f"{module_name}.{name}"
 
         # We do not treat double underscore symbols (dunders) as internal
         if name.startswith("_") and not name.startswith("__"):
-            if not is_set and name not in self.__dict__["_allowed_internal_reads"]:
+            if not is_set and name not in self._allowed_internal_reads:
                 mx.abort(f"Disallowed read of internal symbol detected: {mem_name}")
 
             _internal_accesses.add(mem_name)
@@ -98,16 +98,17 @@ class ModuleInterceptor:
             mx.logv(f"Access to internal symbol detected ({'write' if is_set else 'read'}): {mem_name}")
             mx.logvv("".join(stack.format()))
 
-        if is_set and name not in self.__dict__["_allowed_writes"]:
+        if is_set and name not in self._allowed_writes:
             mx.abort(f"Disallowed write to {mem_name}")
 
-        if name in self.__dict__["_redirected_writes" if is_set else "_redirected_reads"]:
-            return self.__dict__["_target_module"]
+        redirected_symbols = self._redirected_writes if is_set else self._redirected_reads
+        if name in redirected_symbols:
+            return self._target_module
         else:
             # TODO GR-50312 GR-51531 Unconditionally return _this_module
             # _target_module is only returned in this case to not break clients still accessing non-exported symbols
-            if name.startswith("__") or hasattr(self.__dict__["_this_module"], name):
-                return self.__dict__["_this_module"]
+            if name.startswith("__") or hasattr(self._this_module, name):
+                return self._this_module
             else:
                 mx.log_deprecation(
                     f"Access to non-exported symbol detected: {mem_name}\n"
@@ -118,12 +119,12 @@ class ModuleInterceptor:
                     "- Defined in the target module but not exported (through __all__). These symbols were not meant "
                     "to be accessed from client code\n"
                     "\tMake sure you really need to access this symbol. "
-                    f"If you do, modify {self.__dict__['_target_module'].__name__}.__all__ to include {name}\n"
+                    f"If you do, modify {self._target_module.__name__}.__all__ to include {name}\n"
                     "Turn on verbose mode (-v) to see the stack trace"
                 )
                 mx.logv("".join(traceback.extract_stack().format()))
 
-                return self.__dict__["_target_module"]
+                return self._target_module
 
     def __setattr__(self, name, value):
         target = self._get_target(name, True)
