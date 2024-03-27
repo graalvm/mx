@@ -18131,7 +18131,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.18.0")  # support custom native compilers
+version = VersionSpec("7.19.0")  # [GR-51531]
 
 _mx_start_datetime = datetime.utcnow()
 
