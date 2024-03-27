@@ -156,6 +156,7 @@ __all__ = [
     "OutputCapture",
     "LinesOutputCapture",
     "TeeOutputCapture",
+    "PrefixCapture",
     "HgConfig",
     "GitConfig",
     "BinaryVC",
