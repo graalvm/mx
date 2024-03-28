@@ -44,7 +44,7 @@ java.base/java.security.spec
 java.sql/java.sql
 java.base/java.text
 java.base/java.text.spi
-java.time
+java.base/java.time
 java.base/java.time.chrono
 java.base/java.time.format
 java.base/java.time.temporal
