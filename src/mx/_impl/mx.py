@@ -12126,7 +12126,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
         elif isinstance(names, Dependency):
             names = [names]
         roots = [dependency(n) for n in names]
-        invalid = [d for d in roots if not isinstance(d, ClasspathDependency)]
+        invalid = [d for d in roots if not (isinstance(d, ClasspathDependency) or d.isPOMDistribution())]
         if invalid:
             abort('class path roots must be classpath dependencies: ' + str(invalid))
 
@@ -12146,7 +12146,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
 
     cpEntries = []
     def _preVisit(dst, edge):
-        if not isinstance(dst, ClasspathDependency):
+        if not (isinstance(dst, ClasspathDependency) or dst.isPOMDistribution()):
             return False
         if dst in excludes:
             return False
@@ -12164,6 +12164,8 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
         if preferProjects and dep.isJARDistribution() and not isinstance(dep.suite, BinarySuite):
             return
         if not includeSelf and dep in roots:
+            return
+        if dep.isPOMDistribution():
             return
         cpEntries.append(dep)
     walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_BUILD])
@@ -18132,7 +18134,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.19.0")  # [GR-51531]
+version = VersionSpec("7.19.1")  # GR-48481: Support POMDistribution in classpath_entries.
 
 _mx_start_datetime = datetime.utcnow()
 
