@@ -18146,7 +18146,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.19.4")  # [GR-51382] replace maxrss in favor of rsspercentiles as the default tracker
+version = VersionSpec("7.20.0")  # [GR-50111] Code owners: show missing owners
 
 _mx_start_datetime = datetime.utcnow()
 
