@@ -16076,7 +16076,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     parser.add_argument('-m', '--memory', action='store', help='-Xmx value to pass to underlying JVM')
     parser.add_argument('--packages', action='store', help='comma separated packages to process (omit to process all packages)')
     parser.add_argument('--exclude-packages', action='store', help='comma separated packages to exclude')
-    parser.add_argument('--allow-warnings', action='store_true', help='Exit normally even if warnings were found')
+    parser.add_argument('--allow-warnings', action='store_true', help='Exit normally even if selected warnings were found (some warnings are allowed even if this option is not present)')
+    parser.add_argument('--disallow-all-warnings', action='store_true', help='Fail on any warning. Supersedes `--allow-warnings` option.')
 
     args = parser.parse_args(args)
 
@@ -16326,15 +16327,18 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         log(f"Generating {docDir} for {', '.join(names)} in {out}")
 
         class WarningCapture:
-            def __init__(self, prefix, forward, ignoreBrokenRefs):
+            def __init__(self, prefix, forward, ignoreBrokenRefs, disallowAll):
                 self.prefix = prefix
                 self.forward = forward
                 self.ignoreBrokenRefs = ignoreBrokenRefs
                 self.warnings = 0
+                self.disallowAll = disallowAll
 
             def __call__(self, msg):
                 shouldPrint = self.forward
-                if ': warning - ' in msg:
+                if self.disallowAll:
+                    self.warnings += 1
+                elif ': warning - ' in msg:
                     if not self.ignoreBrokenRefs or not _javadocRefNotFound.search(msg):
                         self.warnings += 1
                         shouldPrint = not args.allow_warnings
@@ -16345,8 +16349,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 else:
                     logv(self.prefix + msg.rstrip('\r\n'))
 
-        captureOut = WarningCapture('stdout: ', False, partialJavadoc)
-        captureErr = WarningCapture('stderr: ', True, partialJavadoc)
+        captureOut = WarningCapture('stdout: ', False, partialJavadoc, args.disallow_all_warnings)
+        captureErr = WarningCapture('stderr: ', True, partialJavadoc, args.disallow_all_warnings)
 
         run([jdk.javadoc, memory,
              '-XDignore.symbol.file',
@@ -16367,9 +16371,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              nowarnAPI +
              list(pkgs), True, captureOut, captureErr)
 
-        if not args.allow_warnings and captureErr.warnings:
+        if (not args.allow_warnings or args.disallow_all_warnings) and captureErr.warnings:
             abort('Error: Warnings in the javadoc are not allowed!')
-        if args.allow_warnings and not captureErr.warnings:
+        if args.allow_warnings and not args.disallow_all_warnings and not captureErr.warnings:
             logv("Warnings were allowed but there was none")
 
         logv(f"Generated {docDir} for {', '.join(names)} in {out}")
@@ -18142,7 +18146,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.19.2")  # [GR-48400] Migrate Truffle doclet usage to JDK 21 javadoc builtin features.
+version = VersionSpec("7.19.3")  # [GR-53024] Enforce no javadoc warnings in the gates.
 
 _mx_start_datetime = datetime.utcnow()
 
