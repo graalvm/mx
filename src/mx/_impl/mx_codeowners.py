@@ -32,7 +32,6 @@ __all__ = [
 import argparse
 import fnmatch
 import json
-import sys
 import os
 
 from . import mx
