@@ -411,3 +411,148 @@ def codeowners(args):
     if args.json_dump:
         with open(args.json_dump, 'wt') as f:
             json.dump(repro_data, f, indent=4)
+
+
+class OwnerStats:
+    COLOR_ALERT = "\033[31m"
+    COLOR_OKAY = "\033[32m"
+    COLOR_RESET = "\033[0m"
+
+    def __init__(self):
+        self.owned = {}
+        self.orphan_files_count = 0
+        self.owned_files_count = 0
+
+    def _add_owner(self, name, details = None):
+        if details is None:
+            details = {
+                'files': 1
+            }
+        if not name in self.owned:
+            self.owned[name] = {
+                'files': 0,
+            }
+        self.owned[name]['files'] = self.owned[name]['files'] + details['files']
+
+    def add_ownership(self, ownership):
+        if not ownership:
+            self.orphan_files_count = self.orphan_files_count + 1
+            return
+        self.owned_files_count = self.owned_files_count + 1
+        for name in ownership.get('any', []):
+            self._add_owner(name)
+        for name in ownership.get('all', []):
+            self._add_owner(name)
+
+    def merge_with(self, other):
+        self.orphan_files_count = self.orphan_files_count + other.orphan_files_count
+        self.owned_files_count = self.owned_files_count + other.owned_files_count
+        for name, details in other.owned.items():
+            self._add_owner(name, details)
+
+    def get_orphan_stats(self, use_colors):
+        msg = 'no-one = {} files'.format(self.orphan_files_count)
+        if use_colors and self.orphan_files_count > 0:
+            msg = OwnerStats.COLOR_ALERT + msg + OwnerStats.COLOR_RESET
+        return msg
+
+    def get_assigned_stats(self, use_colors):
+        msg = 'assigned = {} files'.format(self.owned_files_count)
+        if use_colors and self.owned_files_count > 0:
+            msg = OwnerStats.COLOR_OKAY + msg + OwnerStats.COLOR_RESET
+        return msg
+
+    def oneline_all(self, use_colors=False):
+        owned = [
+            '{} = {} files'.format(owner, details['files'])
+            for owner, details in self.owned.items()
+        ]
+        return ', '.join(owned + [self.get_orphan_stats(use_colors)])
+
+    def oneline_brief(self, use_colors=False):
+        return self.get_assigned_stats(use_colors) + ', ' + self.get_orphan_stats(use_colors)
+
+
+def _compute_owned_stats(owners, top):
+    result = OwnerStats()
+    if not os.path.isdir(top):
+        result.add_ownership(owners.get_owners_of(top))
+    else:
+        for fname in os.listdir(top):
+            nested = _compute_owned_stats(owners, os.path.join(top, fname))
+            result.merge_with(nested)
+    return result
+
+
+def _get_owned_directory_boundaries(curr_dir):
+    for filename in os.listdir(curr_dir):
+        if filename in ['.git', ]:
+            continue
+        filepath = os.path.join(curr_dir, filename)
+        if not os.path.isdir(filepath):
+            continue
+        has_owners_toml = os.path.exists(os.path.join(filepath, 'OWNERS.toml'))
+        nested_info = list(_get_owned_directory_boundaries(filepath))
+        nested_has_owners = len(list(filter(lambda x : x['nested_has_owners'] or x['has_owners'], nested_info))) > 0
+        if not nested_has_owners:
+            nested_info = None
+        yield {
+            'name': filename,
+            'path': filepath,
+            'nested_has_owners': nested_has_owners,
+            'has_owners': has_owners_toml,
+            'sub': nested_info
+        }
+
+def _compute_owner_stats_for_subtree(owners, subtree):
+    # Modifies the structure in place!
+    if subtree is None:
+        return
+    for entry in subtree:
+        entry['stats'] = _compute_owned_stats(owners, entry['path'])
+        _compute_owner_stats_for_subtree(owners, entry['sub'])
+
+
+def _print_summary(subtree, get_stats_function, indent=0):
+    if subtree is None:
+        return
+    indent_str = "    " * indent
+    for entry in subtree:
+        stats = entry.get('stats', None)
+        print("{}{}{}{}".format(
+            indent_str,
+            entry['path'],
+            '/OWNERS.toml' if entry['has_owners'] else '/',
+            ' ({})'.format(get_stats_function(stats)) if stats else '',
+        ))
+        _print_summary(entry['sub'], get_stats_function, indent + 1)
+
+
+
+_MX_NOCODEOWNERS_HELP = """Compute summaries of non-owned files via OWNERS.toml.
+
+
+The tool recursively searches the whole directory subtree and prints which
+files (directories) are not owned by anybody.
+
+"""
+
+@mx.command('mx', 'nocodeowners')
+def nocodeowners(args):
+    """Show files not ownered by anybody (via OWNERS.toml files)."""
+    parser = argparse.ArgumentParser(prog='mx nocodeowners', formatter_class=argparse.RawTextHelpFormatter, description=_MX_NOCODEOWNERS_HELP)
+    parser.add_argument('-a', dest='print_everything', action='store_true', default=False, help='Print information about existing owners too.')
+    parser.add_argument('-c', dest='use_colors', action='store_true', default=False, help='Use colors.')
+    args = parser.parse_args(args)
+
+    if args.print_everything:
+        summary_function = lambda x: x.oneline_all(args.use_colors)
+    else:
+        summary_function = lambda x: x.oneline_brief(args.use_colors)
+
+    root = '.' # _git_get_repo_root_or_cwd()
+    owners = FileOwners(root)
+
+    tree = list(_get_owned_directory_boundaries(root))
+    _compute_owner_stats_for_subtree(owners, tree)
+    _print_summary(tree, summary_function)
