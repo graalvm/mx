@@ -81,7 +81,7 @@ def intellijinit_cli(args):
     parser.add_argument('--on-save-actions', action='store_true', dest='on_save_actions', help='Generate On Save Actions: checkstyle format and optimize imports.')
     parser.add_argument('args', nargs=REMAINDER, metavar='...')
 
-    extra_args = os.environ.get('MX_INTELLIJINIT_DEFAULTS', '').strip().split(' ')
+    extra_args = os.environ.get('MX_INTELLIJINIT_DEFAULTS', '').split()
     if extra_args:
         mx.log("Applying extra arguments from MX_INTELLIJINIT_DEFAULTS environment variable")
     config = parser.parse_args(extra_args + args, namespace=IntellijConfig())
