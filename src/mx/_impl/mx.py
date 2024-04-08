@@ -311,6 +311,7 @@ __all__ = [
     "main",
     "version",
     "JavaCompliance", # Re-export from mx_javacompliance
+    "webserver", # Re-export from mx_webserver
 ]
 
 import sys
