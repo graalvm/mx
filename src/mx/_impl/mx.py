@@ -18146,7 +18146,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.20.0")  # [GR-50111] Code owners: show missing owners
+version = VersionSpec("7.21.0")  # [GR-53335] Fix arguments parsing in mx intellijinit
 
 _mx_start_datetime = datetime.utcnow()
 
