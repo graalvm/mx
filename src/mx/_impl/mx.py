@@ -365,7 +365,8 @@ from .build.tasks import BuildTask, NoOpTask
 from .build.daemon import Daemon
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
-from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn
+from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn, \
+    _check_stdout_encoding
 from .support.options import _opts, _opts_parsed_deferrables
 from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
@@ -17935,6 +17936,9 @@ def main():
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
     _opts.__dict__['warn'] = '--no-warning' not in sys.argv
     _opts.__dict__['quiet'] = '--quiet' in sys.argv
+
+    _check_stdout_encoding()
+
     global _vc_systems
     _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
 

@@ -25,11 +25,6 @@
 # ----------------------------------------------------------------------------------------------------
 
 from __future__ import annotations
-import sys, signal, threading
-import traceback
-from typing import Any, NoReturn, Optional
-
-from .options import _opts, _opts_parsed_deferrables
 
 __all__ = [
     "abort",
@@ -44,6 +39,13 @@ __all__ = [
     "warn",
 ]
 
+import sys, signal, threading
+import traceback
+from typing import Any, NoReturn, Optional
+
+from .options import _opts, _opts_parsed_deferrables
+
+
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 _ansi_color_table = {
     "black": "30",
@@ -54,6 +56,25 @@ _ansi_color_table = {
     "magenta": "35",
     "cyan": "36",
 }
+
+
+def _check_stdout_encoding():
+    # Importing here to avoid broken circular import
+    from .system import is_continuous_integration
+
+    encoding = sys.stdout.encoding
+
+    if "utf" not in encoding:
+        msg = (
+            "Python's stdout does not use a unicode encoding.\n"
+            "This may cause encoding errors when printing special characters.\n"
+            "Please set up your system or console to use a unicode encoding.\n"
+            "When piping mx output, you can force UTF-8 encoding with the environment variable PYTHONIOENCODING=utf-8"
+        )
+        if is_continuous_integration():
+            abort(msg)
+        else:
+            warn(msg)
 
 
 def _print_impl(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout):
