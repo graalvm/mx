@@ -1100,5 +1100,21 @@ suite = {
       "maven": False,
       "graalCompilerSourceEdition": "ignore",
     },
+    "DEFAULT_CMAKE_TOOLCHAIN": {
+      "native": True,
+      "platformDependent": True,
+      "description": "Default (empty) ninja toolchain for an OS-dependent toolchain found on the PATH",
+      "native_toolchain": {
+        "kind": "cmake",
+        "target": {
+          # all defaults (host compiler, host os/arch/libc, no variant)
+        },
+      },
+      "layout": {
+        "toolchain.cmake": "string:",
+      },
+      "maven": False,
+      "graalCompilerSourceEdition": "ignore",
+    },
   },
 }
