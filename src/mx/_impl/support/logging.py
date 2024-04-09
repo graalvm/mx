@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 import sys, signal, threading
+import traceback
 from typing import Any, NoReturn, Optional
 
 from .options import _opts, _opts_parsed_deferrables
@@ -55,6 +56,39 @@ _ansi_color_table = {
 }
 
 
+def _print_impl(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout):
+    try:
+        print(msg, end=end, file=file)
+    except UnicodeEncodeError as e:
+        # In case any text is printed that can't be encoded (e.g. if output console does not use a unicode encoding),
+        # print an error message and try to print text as good as possible.
+
+        error_handler = "backslashreplace"
+        offending_str = (
+            e.object[e.start : e.end].encode(e.encoding, errors=error_handler).decode(e.encoding, errors="ignore")
+        )
+
+        # Not using our log functions here to avoid infinite recursion in case these calls cause unicode errors
+        def print_err(err_msg: str):
+            print(colorize(err_msg, color="red"), file=sys.stderr)
+
+        print_err(f"[ENCODING ERROR] {e}. Encoding: {e.encoding}. Offending characters: '{offending_str}'")
+
+        if "verbose" in _opts and _opts.verbose:
+            traceback.print_stack()
+        else:
+            print_err("Turn on verbose mode (-v) to see the stack trace")
+
+        print_err(f"Printing text with '{error_handler}' error handler:")
+
+        # Encode and decode with the target encoding to get a string that can be safely printed
+        print(
+            msg.encode(e.encoding, errors=error_handler).decode(e.encoding, errors="ignore"),
+            end=end,
+            file=file,
+        )
+
+
 def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
     """
     Write a message to the console.
@@ -64,7 +98,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
     if vars(_opts).get("quiet"):
         return
     if msg is None:
-        print(end=end)
+        _print_impl(end=end)
     else:
         # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
         # > A '\n' character is written at the end, unless the print statement
@@ -79,7 +113,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
         # instruction is omitted. By manually adding the newline to the string,
         # there is only a single PRINT_ITEM instruction which is executed
         # atomically, but still prints the newline.
-        print(str(msg), end=end)
+        _print_impl(str(msg), end=end)
 
 
 def logv(msg: Optional[str] = None, end="\n") -> None:
@@ -115,9 +149,9 @@ def log_error(msg: Optional[str] = None, end="\n") -> None:
     to redirect it.
     """
     if msg is None:
-        print(file=sys.stderr, end=end)
+        _print_impl(file=sys.stderr, end=end)
     else:
-        print(colorize(str(msg), stream=sys.stderr), file=sys.stderr, end=end)
+        _print_impl(colorize(str(msg), stream=sys.stderr), file=sys.stderr, end=end)
 
 
 def log_deprecation(msg: Optional[str] = None) -> None:
@@ -125,9 +159,9 @@ def log_deprecation(msg: Optional[str] = None) -> None:
     Write an deprecation warning to the console.
     """
     if msg is None:
-        print(file=sys.stderr)
+        _print_impl(file=sys.stderr)
     else:
-        print(colorize(str(f"[MX DEPRECATED] {msg}"), color="yellow", stream=sys.stderr), file=sys.stderr)
+        _print_impl(colorize(str(f"[MX DEPRECATED] {msg}"), color="yellow", stream=sys.stderr), file=sys.stderr)
 
 
 def colorize(msg: Optional[str], color="red", bright=True, stream=sys.stderr) -> Optional[str]:
@@ -162,7 +196,7 @@ def warn(msg: str, context=None) -> None:
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print(colorize("WARNING: " + msg, color="magenta", bright=True, stream=sys.stderr), file=sys.stderr)
+        _print_impl(colorize("WARNING: " + msg, color="magenta", bright=True, stream=sys.stderr), file=sys.stderr)
 
 
 def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoReturn:
