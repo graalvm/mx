@@ -86,6 +86,10 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         if self._cmake_toolchain:
             self.buildDependencies += [self._cmake_toolchain]
 
+    @property
+    def toolchain_kind(self):
+        return "cmake" if self._multitarget else None
+
     def resolveDeps(self):
         super(CMakeNinjaProject, self).resolveDeps()
         self._cmake_toolchain = mx.distribution(self._cmake_toolchain, context=self) if self._cmake_toolchain else None
@@ -164,6 +168,12 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
             return src_link
         return src_dir
 
+    def generate_manifest_for_task(self, task, output_dir, filename):
+        extra_cmake_config = []
+        if task.toolchain:
+            extra_cmake_config.append("-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(task.toolchain.get_path(), "toolchain.cmake"))
+        self.generate_manifest(output_dir, filename, extra_cmake_config=extra_cmake_config)
+
     def generate_manifest(self, output_dir, filename, extra_cmake_config=None):
         source_dir = self.sourceDir(create=True)
         if self._cmake_subdir:
@@ -199,8 +209,8 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         shutil.copyfile(os.path.join(output_dir, mx_native.Ninja.default_manifest), path)
         return True
 
-    def _build_task(self, target_arch, args):
-        return CMakeNinjaBuildTask(args, self, target_arch, self._ninja_targets)
+    def _build_task(self, target_arch, args, toolchain=None):
+        return CMakeNinjaBuildTask(args, self, target_arch, self._ninja_targets, toolchain=toolchain)
 
     def getResults(self, replaceVar=mx_subst.results_substitutions):
         return [mx_subst.as_engine(replaceVar).substitute(rt, dependency=self) for rt in self.results]
