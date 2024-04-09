@@ -311,6 +311,7 @@ __all__ = [
     "main",
     "version",
     "JavaCompliance", # Re-export from mx_javacompliance
+    "webserver", # Re-export from mx_webserver
 ]
 
 import sys
@@ -18146,7 +18147,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.21.0")  # [GR-53335] Fix arguments parsing in mx intellijinit
+version = VersionSpec("7.21.1")  # [GR-51531] Fix more accesses to indirect mx imports
 
 _mx_start_datetime = datetime.utcnow()
 

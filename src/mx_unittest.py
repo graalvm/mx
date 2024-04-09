@@ -42,10 +42,7 @@ from mx._legacy.oldnames import redirect as _redirect
 
 from mx._impl.mx_unittest import __all__ as _unittest_symbols
 
-# TODO: [GR-48911] Users should rather use argparse.Action
-__legacy__ = ["Action"]
-
-__all__ = _unittest_symbols + __legacy__
+__all__ = _unittest_symbols
 
 _redirect(
     __name__,

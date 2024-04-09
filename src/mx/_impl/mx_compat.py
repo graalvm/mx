@@ -160,7 +160,7 @@ class MxCompatibility500(object):
 
     def jarsUseJDKDiscriminant(self):
         """
-        Should `mx.JARDistribution` use the jdk version used for the build as a `Dependency._extra_artifact_discriminant`
+        Should `mx_jardistribution.JARDistribution` use the jdk version used for the build as a `Dependency._extra_artifact_discriminant`
         to avoid collisions of build artifacts when building with different JAVA_HOME/EXTRA_JAVA_HOMES settings.
         """
         return False
