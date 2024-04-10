@@ -438,8 +438,8 @@ class BenchmarkSuite(object):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
         self._suite_dimensions: DataPoint = {}
-        self._command_mapper_hooks = []
-        self._trackers = []
+        self._command_mapper_hooks = {}
+        self._tracker = None
         self._currently_running_benchmark = None
 
     def name(self):
@@ -514,14 +514,15 @@ class BenchmarkSuite(object):
         """Registers a function that takes as input the benchmark suite object and the command to execute and returns
         a modified command line.
 
+        :param string name: Unique name of the hook.
         :param function func:
         :return: None
         """
-        self._command_mapper_hooks.append((name, func, self))
+        self._command_mapper_hooks[name] = func
 
     def register_tracker(self, name, tracker_type):
         tracker = tracker_type(self)
-        self._trackers.append(tracker)
+        self._tracker = tracker
 
         def hook(cmd, suite):
             assert suite == self
@@ -1283,8 +1284,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         datapoints: List[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
-        for t in self._trackers:
-            rules += t.get_rules(bmSuiteArgs)
+        if self._tracker is not None:
+            rules += self._tracker.get_rules(bmSuiteArgs)
         rules += extraRules
 
         for rule in rules:
@@ -1460,9 +1461,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
 
                     def func(cmd, bmSuite, prefix_command=prefix_command):
                         return prefix_command + cmd
-                    if self._command_mapper_hooks and profiler not in self._command_mapper_hooks[0]:
-                        mx.abort(f"Profiler '{profiler}' conflicts with trackers '{', '.join([n for n, _, _ in self._command_mapper_hooks])}'\nUse --tracker none to disable all trackers")
-                    self._command_mapper_hooks = [(profiler, func, self)]
+                    if self._command_mapper_hooks and any(hook_name != profiler for hook_name in self._command_mapper_hooks):
+                        mx.abort(f"Profiler '{profiler}' conflicts with trackers '{', '.join([hook_name for hook_name in self._command_mapper_hooks if hook_name != profiler])}'\nUse --tracker none to disable all trackers")
+                    self._command_mapper_hooks = {profiler: func}
         return args
 
     def parserNames(self):
@@ -1520,7 +1521,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
         vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
-        vm.command_mapper_hooks = self._command_mapper_hooks
+        vm.command_mapper_hooks = [(name, func, self) for name, func in self._command_mapper_hooks.items()]
         t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
             ret_code, out = t
