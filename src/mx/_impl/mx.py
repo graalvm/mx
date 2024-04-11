@@ -12932,6 +12932,8 @@ def _expand_java_home(home):
     elif not isdir(home):
         jdks_dir = join(dot_mx_dir(), 'jdks')
         jdks_dir_home = join(jdks_dir, home)
+        if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
+            jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
         logv(f'JDK "{home}" not found in the current directory')
         logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
         if isdir(jdks_dir_home):
