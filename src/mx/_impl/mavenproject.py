@@ -274,7 +274,12 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
             return result
 
         match_not_empty(parsed_pom, "url", self.suite.url, "include suite url")
-        match_not_empty(parsed_pom, "description", getattr(self.suite, "description", ""), "suite description")
+        match_not_empty(
+            parsed_pom,
+            "description",
+            getattr(self, "description", getattr(self.suite, "description", "")),
+            "suite description",
+        )
         if devs := get_section(parsed_pom, "developers"):
             if dev := get_section(devs, "developer"):
                 for attr in ["name", "email", "organization"]:
@@ -285,7 +290,7 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
             if not licenses:
                 cb(f"Generated POM for {self} does not include licenses")
             expected_licenses: List[mx.License] = cast(List[mx.License], list(self.theLicense))
-            if len(licenses) != expected_licenses:
+            if len(licenses) != len(expected_licenses):
                 cb(f"Generated POM for {self} has different licenses than suite")
             for pl in licenses:
                 for l in expected_licenses:
