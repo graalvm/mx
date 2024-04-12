@@ -12932,6 +12932,8 @@ def _expand_java_home(home):
     elif not isdir(home):
         jdks_dir = join(dot_mx_dir(), 'jdks')
         jdks_dir_home = join(jdks_dir, home)
+        if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
+            jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
         logv(f'JDK "{home}" not found in the current directory')
         logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
         if isdir(jdks_dir_home):
@@ -18147,7 +18149,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.22.3")  # [GR-53394] Fix spurious validation error for MavenProject.
+version = VersionSpec("7.22.4")  # Support short JAVA_HOME names on darwin
 
 _mx_start_datetime = datetime.utcnow()
 
