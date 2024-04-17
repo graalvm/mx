@@ -1049,14 +1049,14 @@ class DefaultNativeProject(NinjaProject):
 
     @property
     def cxx_files(self):
-        return self._source['files'].get('.cc', [])
+        return self._source['files'].get('.cc', []) + self._source['files'].get('.cpp', [])
 
     @property
     def asm_sources(self):
         return self._source['files'].get('.S', [])
 
     def generate_manifest_for_task(self, task, output_dir, filename):
-        unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S', '.swp'})
+        unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.hpp', '.c', '.cc', '.cpp', '.S', '.swp'})
         if unsupported_source_files:
             mx.abort(f'{unsupported_source_files} source files are not supported by default native projects')
 
