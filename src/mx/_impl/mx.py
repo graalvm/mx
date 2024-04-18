@@ -9271,7 +9271,7 @@ class LinesOutputCapture:
         self.lines = []
 
     def __call__(self, data):
-        self.lines.append(data.rstrip())
+        self.lines.extend(data.rstrip().split(os.linesep))
 
     def __repr__(self):
         return os.linesep.join(self.lines)
