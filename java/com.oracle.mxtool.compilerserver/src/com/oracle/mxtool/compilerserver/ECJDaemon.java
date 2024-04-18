@@ -30,8 +30,8 @@ import java.lang.reflect.Method;
 public class ECJDaemon extends CompilerDaemon {
 
     private final class ECJCompiler implements Compiler {
-        public int compile(String[] args) throws Exception {
-            boolean result = (Boolean) compileMethod.invoke(null, args, new PrintWriter(System.out), new PrintWriter(System.err), null);
+        public int compile(String[] args, PrintWriter out) throws Exception {
+            boolean result = (Boolean) compileMethod.invoke(null, args, out, out, null);
             return result ? 0 : -1;
         }
     }

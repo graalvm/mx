@@ -7776,8 +7776,10 @@ class CompilerDaemon(Daemon):
     # See:
     #   com.oracle.mxtool.compilerserver.CompilerDaemon.REQUEST_HEADER_COMPILE
     #   com.oracle.mxtool.compilerserver.CompilerDaemon.REQUEST_HEADER_SHUTDOWN
+    #   com.oracle.mxtool.compilerserver.CompilerDaemon.RESPONSE_DONE
     header_compile = "MX DAEMON/COMPILE: "
     header_shutdown = "MX DAEMON/SHUTDOWN"
+    response_done = "MX DAEMON/DONE:"
 
     def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -7786,13 +7788,17 @@ class CompilerDaemon(Daemon):
         commandLine = u'\x00'.join(compilerArgs)
         s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
         f = s.makefile()
-        response = str(f.readline())
-        if response == '':
-            # Compiler server process probably crashed
-            log('[Compiler daemon process appears to have crashed. ]')
-            retcode = -1
-        else:
-            retcode = int(response)
+        while True:
+            response = str(f.readline())
+            if response.startswith(CompilerDaemon.response_done):
+                retcode = int(response[len(CompilerDaemon.response_done):])
+                break
+            if response == "":
+                # Compiler server process probably crashed
+                log('[Compiler daemon process appears to have crashed. ]')
+                retcode = -1
+                break
+            log(response)
         s.close()
         if retcode:
             detailed_retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))

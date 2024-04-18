@@ -24,14 +24,15 @@
  */
 package com.oracle.mxtool.compilerserver;
 
+import java.io.PrintWriter;
 import java.lang.reflect.Method;
 
 public class JavacDaemon extends CompilerDaemon {
 
     private final class JavacCompiler implements Compiler {
-        public int compile(String[] args) throws Exception {
+        public int compile(String[] args, PrintWriter out) throws Exception {
             final Object receiver = javacMainClass.getDeclaredConstructor().newInstance();
-            int result = (Integer) compileMethod.invoke(receiver, (Object) args);
+            int result = (Integer) compileMethod.invoke(receiver, args, out);
             if (result != 0 && result != 1) {
                 // @formatter:off
                 /*
@@ -56,7 +57,7 @@ public class JavacDaemon extends CompilerDaemon {
 
     JavacDaemon() throws Exception {
         this.javacMainClass = Class.forName("com.sun.tools.javac.Main");
-        this.compileMethod = javacMainClass.getMethod("compile", String[].class);
+        this.compileMethod = javacMainClass.getMethod("compile", String[].class, PrintWriter.class);
     }
 
     @Override
