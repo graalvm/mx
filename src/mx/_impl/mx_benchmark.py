@@ -2952,6 +2952,10 @@ class RssPercentilesTracker(Tracker):
             return [file] if file else []
 
         def parseResults(self, text):
+            if self.tracker.most_recent_text_output is None:
+                mx.log("\tRSS percentile data points have already been parsed.")
+                return []
+
             rows = super().parseResults(text)
 
             temp_text_output = self.tracker.most_recent_text_output
@@ -3022,7 +3026,14 @@ class RssPercentilesTracker(Tracker):
             self.tracker = tracker
 
         def parseResults(self, text):
-            for rss_dp in self.tracker.percentile_data_points:
+            if not self.tracker.percentile_data_points:
+                mx.log("\tmax-rss data point has already been parsed.")
+                return []
+
+            data_points = self.tracker.percentile_data_points
+            self.tracker.percentile_data_points = []
+
+            for rss_dp in data_points:
                 if rss_dp['metric_percentile'] == str(RssPercentilesTracker.MaxRssCopyRule.percentile_to_copy_into_max_rss):
                     mx.log(f"\n\tmax-rss copied from {rss_dp['metric_percentile']}th RSS percentile (MB): {rss_dp['metric_value']}")
                     return [{"metric_value": rss_dp['metric_value']}]
