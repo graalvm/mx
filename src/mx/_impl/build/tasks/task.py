@@ -32,12 +32,15 @@ from typing import Dict, Optional, MutableSequence
 
 from ..daemon import Daemon
 from ..suite import Dependency
-from ...support.logging import nyi
+from ...support.logging import nyi, setLogTask
 from ...support.processes import Process
 
-__all__ = ["Task"]
+__all__ = ["Task", "TaskAbortException"]
 
 Args = Namespace
+
+class TaskAbortException(Exception):
+    pass
 
 class Task(object, metaclass=ABCMeta):
     """A task executed during a build."""
@@ -59,6 +62,7 @@ class Task(object, metaclass=ABCMeta):
         self.parallelism = parallelism
         self.deps = []
         self.proc = None
+        self._exitcode = 0
 
     def __str__(self) -> str:
         return nyi('__str__', self)
@@ -69,6 +73,20 @@ class Task(object, metaclass=ABCMeta):
     @property
     def name(self) -> str:
         return self.subject.name
+
+    def enter(self):
+        setLogTask(self)
+
+    def abort(self, code):
+        self._exitcode = code
+        raise TaskAbortException(code)
+
+    @property
+    def exitcode(self):
+        if self._exitcode != 0:
+            return self._exitcode
+        else:
+            return self.proc.exitcode
 
     @property
     def build_time(self):

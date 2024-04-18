@@ -30,10 +30,11 @@ __all__ = [
     "BuildTask",
     "NoOpTask",
     "Task",
+    "TaskAbortException",
     "TaskSequence"
 ]
 
 from .build import Buildable, BuildTask
-from .task import Task
+from .task import Task, TaskAbortException
 from .noop import NoOpTask
 from .sequence import TaskSequence

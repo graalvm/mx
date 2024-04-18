@@ -365,7 +365,7 @@ from copy import copy, deepcopy
 import posixpath
 
 from .build.suite import Dependency, SuiteConstituent
-from .build.tasks import BuildTask, NoOpTask
+from .build.tasks import BuildTask, NoOpTask, TaskAbortException
 from .build.daemon import Daemon
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
@@ -14632,7 +14632,7 @@ def build(cmd_args, parser=None):
                     t.cleanSharedMemoryState()
                     t._finished = True
                     t._end_time = time.time()
-                    if t.proc.exitcode != 0:
+                    if t.exitcode != 0:
                         failed.append(t)
                     _removeSubprocess(t.sub)
                     # Release the pipe file descriptors ASAP (only available on Python 3.7+)
@@ -14690,7 +14690,11 @@ def build(cmd_args, parser=None):
                 if not isinstance(task.proc, Thread):
                     # Clear sub-process list cloned from parent process
                     del _currentSubprocesses[:]
-                task.execute()
+                task.enter()
+                try:
+                    task.execute()
+                except TaskAbortException:
+                    pass
                 task.pushSharedMemoryState()
 
             def depsDone(task):

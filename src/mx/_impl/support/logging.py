@@ -37,6 +37,7 @@ __all__ = [
     "nyi",
     "colorize",
     "warn",
+    "setLogTask",
 ]
 
 import sys, signal, threading
@@ -56,6 +57,17 @@ _ansi_color_table = {
     "magenta": "35",
     "cyan": "36",
 }
+
+_logTask = threading.local()
+_logTask.task = None
+
+
+def setLogTask(task):
+    _logTask.task = task
+
+
+def getLogTask():
+    return _logTask.task
 
 
 def _check_stdout_encoding():
@@ -274,7 +286,12 @@ def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoR
         error_message = codeOrMessage
         error_code = 1
     log_error(error_message)
-    raise SystemExit(error_code)
+
+    t = getLogTask()
+    if t is not None:
+        t.abort(error_code)
+    else:
+        raise SystemExit(error_code)
 
 
 def abort_or_warn(message: str, should_abort: bool, context=None) -> Optional[NoReturn]:
