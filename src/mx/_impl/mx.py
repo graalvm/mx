@@ -365,7 +365,7 @@ from copy import copy, deepcopy
 import posixpath
 
 from .build.suite import Dependency, SuiteConstituent
-from .build.tasks import BuildTask, NoOpTask, TaskAbortException
+from .build.tasks import BuildTask, NoOpTask, TaskAbortException, TaskSequence
 from .build.daemon import Daemon
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
@@ -14695,6 +14695,7 @@ def build(cmd_args, parser=None):
         progressIdx = 0
         curProgressTask = None
         isInteractive = args.build_logs == "interactive"
+        subTaskIdx = 0
         def showProgress():
             if not isInteractive or totalTasks < 2:
                 return
@@ -14709,15 +14710,27 @@ def build(cmd_args, parser=None):
                 statusline += "["
             statusline += f"{colorize(str(running), color='blue')}/{colorize(str(done), color='green')}/{totalTasks}]"
             if running > 0:
-                nonlocal progressIdx, curProgressTask
+                nonlocal progressIdx, curProgressTask, subTaskIdx
                 if curProgressTask not in active:
                     curProgressTask = active[0]
+                    subTaskIdx = 0
                 elif progressIdx % 5 == 0:
-                    idx = active.index(curProgressTask)
-                    curProgressTask = active[(idx + 1) % running]
+                    switchToNext = True
+                    if isinstance(curProgressTask, TaskSequence):
+                        subTaskIdx += 1
+                        if subTaskIdx >= len(curProgressTask.subtasks):
+                            subTaskIdx = 0
+                        else:
+                            switchToNext = False
+                    if switchToNext:
+                        idx = active.index(curProgressTask)
+                        curProgressTask = active[(idx + 1) % running]
                 progressIdx += 1
-                statusline += f" {curProgressTask}"
-                lastLine = curProgressTask.getLastLogLine()
+                t = curProgressTask
+                if isinstance(t, TaskSequence):
+                    t = t.subtasks[subTaskIdx]
+                statusline += f" {t}"
+                lastLine = t.getLastLogLine()
                 if lastLine:
                     statusline += " | " + lastLine
             columns = shutil.get_terminal_size(fallback=(120,50)).columns
