@@ -2921,7 +2921,7 @@ class RssPercentilesTracker(Tracker):
 
         self.most_recent_text_output = text_output
         ps_poller_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ps_poller.py")
-        return ["python3", ps_poller_script_path, "-f", text_output, "-i", str(RssPercentilesTracker.poll_interval)] + cmd
+        return [sys.executable, ps_poller_script_path, "-f", text_output, "-i", str(RssPercentilesTracker.poll_interval)] + cmd
 
     def get_rules(self, bmSuiteArgs):
         if self.copy_into_max_rss:
