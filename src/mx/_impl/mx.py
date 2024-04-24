@@ -15574,6 +15574,7 @@ def checkstyle(args):
     parser.add_argument('-f', action='store_true', dest='force', help='force checking (disables timestamp checking)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     parser.add_argument('--filelist', type=FileType("r"), help='only check the files listed in the given file')
+    parser.add_argument('--fix-unused-imports', action='store_true', help='automatically fix unused imports')
     args = parser.parse_args(args)
 
     filelist = None
@@ -15670,16 +15671,31 @@ def checkstyle(args):
                             if name == 'file':
                                 source[0] = attrs['name']
                             elif name == 'error':
-                                errors.append(f"{source[0]}:{attrs['line']}: {attrs['message']}")
+                                errors.append((source[0], attrs['line'], attrs['message']))
 
                         xp = xml.parsers.expat.ParserCreate()
                         xp.StartElementHandler = start_element
                         with open(auditfileName, 'rb') as fp:
                             xp.ParseFile(fp)
                         if len(errors) != 0:
-                            for e in errors:
-                                log_error(e)
-                            totalErrors = totalErrors + len(errors)
+                            for (file, line, message) in reversed(errors):
+                                if args.fix_unused_imports and message.startswith('Unused import -'):
+                                    with open(file, 'rb') as f:
+                                        lines = f.readlines()
+                                    del lines[int(line)-1]
+                                    with open(file, 'wb') as f:
+                                        f.writelines(lines)
+                            for (file, line, message) in errors:
+                                error_string = f"{file}:{line}: {message}"
+                                if args.fix_unused_imports and message.startswith('Unused import -'):
+                                    log('[FIXED] ' + error_string)
+                                else:
+                                    log_error(error_string)
+                            # Add the number of errors even if fix_unused_imports,
+                            # because even if we fix all unused imports we still want to fail
+                            # a pre-commit git hook using this option,
+                            # so that the removed imports are included in the commit.
+                            totalErrors += len(errors)
                         else:
                             batch.timestamp.touch()
         finally:
@@ -18149,7 +18165,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.22.7")  # Use current python for rsspercentiles
+version = VersionSpec("7.23.0")  # Add --fix-unused-imports for mx checkstyle
 
 _mx_start_datetime = datetime.utcnow()
 
