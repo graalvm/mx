@@ -57,6 +57,10 @@ class Dependency(SuiteConstituent):
         from ...mx import BaseLibrary
         return isinstance(self, BaseLibrary)
 
+    def isDownloadableLibrary(self):
+        from ...mx import DownloadableLibrary
+        return isinstance(self, DownloadableLibrary)
+
     def isLibrary(self):
         from ...mx import Library
         return isinstance(self, Library)

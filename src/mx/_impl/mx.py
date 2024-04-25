@@ -146,6 +146,7 @@ __all__ = [
     "ZipExtractor",
     "FileInfo",
     "BaseLibrary",
+    "DownloadableLibrary",
     "ResourceLibrary",
     "PackedResourceLibrary",
     "JreLibrary",
@@ -8275,15 +8276,29 @@ class _RewritableLibraryMixin:
                 self.abort(f'Missing "{name}" property for library {self}')
 
 
-class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
+class DownloadableLibrary(BaseLibrary):
+    def __init__(self, suite, name, optional, urls, digest, sourceUrls, sourceDigest, theLicense, **kwArgs):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
+        # These are substituted but not rewritten urls. For informational purposes only. Do not use for downloading.
+        self.original_urls = self.substVarsList(urls)
+        self.original_sourceUrls = self.substVarsList(sourceUrls) if sourceUrls is not None else None
+
+        # Perform URL and digest rewriting before potentially generating cache path.
+        assert digest is None or isinstance(digest, Digest), f'{digest} is of type {type(digest)}'
+        self.urls, self.digest = mx_urlrewrites._rewrite_urls_and_digest(self.original_urls, digest)
+        if sourceUrls is not None:
+            assert sourceDigest is None or isinstance(sourceDigest, Digest), f'{sourceDigest} is of type {type(sourceDigest)}'
+            self.sourceUrls, self.sourceDigest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(sourceUrls), sourceDigest)
+        else:
+            self.sourceUrls, self.sourceDigest = None, None
+
+
+class ResourceLibrary(DownloadableLibrary, _RewritableLibraryMixin):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
     """
     def __init__(self, suite, name, path, optional, urls, digest, ext=None, **kwArgs):
-        BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
-
-        # Perform URL and digest rewriting before potentially generating cache path.
-        self.urls, self.digest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(urls), digest)
+        DownloadableLibrary.__init__(self, suite, name, optional, urls, digest, sourceUrls=None, sourceDigest=None, theLicense=None, **kwArgs)
 
         # Path can be generated from URL and digest if needed.
         self.ext = ext
@@ -8568,7 +8583,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         return getattr(self, 'module')
 
 
-class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
+class Library(DownloadableLibrary, ClasspathDependency, _RewritableLibraryMixin):
     """
     A library that is provided (built) by some third-party and made available via a URL.
     A Library may have dependencies on other Libraries as expressed by the "deps" field.
@@ -8579,13 +8594,8 @@ class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
     N.B. Not obvious but a Library can be an annotationProcessor
     """
     def __init__(self, suite, name, path, optional, urls, digest, sourcePath, sourceUrls, sourceDigest, deps, theLicense, ignore=False, **kwArgs):
-        BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
+        DownloadableLibrary.__init__(self, suite, name, optional, urls, digest, sourceUrls, sourceDigest, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
-
-        # Perform URL and digest rewriting before potentially generating cache path.
-        assert digest is None or isinstance(digest, Digest), f'{digest} is of type {type(digest)}'
-        self.urls, self.digest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(urls), digest)
-        self.sourceUrls, self.sourceDigest = mx_urlrewrites._rewrite_urls_and_digest(self.substVarsList(sourceUrls), sourceDigest)
 
         # Path and sourcePath can be generated from URL and digest if needed.
         self.path = self._normalize_path(path)
