@@ -246,8 +246,6 @@ def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoR
 
     sys.stdout.flush()
     if is_continuous_integration() or (_opts and hasattr(_opts, "verbose") and _opts.verbose):
-        import traceback
-
         traceback.print_stack()
     if context is not None:
         if callable(context):
