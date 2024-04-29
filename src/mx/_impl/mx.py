@@ -310,6 +310,7 @@ __all__ = [
     "current_mx_command",
     "main",
     "version",
+    "get_tools_jdk",
     "JavaCompliance", # Re-export from mx_javacompliance
     "webserver", # Re-export from mx_webserver
 ]
