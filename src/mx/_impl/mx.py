@@ -18170,7 +18170,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.23.0")  # Add --fix-unused-imports for mx checkstyle
+version = VersionSpec("7.24.0")  # GR-45840 Deal with encoding errors during printing
 
 _mx_start_datetime = datetime.utcnow()
 
