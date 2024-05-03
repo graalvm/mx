@@ -921,6 +921,9 @@ class PerfMethod(NamedTuple):
 
 
 def _which(executable):
+    if 'PATH' not in os.environ:
+        return None
+
     for path in os.environ['PATH'].split(os.pathsep):
         f = os.path.join(path.strip('"'), executable)
         if os.path.isfile(f) and os.access(f, os.X_OK):
