@@ -7709,17 +7709,18 @@ class CompilerDaemon(Daemon):
 
         # wait 30 seconds for the Java process to launch and report the port number
         retries = 0
+        myself = f"{self.name}[{p.pid}]"
         while self.port is None:
             retries = retries + 1
             returncode = p.poll()
             if returncode is not None:
-                raise RuntimeError('Error starting ' + self.name() + ': returncode=' + str(returncode) + '\n' + ''.join(pout))
+                raise RuntimeError(f'Error starting {myself}: returncode={returncode}\n{"".join(pout)}')
             if retries == 299:
-                warn('Killing ' + self.name() + ' after failing to see port number after nearly 30 seconds')
+                warn(f'Killing {myself} after failing to see port number after nearly 30 seconds')
                 os.kill(p.pid, signal.SIGKILL)
                 time.sleep(1.0)
             elif retries > 300:
-                raise RuntimeError('Error starting ' + self.name() + ': No port number was found in output after 30 seconds\n' + ''.join(pout))
+                raise RuntimeError(f'Error starting {myself}: No port number was found in output after 30 seconds\n{"".join(pout)}')
             else:
                 time.sleep(0.1)
 
@@ -7727,10 +7728,10 @@ class CompilerDaemon(Daemon):
         self.closed = False
         try:
             self.connection.connect(('127.0.0.1', self.port))
-            logv('[Started ' + str(self) + ']')
+            logv(f'[Started {myself}')
             return
         except socket.error as e:
-            logv('[Error starting ' + str(self) + ': ' + str(e) + ']')
+            logv(f'[Error starting {myself}: {e}]')
             raise e
 
     def _noticePort(self, data):
@@ -7767,7 +7768,7 @@ class CompilerDaemon(Daemon):
                 if _opts.very_verbose:
                     retcode = detailed_retcode
                 else:
-                    log('[exit code: ' + str(retcode) + ']')
+                    log(f'[exit code: {retcode}]')
             elif retcode == 2:
                 retcode = detailed_retcode
             abort(retcode)
@@ -7780,9 +7781,9 @@ class CompilerDaemon(Daemon):
                 self.connection.send(f'{CompilerDaemon.header_shutdown}\n'.encode('utf8'))
                 self.connection.close()
                 self.closed = True
-                logv('[Stopped ' + str(self) + ']')
+                logv(f'[Stopped {self}]')
             except socket.error as e:
-                logv('Error stopping ' + str(self) + ': ' + str(e))
+                logv(f'Error stopping {self}: {e}')
 
     def __str__(self):
         return f"{self.name()} on port {self.port} for {self.jdk} with VM args {self.jvmArgs}"
