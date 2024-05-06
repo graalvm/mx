@@ -920,17 +920,6 @@ class PerfMethod(NamedTuple):
                 return self.symbol
 
 
-def _which(executable):
-    if 'PATH' not in os.environ:
-        return None
-
-    for path in os.environ['PATH'].split(os.pathsep):
-        f = os.path.join(path.strip('"'), executable)
-        if os.path.isfile(f) and os.access(f, os.X_OK):
-            return f
-    return None
-
-
 class CppDemangler:
     """An interface for the binutils c++filt demangler, which can demangle C++ symbols."""
 
@@ -948,7 +937,7 @@ class CppDemangler:
     def is_supported(cls) -> bool:
         """Lazily checks whether c++filt is supported."""
         if cls._cppfilt_available is None:
-            cls._cppfilt_available = _which(cls.CPPFILT) is not None
+            cls._cppfilt_available = shutil.which(cls.CPPFILT) is not None
         return cls._cppfilt_available
 
     @classmethod
@@ -1147,7 +1136,7 @@ class PerfOutput:
     @staticmethod
     def is_supported():
         if PerfOutput._perf_available is None:
-            PerfOutput._perf_available = _which('perf') is not None
+            PerfOutput._perf_available = shutil.which('perf') is not None
         return PerfOutput._perf_available
 
     @staticmethod
