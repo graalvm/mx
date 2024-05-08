@@ -1180,7 +1180,7 @@ class SuiteModel:
     def _search_dir(self, searchDir, suite_import):
         if suite_import.suite_dir:
             sd = _is_suite_dir(suite_import.suite_dir, _mxDirName(suite_import.name))
-            assert sd
+            assert sd, f"An mx suite or a dynamic import searched for '{suite_import}', but '{suite_import.suite_dir}' is not a valid mx suite dir."
             return sd
 
         if not exists(searchDir):
@@ -18181,7 +18181,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.25.1")  # Avoid assuming there’s a PATH variable defined
+version = VersionSpec("7.25.2")  # GR-53991
 
 _mx_start_datetime = datetime.utcnow()
 
