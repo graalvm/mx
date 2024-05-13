@@ -1788,14 +1788,7 @@ class JavaVm(Vm):
     pass
 
 
-def _get_default_java_vm(jvm_config, vms):
-    if mx.get_opts().vm is not None and (jvm_config is None or (mx.get_opts().vm, jvm_config) in vms):
-        mx.warn("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
-        return mx.get_opts().vm
-    return None
-
-
-java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
+java_vm_registry = VmRegistry("Java", "jvm")
 js_vm_registry = VmRegistry("JavaScript", "js", known_host_registries=[java_vm_registry])
 
 
