@@ -1788,14 +1788,7 @@ class JavaVm(Vm):
     pass
 
 
-def _get_default_java_vm(jvm_config, vms):
-    if mx.get_opts().vm is not None and (jvm_config is None or (mx.get_opts().vm, jvm_config) in vms):
-        mx.warn("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
-        return mx.get_opts().vm
-    return None
-
-
-java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
+java_vm_registry = VmRegistry("Java", "jvm")
 js_vm_registry = VmRegistry("JavaScript", "js", known_host_registries=[java_vm_registry])
 
 
@@ -1868,7 +1861,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
     def extract_vm_info(self, args=None):
         if args is None:
             # This method will force the caller to pass 'args' in the future to ensure correctness of the output
-            mx.log_deprecation("Downstream suite must pass the VM arguments to ensure valid VM info extraction !")
+            log_deprecation("Downstream suite must pass the VM arguments to ensure valid VM info extraction !")
             args = []
         args = self.post_process_command_line_args(args)
         args_str = ' '.join(args)
@@ -2596,7 +2589,7 @@ class JMHJarBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
         jmh_benchmarks = self.jmhArgs(bmSuiteArgs).jmh_benchmarks
         if not jmh_benchmarks:
             return []
-        mx.log_deprecation("The --jmh-benchmarks flag is deprecated, please list the benchmarks to run as JMH parameters (after the last '--').")
+        log_deprecation("The --jmh-benchmarks flag is deprecated, please list the benchmarks to run as JMH parameters (after the last '--').")
         return jmh_benchmarks.split(',')
 
     def jmhJAR(self, bmSuiteArgs):
