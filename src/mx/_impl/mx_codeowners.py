@@ -189,10 +189,16 @@ def _git_diff_name_only(extra_args=None):
         args.extend(extra_args)
     rc, out, _ = _run_capture(args)
     assert rc == 0
-    return list(filter(lambda x: x != '', out.split('\0')))
+    repo_root = _git_get_repo_root_or_cwd(False)
+    # Split the captured output (list of modified files) by the delimiter token ('\0'),
+    # filtering out any empty strings (the last delimiter is followed by nothing, or in case of no output)
+    # and then concatenating the path to the root of the repo to the relative paths of modified files. Example:
+    # 'README.md\0src/Foo.java\0' => ['README.md', 'src/Foo.java', ''] => ['README.md', 'src/Foo.java'] => ['/path/to/repo/README.md', '/path/to/repo/src/Foo.java']
+    return list(map(lambda x: os.path.join(repo_root, x), filter(lambda x: x != '', out.split('\0'))))
 
-def _git_get_repo_root_or_cwd():
+def _git_get_repo_root_or_cwd(allow_cwd=True):
     rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'], False)
+    assert allow_cwd or rc == 0
     if rc != 0:
         return '.'
     else:
