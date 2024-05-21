@@ -30,6 +30,7 @@ import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.time.Instant;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -45,7 +46,7 @@ public abstract class CompilerDaemon {
     /**
      * The deamon will shut down after receiving this many requests with an unrecognized header.
      */
-    static final int MAX_UNRECOGNIZED_REQUESTS = 5;
+    static final int MAX_UNRECOGNIZED_REQUESTS = 1000;
 
     protected void logf(String format, Object... args) {
         if (verbose) {
@@ -127,6 +128,7 @@ public abstract class CompilerDaemon {
             this.compiler = compiler;
         }
 
+        @Override
         public void run() {
             try {
                 BufferedReader input = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream(), "UTF-8"));
@@ -134,8 +136,10 @@ public abstract class CompilerDaemon {
 
                 try {
                     String request = input.readLine();
+                    String requestOrigin = connectionSocket.getInetAddress().getHostAddress();
+                    String prefix = String.format("[%s:%s] ", Instant.now(), requestOrigin);
                     if (request == null || request.equals(REQUEST_HEADER_SHUTDOWN)) {
-                        logf("Shutting down%n");
+                        logf("%sShutting down%n", prefix);
                         running = false;
                         while (threadPool.getActiveCount() > 1) {
                             threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
@@ -146,21 +150,21 @@ public abstract class CompilerDaemon {
                     } else if (request.startsWith(REQUEST_HEADER_COMPILE)) {
                         String commandLine = request.substring(REQUEST_HEADER_COMPILE.length());
                         String[] args = commandLine.split("\u0000");
-                        logf("Compiling %s%n", String.join(" ", args));
+                        logf("%sCompiling %s%n", prefix, String.join(" ", args));
 
                         int result = compiler.compile(args);
                         if (result != 0 && args.length != 0 && args[0].startsWith("GET / HTTP")) {
                             // GR-52712
-                            System.err.printf("Failing compilation received on %s%n", connectionSocket);
+                            System.err.printf("%sFailing compilation received on %s%n", prefix, connectionSocket);
                         }
-                        logf("Result = %d%n", result);
+                        logf("%sResult = %d%n", prefix, result);
 
                         output.write(result + "\n");
                     } else {
-                        System.err.printf("Unrecognized request (len=%d): \"%s\"%n", request.length(), request);
+                        System.err.printf("%sUnrecognized request (len=%d): \"%s\"%n", prefix, request.length(), request);
                         int unrecognizedRequestCount = unrecognizedRequests.incrementAndGet();
                         if (unrecognizedRequestCount > MAX_UNRECOGNIZED_REQUESTS) {
-                            System.err.printf("Shutting down after receiving %d unrecognized requests%n", unrecognizedRequestCount);
+                            System.err.printf("%sShutting down after receiving %d unrecognized requests%n", prefix, unrecognizedRequestCount);
                             System.exit(0);
                         }
                         output.write("-1\n");
