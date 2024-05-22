@@ -18173,7 +18173,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.25.6")  # GR-54131 Fix codeowners incorrectly computing absolute file names for files from 'git diff'
+version = VersionSpec("7.25.7")  # GR-54207 - improve diagnostics for unknown CompilerDaemon requests
 
 _mx_start_datetime = datetime.utcnow()
 

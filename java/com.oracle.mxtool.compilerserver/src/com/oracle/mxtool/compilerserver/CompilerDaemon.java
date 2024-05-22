@@ -31,6 +31,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.time.Instant;
+import java.util.Formatter;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -46,7 +47,7 @@ public abstract class CompilerDaemon {
     /**
      * The deamon will shut down after receiving this many requests with an unrecognized header.
      */
-    static final int MAX_UNRECOGNIZED_REQUESTS = 1000;
+    static final int MAX_UNRECOGNIZED_REQUESTS = 10_000;
 
     protected void logf(String format, Object... args) {
         if (verbose) {
@@ -128,6 +129,18 @@ public abstract class CompilerDaemon {
             this.compiler = compiler;
         }
 
+        private String printable(String s) {
+            Formatter buf = new Formatter();
+            s.chars().forEach(c -> {
+                if (c < 0x20 || c >= 0x7F) {
+                    buf.format("\\u%04x", c);
+                } else {
+                    buf.format("%c", c);
+                }
+            });
+            return buf.toString();
+        }
+
         @Override
         public void run() {
             try {
@@ -161,8 +174,8 @@ public abstract class CompilerDaemon {
 
                         output.write(result + "\n");
                     } else {
-                        System.err.printf("%sUnrecognized request (len=%d): \"%s\"%n", prefix, request.length(), request);
                         int unrecognizedRequestCount = unrecognizedRequests.incrementAndGet();
+                        System.err.printf("%sUnrecognized request %d (len=%d): \"%s\"%n", prefix, unrecognizedRequestCount, request.length(), printable(request));
                         if (unrecognizedRequestCount > MAX_UNRECOGNIZED_REQUESTS) {
                             System.err.printf("%sShutting down after receiving %d unrecognized requests%n", prefix, unrecognizedRequestCount);
                             System.exit(0);
