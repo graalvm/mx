@@ -60,7 +60,11 @@ _ansi_color_table = {
 
 def _check_stdout_encoding():
     # Importing here to avoid broken circular import
+    from .envvars import env_var_to_bool
     from .system import is_continuous_integration
+
+    if not env_var_to_bool("MX_CHECK_IOENCODING", "1"):
+        return
 
     encoding = sys.stdout.encoding
 
@@ -69,7 +73,8 @@ def _check_stdout_encoding():
             "Python's stdout does not use a unicode encoding.\n"
             "This may cause encoding errors when printing special characters.\n"
             "Please set up your system or console to use a unicode encoding.\n"
-            "When piping mx output, you can force UTF-8 encoding with the environment variable PYTHONIOENCODING=utf-8"
+            "When piping mx output, you can force UTF-8 encoding with the environment variable PYTHONIOENCODING=utf-8\n"
+            "This check can be disabled by setting MX_CHECK_IOENCODING=0 environment variable"
         )
         if is_continuous_integration():
             abort(msg)
