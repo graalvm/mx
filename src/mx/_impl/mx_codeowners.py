@@ -91,6 +91,13 @@ class FileOwners:
         self.src = os.path.abspath(src_root)
 
     def _get_path_components(self, filepath):
+        """Returns all of the sub-paths for a filepath, ordered from shortest to longest.
+
+        Example:
+        For filepath = '/full/path/to/file.py'
+        The method returns ['/', '/full', '/full/path', '/full/path/to', '/full/path/to/file.py']
+        """
+
         res = []
         while filepath != '':
             (dirs, _) = os.path.split(filepath)
@@ -101,10 +108,30 @@ class FileOwners:
             filepath = dirs
         return reversed(res)
 
+    def _supported_rule_types(self):
+        return ['any', 'all']
+
     def _parse_ownership(self, fd, name):
+        """Generator that yields rule tuples for every rule in the OWNERS file.
+
+        The returned tuple is in the following format: <pattern, owners, type, overwrite>
+        * pattern: A pattern to match filenames with, e.g. "*.py".
+        * owners: List of owners.
+        * type: Type of rule, see `_supported_rule_types` method for possible values.
+        * overwrite: Whether rules inherited from the parent OWNERS file should be overwritten.
+        Can return multiple tuples for every rule, depending on the number of patterns specified for the rule.
+
+        :param file-object fd: File object open for parsing of rules.
+        :param string name: Full path to the OWNERS file being parsed.
+        :return: A 4 element tuple: <pattern, owners, type, overwrite>
+        :rtype: tuple
+        """
+
         try:
             tree = _load_toml_from_fd(fd)
             mx.logv(f"Tree is {tree}")
+            properties = tree.get('properties')
+            overwrite_parent = properties is not None and properties.get('overwrite_parent')
             for rule in tree.get('rule', []):
                 if not 'files' in rule:
                     mx.log_error(f"Ignoring rule {rule} in {name} as it contains no files")
@@ -114,19 +141,28 @@ class FileOwners:
                     continue
 
                 rule['files'] = _whitespace_split(rule['files'])
-                optional_owners = _whitespace_split(rule.get('any', []))
-                if optional_owners:
-                    for pat in rule['files']:
-                        yield pat, optional_owners, "any"
-                mandatory_owners = _whitespace_split(rule.get('all', []))
-                if mandatory_owners:
-                    for pat in rule['files']:
-                        yield pat, mandatory_owners, "all"
+                for rule_type in self._supported_rule_types():
+                    owners_for_rule_type = _whitespace_split(rule.get(rule_type, []))
+                    if owners_for_rule_type:
+                        for pat in rule['files']:
+                            yield pat, owners_for_rule_type, rule_type, overwrite_parent
+                            overwrite_parent = False # Only the first rule in the file should trigger the overwrite
 
         except _TomlParsingException as e:
             mx.abort(f"Invalid input from {name}: {e}")
 
     def _parse_ownership_from_files(self, files):
+        """Generator that yields rule tuples for all rules found in the list of OWNERS files.
+
+        Processes the file list in-order, generating rule-tuples for every file.
+
+        :param list files: List of OWNERS files to be parsed.
+            Should be ordered from the most general one to the most specific one, since when
+            parsing an OWNERS file we facilitate inheritance/overwriting of parent's rules.
+        :return: A 4 element tuple: <pattern, owners, type, overwrite>. See `_parse_ownership` doc for more details.
+        :rtype: tuple
+        """
+
         for fo in files:
             try:
                 if os.path.isabs(fo):
@@ -139,22 +175,31 @@ class FileOwners:
             except IOError:
                 pass
 
+    def _no_owners(self):
+        return {rule_type: set() for rule_type in self._supported_rule_types()}
+
     def get_owners_of(self, filepath):
+        # Subsequences of the filepath, from the least precise (/) to the most precise (/full/path/to/file.py)
         components = ([] if os.path.isabs(filepath) else ['.']) + list(self._get_path_components(filepath))
         filename = os.path.split(filepath)[1]
+        # Paths to possible OWNERS files that could apply to the file, from the most general one (/OWNERS.toml)
+        # to the closest one (/full/path/to/OWNERS.toml). This order facilitates correct rule overwriting.
         owners_files = [
             os.path.join(i, 'OWNERS.toml') if os.path.isabs(i) else os.path.join(self.src, i, 'OWNERS.toml')
             for i in components[:-1]
         ]
         owners_files = [i for i in owners_files if os.path.commonprefix([i, self.src]) == self.src]
-        result = {}
+        result = self._no_owners()
         ownership = self._parse_ownership_from_files(owners_files)
-        for pat, owners, modifiers in ownership:
+        for pat, owners, modifiers, overwrite_parent in ownership:
+            if overwrite_parent:
+                # Overwrite parents' rules - relies on parsing rules of parents before those of children OWNERS files.
+                result = self._no_owners()
             if fnmatch.fnmatch(filename, pat):
-                if "all" in modifiers:
-                    result["all"] = sorted(owners)
-                if "any" in modifiers:
-                    result["any"] = sorted(owners)
+                for rule_type in self._supported_rule_types():
+                    if rule_type in modifiers:
+                        result[rule_type].update(owners)
+        result = {rule_type: sorted(result[rule_type]) for rule_type in self._supported_rule_types() if len(result[rule_type]) > 0}
         mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
 
