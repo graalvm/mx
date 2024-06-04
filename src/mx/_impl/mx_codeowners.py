@@ -86,6 +86,9 @@ def _is_some_item_in_set(items, the_set):
             return True
     return False
 
+def _supported_rule_types():
+    return ['any', 'all', 'at_least_one_mandatory_approver']
+
 class FileOwners:
     def __init__(self, src_root):
         self.src = os.path.abspath(src_root)
@@ -107,9 +110,6 @@ class FileOwners:
                 break
             filepath = dirs
         return reversed(res)
-
-    def _supported_rule_types(self):
-        return ['any', 'all']
 
     def _parse_ownership(self, fd, name):
         """Generator that yields rule tuples for every rule in the OWNERS file.
@@ -136,12 +136,12 @@ class FileOwners:
                 if not 'files' in rule:
                     mx.log_error(f"Ignoring rule {rule} in {name} as it contains no files")
                     continue
-                if (not 'any' in rule) and (not 'all' in rule):
+                if all([not rule_type in rule for rule_type in _supported_rule_types()]):
                     mx.log_error(f"Ignoring rule {rule} in {name} as it contains no owner specification")
                     continue
 
                 rule['files'] = _whitespace_split(rule['files'])
-                for rule_type in self._supported_rule_types():
+                for rule_type in _supported_rule_types():
                     owners_for_rule_type = _whitespace_split(rule.get(rule_type, []))
                     if owners_for_rule_type:
                         for pat in rule['files']:
@@ -176,7 +176,7 @@ class FileOwners:
                 pass
 
     def _no_owners(self):
-        return {rule_type: set() for rule_type in self._supported_rule_types()}
+        return {rule_type: set() for rule_type in _supported_rule_types()}
 
     def get_owners_of(self, filepath):
         # Subsequences of the filepath, from the least precise (/) to the most precise (/full/path/to/file.py)
@@ -196,16 +196,17 @@ class FileOwners:
                 # Overwrite parents' rules - relies on parsing rules of parents before those of children OWNERS files.
                 result = self._no_owners()
             if fnmatch.fnmatch(filename, pat):
-                for rule_type in self._supported_rule_types():
+                for rule_type in _supported_rule_types():
                     if rule_type in modifiers:
                         result[rule_type].update(owners)
-        result = {rule_type: sorted(result[rule_type]) for rule_type in self._supported_rule_types() if len(result[rule_type]) > 0}
+        result = {rule_type: sorted(result[rule_type]) for rule_type in _supported_rule_types() if len(result[rule_type]) > 0}
         mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
 
 def _summarize_owners(all_owners):
     must_review = set()
     anyof_reviewers = []
+    mandatory_approvals = []
 
     for owners in all_owners:
         for owner in owners.get('all', []):
@@ -217,9 +218,14 @@ def _summarize_owners(all_owners):
             if not _is_some_item_in_set(owners['any'], must_review):
                 anyof_reviewers.append(owners['any'])
 
+    for owners in all_owners:
+        if owners.get('at_least_one_mandatory_approver'):
+            mandatory_approvals.append(owners['at_least_one_mandatory_approver'])
+
     return {
         "all": sorted(must_review),
         "any": list(set(map(tuple, anyof_reviewers))),
+        "at_least_one_mandatory_approver": list(set(map(tuple, mandatory_approvals))),
     }
 
 def _run_capture(args, must_succeed=True):
@@ -328,6 +334,7 @@ def codeowners(args):
     parser.add_argument('-a', dest='all_changes', action='store_true', default=False, help='Print reviewers for this branch against master.')
     parser.add_argument('-b', dest='upstream_branch', metavar='BRANCH', default=None, help='Print reviewers for this branch against BRANCH.')
     parser.add_argument('-r', dest='existing_reviewers', metavar='PR-REVIEWER', default=[], action='append', help='Existing reviewer (can be specified multiple times).')
+    parser.add_argument('-g', dest='granted_approvals', metavar='PR-APPROVAL', default=[], action='append', help='Granted approvals (can be specified multiple times).')
     parser.add_argument('-p', dest='author', metavar='PR-AUTHOR', default=None, help='Author of the pull-request')
     parser.add_argument('-s', dest='suggest_reviewers', default=False, action='store_true', help='Suggest reviewers for pull-request')
     parser.add_argument('-j', dest='json_dump', default=None, metavar='FILENAME.json', help='Store details in JSON file.')
@@ -341,12 +348,15 @@ def codeowners(args):
         'branch': None,
         'pull_request': {
             'reviewers': args.existing_reviewers,
+            'approvals': args.granted_approvals,
             'author': args.author,
             'suggestion': {
                 'add': [],
+                'acquire_approval': [],
                 'details': {
                     'all': [],
                     'any': [],
+                    'at_least_one_mandatory_approver': [],
                 },
             }
         }
@@ -359,6 +369,9 @@ def codeowners(args):
 
     if args.all_changes and args.files:
         mx.abort("Do not specify list of files with -b or -a")
+
+    if args.granted_approvals:
+        args.existing_reviewers += args.granted_approvals
 
     if args.author or args.existing_reviewers:
         args.suggest_reviewers = True
@@ -378,22 +391,38 @@ def codeowners(args):
 
     reviewers = _summarize_owners(file_owners.values())
 
+    if reviewers['at_least_one_mandatory_approver']:
+        approvers_yet_to_approve = []
+        approvers_already_approved = []
+        for any_of_mandatory_approvers_for_file in reviewers['at_least_one_mandatory_approver']:
+            if _is_some_item_in_set(args.granted_approvals, set(any_of_mandatory_approvers_for_file)):
+                approvers_already_approved.append(any_of_mandatory_approvers_for_file)
+            else:
+                approvers_yet_to_approve.append(any_of_mandatory_approvers_for_file)
+        if approvers_yet_to_approve:
+            mx.log("Missing mandatory approvers (at least one from each line must approve the PR):")
+            for any_of_mandatory_approvers_for_file in approvers_yet_to_approve:
+                mx.log(" o " + ' or '.join(any_of_mandatory_approvers_for_file))
+        if approvers_already_approved:
+            mx.log("Mandatory approvers who already approved:")
+            for any_of_mandatory_approvers_for_file in approvers_already_approved:
+                mx.log(" o " + ' or '.join(any_of_mandatory_approvers_for_file))
     if reviewers['all']:
-        mx.log("Mandatory reviewers (all of these must review):")
+        mx.log("Mandatory reviewers (all of these must be added as reviewers):")
         for i in reviewers['all']:
             if i in args.existing_reviewers:
                 mx.log(" o " + i + " (already reviews)")
             else:
                 mx.log(" o " + i)
     if reviewers['any']:
-        mx.log("Any-of reviewers (at least one from each line):")
+        mx.log("Any-of reviewers (at least one from each line must be added as a reviewer):")
         for i in reviewers['any']:
             if _is_some_item_in_set(args.existing_reviewers, set(i)):
                 mx.log(" o " + ' or '.join(i) + ' (one already reviews)')
             else:
                 mx.log(" o " + ' or '.join(i))
 
-    if len(reviewers["all"]) == 0 and len(reviewers["any"]) == 0:
+    if all([len(reviewers[rule_type]) == 0 for rule_type in _supported_rule_types()]):
         mx.log("No specific reviewer requested by OWNERS.toml files for the given changeset.")
 
 
@@ -401,9 +430,43 @@ def codeowners(args):
         mx.log("")
         mx.log("Reviewers summary for this pull-request")
 
+        pending_approvals = []
+        missing_as_both_reviewer_and_approval = []
+        # iterate through at_least_one_mandatory_approver lists for every affected file and compute
+        # a subset (not necessarily optimal) that would satisfy all of them
+        for mandatory_approver_list_for_file in reviewers['at_least_one_mandatory_approver']:
+            missing_approvers = set(mandatory_approver_list_for_file)
+            missing_approvers.discard(args.author)
+            if not missing_approvers:
+                continue
+
+            covered_by_granted = _is_some_item_in_set(args.granted_approvals, missing_approvers)
+            covered_by_suggestions = _is_some_item_in_set(pending_approvals + missing_as_both_reviewer_and_approval, missing_approvers)
+            if covered_by_granted or covered_by_suggestions:
+                continue
+
+            missing_approvers_reviewing = set(args.existing_reviewers).intersection(missing_approvers)
+            if missing_approvers_reviewing:
+                pending_approvals.append(list(missing_approvers_reviewing)[0])
+            else:
+                missing_as_both_reviewer_and_approval.append(list(missing_approvers)[0])
+        missing_approvals = pending_approvals + missing_as_both_reviewer_and_approval
+
+        mx.log(" o Mandatory approvals")
+        repro_data['pull_request']['suggestion']['details']['at_least_one_mandatory_approver'] = missing_approvals
+        repro_data['pull_request']['suggestion']['add'].extend(missing_as_both_reviewer_and_approval)
+        repro_data['pull_request']['suggestion']['acquire_approval'].extend(missing_approvals)
+        if missing_approvals:
+            if missing_as_both_reviewer_and_approval:
+                mx.log("   - Suggesting to add following reviewers and acquire their approval: " + ' and '.join(missing_as_both_reviewer_and_approval))
+            if pending_approvals:
+                mx.log("   - Suggesting to acquire approval of these existing reviewers: " + ' and '.join(pending_approvals))
+        else:
+            mx.log("   - All mandatory approvals already granted.")
+
         missing_mandatory = []
         for i in reviewers['all']:
-            if (not i in args.existing_reviewers) and (i != args.author):
+            if (not i in args.existing_reviewers) and (i != args.author) and (not i in missing_approvals):
                 missing_mandatory.append(i)
 
         mx.log(" o Mandatory reviewers")
@@ -412,7 +475,7 @@ def codeowners(args):
         if missing_mandatory:
             mx.log("   - Add following reviewers: " + ' and '.join(missing_mandatory))
         else:
-            mx.log("   - All mandatory reviewers already assigned.")
+            mx.log("   - All mandatory reviewers already assigned or among the approval suggestions.")
 
         suggested_optional = []
         for gr in reviewers['any']:
@@ -421,10 +484,11 @@ def codeowners(args):
             if not gr_set:
                 continue
 
+            covered_by_approvals = _is_some_item_in_set(missing_approvals, gr_set)
             covered_by_mandatory = _is_some_item_in_set(missing_mandatory, gr_set)
             covered_by_existing = _is_some_item_in_set(args.existing_reviewers, gr_set)
             covered_by_suggestions = _is_some_item_in_set(suggested_optional, gr_set)
-            if covered_by_mandatory or covered_by_existing or covered_by_suggestions:
+            if covered_by_approvals or covered_by_mandatory or covered_by_existing or covered_by_suggestions:
                 continue
             suggested_optional.append(list(gr_set)[0])
 
@@ -434,16 +498,23 @@ def codeowners(args):
         if suggested_optional:
             mx.log("   - Suggesting to add these reviewers: " + ' and '.join(suggested_optional))
         else:
-            mx.log("   - All are already assigned or are among the mandatory ones.")
-        if suggested_optional or missing_mandatory:
-            mx.log(" o Suggested modifications: add the following reviewers")
-            for i in sorted(suggested_optional + missing_mandatory):
-                mx.log("   - " + i)
+            mx.log("   - All are already assigned or are already suggested.")
+        if repro_data['pull_request']['suggestion']['add'] or repro_data['pull_request']['suggestion']['acquire_approval']:
+            mx.log(" o Suggested modifications:")
+            if repro_data['pull_request']['suggestion']['add']:
+                mx.log("   o add the following reviewers:")
+                for i in sorted(repro_data['pull_request']['suggestion']['add']):
+                    mx.log("     - " + i)
+            if repro_data['pull_request']['suggestion']['acquire_approval']:
+                mx.log("   o acquire the approval of the following reviewers:")
+                for i in sorted(repro_data['pull_request']['suggestion']['acquire_approval']):
+                    mx.log("     - " + i)
         else:
             mx.log(" o Looks like all reviewers are already assigned.")
 
 
     repro_data['pull_request']['suggestion']['add'] = list(sorted(repro_data['pull_request']['suggestion']['add']))
+    repro_data['pull_request']['suggestion']['acquire_approval'] = list(sorted(repro_data['pull_request']['suggestion']['acquire_approval']))
 
     num_files_changed = len(file_owners.keys())
     num_owned_files = len([f for f, o in file_owners.items() if o])
@@ -490,10 +561,9 @@ class OwnerStats:
             self.orphan_files_count = self.orphan_files_count + 1
             return
         self.owned_files_count = self.owned_files_count + 1
-        for name in ownership.get('any', []):
-            self._add_owner(name)
-        for name in ownership.get('all', []):
-            self._add_owner(name)
+        for rule_type in _supported_rule_types():
+            for name in ownership.get(rule_type, []):
+                self._add_owner(name)
 
     def merge_with(self, other):
         self.orphan_files_count = self.orphan_files_count + other.orphan_files_count
