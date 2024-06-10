@@ -65,7 +65,7 @@ the right `mx archive @ABC` and skip full `mx build` (useful in combination with
 `mx intellijinit --mx-distributions` also generates IntelliJ "artifacts", which correspond to MX distributions.
 Those artifacts are dummy and use Ant post-processing step to delegate to `mx archive @ARTIFACT_NAME`.
 Moreover, the artifacts depend on other IntelliJ artifacts and Java modules to reflect the dependency structure
-on the mx side. However,  IntelliJ seems to ignore this and always invokes the post-processing step for all the
+on the mx side. However, IntelliJ seems to ignore this and always invokes the post-processing step for all the
 artifacts regardless of whether their dependencies changed or not, which makes this slow and impractical. If you
 still want to use this feature, make sure that the bundled Ant plugin is enabled in **Preferences > Plugins > Installed**
 (you may get `Unknown artifact properties: ant-postprocessing.` errors in your project artifacts otherwise).
