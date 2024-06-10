@@ -59,7 +59,8 @@ then trigger a build from within the IDE, which rebuilds all the Java classfiles
 classfiles built outside of IDE. After that, one can continue with edit & compile cycle in the IDE and the
 subsequent compilations should be fast and incremental (tip: you can use "build file" or "build package" to make
 them even faster). If you know which mx distributions are affected by your changes, you can manually invoke
-the right `mx archive @ABC` and skip full `mx build` (useful in combination with linky layout).
+the right `mx archive @ABC` and skip full `mx build` (useful in combination with
+[linky layout](layout-distributions.md#linky_layout)).
 
 `mx intellijinit --mx-distributions` also generates IntelliJ "artifacts", which correspond to MX distributions.
 Those artifacts are dummy and use Ant post-processing step to delegate to `mx archive @ARTIFACT_NAME`.
