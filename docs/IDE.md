@@ -2,6 +2,9 @@
 
 ### IntelliJ
 
+*For the time being, IntelliJ support is intended mainly for editing experience. There is limited support for building
+mx based projects from within the IDE.*
+
 Download and install the latest IntelliJ IDEA Community Edition: [https://www.jetbrains.com/idea/download/](https://www.jetbrains.com/idea/download/)
 
 Change the IntelliJ maximum memory to 2 GB or more. As per the [instructions](https://www.jetbrains.com/idea/help/increasing-memory-heap.html#d1366197e127), from the main menu choose **Help | Edit Custom VM Options** and modify the **-Xmx** and **-Xms** options.
@@ -13,8 +16,6 @@ Open IntelliJ and go to **Preferences > Plugins > Browse Repositories**. Install
 * [FindBugs-IDEA](https://plugins.jetbrains.com/plugin/3847): looks for suspicious code
 * [Python Plugin](https://plugins.jetbrains.com/idea/plugin/631-python): python plugin
 * [Markdown Navigator](https://plugins.jetbrains.com/plugin/7896-markdown-navigator): markdown plugin
-
-Check that the bundled Ant plugin is enabled in **Preferences > Plugins > Installed** (you may get `Unknown artifact properties: ant-postprocessing.` errors in your project artifacts otherwise).
 
 Make sure you have [`mx`](https://github.com/graalvm/mx) installed and updated (`mx update`). Then, to initialize IntelliJ project files, go to the root of your project and invoke: `mx intellijinit`
 
@@ -38,6 +39,37 @@ The value is split using spaces as delimiter and prepended to the arguments pass
 
 Use `mx intellijinit --help` to view all the options and flags that allow further customization
 of the IntelliJ projects generation.
+
+
+#### Building From Within IntelliJ
+
+When building Java sources, `mx build` invokes Java compiler to produce class files and then bundles those classfiles
+to jars and other distributions according to the configuration in `suite.py` files.
+
+IntelliJ is configured to build the same classfiles as `mx build` would produce. However, for the time being, the code
+that invokes Java compiler inside `mx build` is separate from the code that configures the options for Java compiler
+in IntelliJ and there may be inconsistencies leading to compilation errors in IntelliJ.
+
+Mx Java projects are represented as Java modules in IntelliJ. Java mx distributions and mx libraries are represented
+as IntelliJ "libraries". The dependencies between IntelliJ Java modules and libraries should reflect the dependencies
+on the mx side.
+
+The recommended approach is to start with manual `mx build` to build everything necessary for the project,
+then trigger a build from within the IDE, which rebuilds all the Java classfiles, because IntelliJ refuses to reuse
+classfiles built outside of IDE. After that, one can continue with edit & compile cycle in the IDE and the
+subsequent compilations should be fast and incremental (tip: you can use "build file" or "build package" to make
+them even faster). If you know which mx distributions are affected by your changes, you can manually invoke
+the right `mx archive @ABC` and skip full `mx build` (useful in combination with
+[linky layout](layout-distributions.md#linky_layout)).
+
+`mx intellijinit --mx-distributions` also generates IntelliJ "artifacts", which correspond to MX distributions.
+Those artifacts are dummy and use Ant post-processing step to delegate to `mx archive @ARTIFACT_NAME`.
+Moreover, the artifacts depend on other IntelliJ artifacts and Java modules to reflect the dependency structure
+on the mx side. However, IntelliJ seems to ignore this and always invokes the post-processing step for all the
+artifacts regardless of whether their dependencies changed or not, which makes this slow and impractical. If you
+still want to use this feature, make sure that the bundled Ant plugin is enabled in **Preferences > Plugins > Installed**
+(you may get `Unknown artifact properties: ant-postprocessing.` errors in your project artifacts otherwise).
+
 
 #### Making IntelliJ Feel Similar to Eclipse (Optional)
 

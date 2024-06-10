@@ -18173,7 +18173,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.25.10")  # GR-52545 Add 'at_least_one_mandatory_approver' new OWNERS rule type
+version = VersionSpec("7.25.11")  # GR-54613 Do not generate IntelliJ "artifacts" by default in mx intellijinit
 
 _mx_start_datetime = datetime.utcnow()
 
