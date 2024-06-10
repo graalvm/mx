@@ -65,6 +65,7 @@ class IntellijConfig:
     on_save_actions: bool = False
     refresh_only: bool = False
     do_fsck_projects: bool = True
+    mx_distributions: bool = False
     args: ... = None
 
 
@@ -79,6 +80,7 @@ def intellijinit_cli(args):
     parser.add_argument('--max-java-compliance', dest='max_java_compliance', type=int, default=16, help='Cap the Java compliance at this value. IntelliJ requires an acceptance of a legal notice for beta Java specifications.')
     parser.add_argument('--import-inner-classes', action='store_true', dest='import_inner_classes', help='Configure auto-import to insert inner class imports.')
     parser.add_argument('--on-save-actions', action='store_true', dest='on_save_actions', help='Generate On Save Actions: checkstyle format and optimize imports.')
+    parser.add_argument('--mx-distributions', action='store_true', dest='mx_distributions', help='Generate Ant powered build of mx distributions (generated Ant scripts delegate to `mx archive {DIST}, bundled Ant plugin must be enabled in IntelliJ).')
     parser.add_argument('args', nargs=REMAINDER, metavar='...')
 
     extra_args = os.environ.get('MX_INTELLIJINIT_DEFAULTS', '').split()
@@ -989,76 +991,80 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
                 workspaceXml.close('project')
                 mx.update_file(workspace_path, workspaceXml.xml(indent='  ', newl='\n'))
 
-            # mx integration
-            def antTargetName(dist):
-                return 'archive_' + dist.name
+            if config.mx_distributions:
+                # We delegate to `mx archive {DISTRIBUTION}` using Ant script.
+                # The Ant script is executed as "ant-postprocessing" step of an artificial IntelliJ artifact that we
+                # create for each MX distribution. The artificial IntelliJ artifact is configured to "contain" (depend
+                # on) all the dependencies of the given MX distribution. See IDE.md for some more info.
+                def antTargetName(dist):
+                    return 'archive_' + dist.name
 
-            def artifactFileName(dist):
-                return dist.name.replace('.', '_').replace('-', '_') + '.xml'
-            validDistributions = [dist for dist in mx.sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
+                def artifactFileName(dist):
+                    return dist.name.replace('.', '_').replace('-', '_') + '.xml'
+                validDistributions = [dist for dist in mx.sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
 
-            # 1) Make an ant file for archiving the distributions.
-            antXml = mx.XMLDoc()
-            antXml.open('project', attributes={'name': s.name, 'default': 'archive'})
-            for dist in validDistributions:
-                antXml.open('target', attributes={'name': antTargetName(dist)})
-                antXml.open('exec', attributes={'executable': sys.executable})
-                antXml.element('arg', attributes={'value': join(mx._mx_home, 'mx.py')})
-                antXml.element('arg', attributes={'value': 'archive'})
-                antXml.element('arg', attributes={'value': '@' + dist.name})
-                antXml.close('exec')
-                antXml.close('target')
+                # 1) Make an ant file for archiving the distributions.
+                antXml = mx.XMLDoc()
+                antXml.open('project', attributes={'name': s.name, 'default': 'archive'})
+                for dist in validDistributions:
+                    antXml.open('target', attributes={'name': antTargetName(dist)})
+                    antXml.open('exec', attributes={'executable': sys.executable})
+                    antXml.element('arg', attributes={'value': join(mx._mx_home, 'mx.py')})
+                    antXml.element('arg', attributes={'value': 'archive'})
+                    antXml.element('arg', attributes={'value': '@' + dist.name})
+                    antXml.close('exec')
+                    antXml.close('target')
 
-            antXml.close('project')
-            antFile = join(ideaProjectDirectory, 'ant-mx-archive.xml')
-            mx.update_file(antFile, antXml.xml(indent='  ', newl='\n'))
+                antXml.close('project')
+                antFile = join(ideaProjectDirectory, 'ant-mx-archive.xml')
+                mx.update_file(antFile, antXml.xml(indent='  ', newl='\n'))
 
-            # 2) Tell IDEA that there is an ant-build.
-            ant_mx_archive_xml = 'file://$PROJECT_DIR$/.idea/ant-mx-archive.xml'
-            metaAntXml = mx.XMLDoc()
-            metaAntXml.open('project', attributes={'version': '4'})
-            metaAntXml.open('component', attributes={'name': 'AntConfiguration'})
-            metaAntXml.open('buildFile', attributes={'url': ant_mx_archive_xml})
-            metaAntXml.close('buildFile')
-            metaAntXml.close('component')
-            metaAntXml.close('project')
-            metaAntFile = join(ideaProjectDirectory, 'ant.xml')
-            mx.update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
+                # 2) Tell IDEA that there is an ant-build.
+                ant_mx_archive_xml = 'file://$PROJECT_DIR$/.idea/ant-mx-archive.xml'
+                metaAntXml = mx.XMLDoc()
+                metaAntXml.open('project', attributes={'version': '4'})
+                metaAntXml.open('component', attributes={'name': 'AntConfiguration'})
+                metaAntXml.open('buildFile', attributes={'url': ant_mx_archive_xml})
+                metaAntXml.close('buildFile')
+                metaAntXml.close('component')
+                metaAntXml.close('project')
+                metaAntFile = join(ideaProjectDirectory, 'ant.xml')
+                mx.update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
 
-            # 3) Make an artifact for every distribution
-            validArtifactNames = {artifactFileName(dist) for dist in validDistributions}
-            artifactsDir = join(ideaProjectDirectory, 'artifacts')
-            mx_util.ensure_dir_exists(artifactsDir)
-            for fileName in os.listdir(artifactsDir):
-                filePath = join(artifactsDir, fileName)
-                if os.path.isfile(filePath) and fileName not in validArtifactNames:
-                    os.remove(filePath)
+                # 3) Make an artifact for every distribution
+                validArtifactNames = {artifactFileName(dist) for dist in validDistributions}
+                artifactsDir = join(ideaProjectDirectory, 'artifacts')
+                mx_util.ensure_dir_exists(artifactsDir)
+                for fileName in os.listdir(artifactsDir):
+                    filePath = join(artifactsDir, fileName)
+                    if os.path.isfile(filePath) and fileName not in validArtifactNames:
+                        os.remove(filePath)
 
-            for dist in validDistributions:
-                artifactXML = mx.XMLDoc()
-                artifactXML.open('component', attributes={'name': 'ArtifactManager'})
-                artifactXML.open('artifact', attributes={'build-on-make': 'true', 'name': dist.name})
-                artifactXML.open('output-path', data='$PROJECT_DIR$/mxbuild/artifacts/' + dist.name)
-                artifactXML.close('output-path')
-                artifactXML.open('properties', attributes={'id': 'ant-postprocessing'})
-                artifactXML.open('options', attributes={'enabled': 'true'})
-                artifactXML.open('file', data=ant_mx_archive_xml)
-                artifactXML.close('file')
-                artifactXML.open('target', data=antTargetName(dist))
-                artifactXML.close('target')
-                artifactXML.close('options')
-                artifactXML.close('properties')
-                artifactXML.open('root', attributes={'id': 'root'})
-                for javaProject in [dep for dep in dist.archived_deps() if dep.isJavaProject()]:
-                    artifactXML.element('element', attributes={'id': 'module-output', 'name': javaProject.name})
-                for javaProject in [dep for dep in dist.deps if dep.isLibrary() or (dep.isDistribution() and dep in validDistributions)]:
-                    artifactXML.element('element', attributes={'id': 'artifact', 'artifact-name': javaProject.name})
-                artifactXML.close('root')
-                artifactXML.close('artifact')
-                artifactXML.close('component')
+                for dist in validDistributions:
+                    artifactXML = mx.XMLDoc()
+                    artifactXML.open('component', attributes={'name': 'ArtifactManager'})
+                    artifactXML.open('artifact', attributes={'build-on-make': 'true', 'name': dist.name})
+                    artifactXML.open('output-path', data='$PROJECT_DIR$/mxbuild/artifacts/' + dist.name)
+                    artifactXML.close('output-path')
+                    artifactXML.open('properties', attributes={'id': 'ant-postprocessing'})
+                    artifactXML.open('options', attributes={'enabled': 'true'})
+                    artifactXML.open('file', data=ant_mx_archive_xml)
+                    artifactXML.close('file')
+                    artifactXML.open('target', data=antTargetName(dist))
+                    artifactXML.close('target')
+                    artifactXML.close('options')
+                    artifactXML.close('properties')
+                    artifactXML.open('root', attributes={'id': 'root'})
+                    for javaProject in [dep for dep in dist.archived_deps() if dep.isJavaProject()]:
+                        artifactXML.element('element', attributes={'id': 'module-output', 'name': javaProject.name})
+                    for javaProject in [dep for dep in dist.deps if dep.isLibrary() or (dep.isDistribution() and dep in validDistributions)]:
+                        artifactXML.element('element', attributes={'id': 'artifact', 'artifact-name': javaProject.name})
+                    artifactXML.close('root')
+                    artifactXML.close('artifact')
+                    artifactXML.close('component')
 
-                artifactFile = join(artifactsDir, artifactFileName(dist))
-                mx.update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
+                    artifactFile = join(artifactsDir, artifactFileName(dist))
+                    mx.update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
 
         def intellij_scm_name(vc_kind):
             if vc_kind == 'git':
