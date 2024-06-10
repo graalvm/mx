@@ -716,7 +716,8 @@ def _run_gate(cleanArgs, args, tasks):
             if mx.command_function('pylint')(['--primary']) != 0:
                 mx.abort_or_warn('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
 
-    gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild, Tags.ecjbuild])
+    if not args.noClean:
+        gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild, Tags.ecjbuild])
 
     with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
         if t:
