@@ -3357,6 +3357,10 @@ class BenchmarkExecutor(object):
             "--fork-count-file", default=None,
             help="Path to the file that lists the number of re-executions for the targeted benchmarks, using the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
+            "--default-fork-count", default=1, type=int,
+            help="Number of times each benchmark must be executed if no fork count file is specified or no value is found for a given benchmark in the file. Default: 1"
+        )
+        parser.add_argument(
             "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
         parser.add_argument(
             "--deferred-tty", action="store_true", default=None,
@@ -3450,7 +3454,7 @@ class BenchmarkExecutor(object):
                 ignored_benchmarks = []
                 for benchnames in benchNamesList:
                     suite.validateEnvironment()
-                    fork_count = 1
+                    fork_count = mxBenchmarkArgs.default_fork_count
                     if fork_count_spec and benchnames and len(benchnames) == 1:
                         fork_count = fork_count_spec.get(f"{suite.name()}:{benchnames[0]}")
                         if fork_count is None and benchnames[0] in fork_count_spec:
@@ -3466,7 +3470,7 @@ class BenchmarkExecutor(object):
                         skipped_benchmark_forks.append(f"{suite.name()}:{benchnames[0]}")
                     else:
                         for fork_num in range(0, fork_count):
-                            if fork_count_spec:
+                            if fork_count != 1:
                                 mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
                             try:
                                 if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
