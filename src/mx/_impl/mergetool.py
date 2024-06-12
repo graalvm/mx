@@ -33,6 +33,95 @@ import textwrap
 from . import mx
 
 
+def remove_conflict_markers(filename):
+    """
+    Removes conflicts markers from a file's content, keeps only the content of the first
+    conflict branch and returns the result.
+
+    Merge conflict marker might be nested. A basic example looks like:
+
+        "imports": {
+            "suites": [
+                {
+                    "name": "substratevm",
+                    "subdir": True,
+    <<<<<<< HEAD
+                    "version": "db85a24b2358c7ebf7850a3cfd7a0e28e693cbb1",
+    =======
+                    "version": "2449afbb28dadf2d9a70a866da06d664f1d1a539",
+    >>>>>>> upstream/master
+                    "urls": [
+                        {"url": "https://github.com/oracle/graal.git", "kind": "git"},
+                    ]
+                },
+            ],
+        },
+
+    A more complex example would be:
+
+        "imports": {
+            "suites": [
+                {
+                    "name": "substratevm",
+                    "subdir": True,
+    <<<<<<< HEAD
+                    "version": "db85a24b2358c7ebf7850a3cfd7a0e28e693cbb1",
+    ||||||| merged common ancestors
+    <<<<<<<<< Temporary merge branch 1
+                    "version": "f1dffe84fdce6f45a42528e4f114cd8c52d1aae1",
+    ||||||||| merged common ancestors
+    <<<<<<<<<<< Temporary merge branch 1
+                    "version": "414d874be3af1a21a3c8ebfd9cbd163b985a0a68",
+    ||||||||||| 68ef48ab8db
+                    "version": "69baa168b4c0602b078f0bc0b49d95b93582ba95",
+    ===========
+                    "version": "5b5a1351f3a02177e0878d5f2cd01c56507e8ba4",
+    >>>>>>>>>>> Temporary merge branch 2
+    =========
+                    "version": "06ad740e1c0817d3d555b514ced92dd4465d32db",
+    >>>>>>>>> Temporary merge branch 2
+    =======
+                    "version": "2449afbb28dadf2d9a70a866da06d664f1d1a539",
+    >>>>>>> upstream/master
+                    "urls": [
+                        {"url": "https://github.com/oracle/graal.git", "kind": "git"},
+                    ]
+                },
+            ],
+        },
+
+    """
+    with open(filename, "r") as fp:
+        suite_content = fp.read()
+        result = []
+        conflict_level = 0
+        keep = True
+        for line in suite_content.splitlines(keepends=True):
+            if line.startswith("<<"):
+                if conflict_level > 0:
+                    # inner conflict scope -> stop printing
+                    keep = False
+                conflict_level += 1
+                continue
+            if line.startswith("||"):
+                # in a conflict scope and not in the first branch -> stop printing
+                keep = False
+                continue
+            if line.startswith("=="):
+                # in a conflict scope and not in the first branch -> stop printing
+                keep = False
+                continue
+            if line.startswith(">>"):
+                conflict_level -= 1
+                if conflict_level == 0:
+                    # end of conflict scope -> restart printing
+                    keep = True
+                continue
+            if keep:
+                result.append(line)
+        return "".join(result)
+
+
 @mx.suite_context_free
 def mergetool_suite_import(args):
     parser = argparse.ArgumentParser(
@@ -107,34 +196,27 @@ def mergetool_suite_import(args):
 
     _assert_or_fallback("suite.py" in os.path.basename(merged), "Only merge suite.py files. Falling back to diff3")
 
-    def read_suite_imports(filename):
-        with open(filename) as suite_fp:
-            my_globals = {}
-            my_locals = {}
-            suite_content = suite_fp.read()
-            try:
-                exec(suite_content, my_globals, my_locals)  # pylint: disable=exec-used
-            except Exception as ex:  # pylint: disable=broad-except
-                msg = f"Cannot load suite file {filename}: {ex}"
-                if any((x.startswith("<<<<<<<<<") for x in suite_content.splitlines())):
-                    msg += textwrap.dedent(
-                        """
-                      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                      Hint: conflict marker detected.
-                      Try using a non-recursive merge strategy, e.g.:
-                        git merge -s resolve
-                      >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                      """
-                    )
-                _fallback(msg)
-            return my_locals.get("suite", {}).get("imports", {}).get("suites")
+    def read_suite_imports(suite_content, filename):
+        my_globals = {}
+        my_locals = {}
+        try:
+            exec(suite_content, my_globals, my_locals)  # pylint: disable=exec-used
+        except Exception as ex:  # pylint: disable=broad-except
+            msg = f"Cannot load suite file {filename}: {ex}"
+            _fallback(msg)
+        return my_locals.get("suite", {}).get("imports", {}).get("suites")
 
     def to_import_dict(suite_imports):
         return {s["name"]: s["version"] for s in suite_imports if "version" in s}
 
-    local_imports = read_suite_imports(local)
-    remote_imports = read_suite_imports(remote)
-    base_imports = read_suite_imports(base)
+    local_content = remove_conflict_markers(local)
+    remote_content = remove_conflict_markers(remote)
+    base_content = remove_conflict_markers(base)
+
+    local_imports = read_suite_imports(local_content, local)
+    remote_imports = read_suite_imports(remote_content, remote)
+    base_imports = read_suite_imports(base_content, base)
+
     local_import_dict = to_import_dict(local_imports)
     remote_import_dict = to_import_dict(remote_imports)
     base_import_dict = to_import_dict(base_imports)
@@ -152,24 +234,25 @@ def mergetool_suite_import(args):
     _assert_or_fallback(mismatches, "Not import mismatches. Falling back to diff3")
 
     # fix mismatches
-    with open(remote, mode="r+b") as fp:
-        remote_content = fp.read()
-    with open(base, mode="r+b") as fp:
-        base_content = fp.read()
 
     for s in mismatches:
-        local_rev = local_import_dict[s].encode()
-        remote_rev = remote_import_dict[s].encode()
-        base_rev = base_import_dict[s].encode()
+        local_rev = local_import_dict[s]
+        remote_rev = remote_import_dict[s]
+        base_rev = base_import_dict[s]
         remote_content = remote_content.replace(remote_rev, local_rev)
         base_content = base_content.replace(base_rev, local_rev)
 
     new_local = None
+    new_remote = None
+    new_base = None
     try:
         # fmt: off
-        with tempfile.NamedTemporaryFile(mode="w+b", delete=False) as new_remote_fp, \
-              tempfile.NamedTemporaryFile(mode="w+b", delete=False) as new_base_fp:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as new_local_fp, \
+              tempfile.NamedTemporaryFile(mode="w", delete=False) as new_remote_fp, \
+              tempfile.NamedTemporaryFile(mode="w", delete=False) as new_base_fp:
             # fmt: on
+            new_local_fp.write(local_content)
+            new_local = new_local_fp.name
             new_remote_fp.write(remote_content)
             new_remote = new_remote_fp.name
             new_base_fp.write(base_content)
@@ -179,3 +262,7 @@ def mergetool_suite_import(args):
     finally:
         if new_local:
             os.unlink(new_local)
+        if new_remote:
+            os.unlink(new_remote)
+        if new_base:
+            os.unlink(new_base)
