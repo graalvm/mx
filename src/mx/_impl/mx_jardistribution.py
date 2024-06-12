@@ -787,8 +787,6 @@ class _ArchiveStager(object):
             self.manifest.setdefault('Name', self.dist.maven_artifact_id())
 
             for group in 'Specification', 'Implementation':
-                if hasattr(dist, 'description'):
-                    self.manifest.setdefault(f'{group}-Title', dist.description)
                 self.manifest.setdefault(f'{group}-Version', release_version)
                 if 'organization' in developer:
                     self.manifest.setdefault(f'{group}-Vendor', developer['organization'])
