@@ -60,7 +60,7 @@ class IntellijConfig:
     external_projects: bool = True
     java_modules: bool = True
     native_projects: bool = False
-    max_java_compliance: int = 21
+    max_java_compliance: int = 99
     import_inner_classes: bool = False
     on_save_actions: bool = False
     refresh_only: bool = False
