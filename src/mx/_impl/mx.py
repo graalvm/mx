@@ -18190,7 +18190,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.26.1")  # GR-54784
+version = VersionSpec("7.27.0")  # strong digest check
 
 _mx_start_datetime = datetime.utcnow()
 
