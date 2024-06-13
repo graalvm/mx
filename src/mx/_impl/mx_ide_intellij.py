@@ -323,7 +323,6 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
     def _complianceToIntellijLanguageLevel(compliance):
         # they changed the name format starting with JDK_10
         if compliance.value >= 10:
-            # latest Idea 2021.2 requires the acceptance of a legal notice for beta Java specification to enable support for JDK17. Clamp at JDK16 by default
             if config.max_java_compliance < compliance.value:
                 mx.warn(f"Requested Java compliance {compliance.value} is higher than maximum ({config.max_java_compliance}). Consider passing '--max-java-compliance'.")
             return 'JDK_' + str(min(compliance.value, config.max_java_compliance))
