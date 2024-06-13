@@ -300,6 +300,13 @@ class MxCompatibility500(object):
         """
         return False
 
+    def get_supported_hash_algorithms(self):
+        """
+        Enforce a strong hash on all downloads.
+        Returns a list of acceptable hash algorithms, or None to accept all (the behavior of old mx versions).
+        """
+        return None
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -763,6 +770,15 @@ class MxCompatibility713(MxCompatibility6271):
 
     def gate_run_pyformat(self) -> bool:
         return True
+
+
+class MxCompatibility727(MxCompatibility713):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.27.0")
+
+    def get_supported_hash_algorithms(self):
+        return ['sha256', 'sha512', 'sha3_384', 'sha3_512']
 
 
 def minVersion():

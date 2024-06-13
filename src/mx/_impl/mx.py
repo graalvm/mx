@@ -3700,7 +3700,7 @@ def download_file_exists(urls):
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, ext=None, sources=False, canSymlink=True):
     return download_file_with_digest(name, path, urls, sha1, resolve, mustExist, ext, sources, canSymlink)
 
-def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=None, sources=False, canSymlink=True):
+def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=None, sources=False, canSymlink=True, supported_hash_algorithms=None):
     """
     Downloads an entity from a URL in the list `urls` (tried in order) to `path`,
     checking the digest of the result against `digest` (if not "NOCHECK")
@@ -3709,6 +3709,12 @@ def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=
     """
     check_digest = digest and digest.value != 'NOCHECK'
     canSymlink = canSymlink and can_symlink()
+
+    if supported_hash_algorithms is not None:
+        if not check_digest:
+            abort(f'Refusing download of {name} without checking digest.')
+        if digest.name not in supported_hash_algorithms:
+            abort(f'Refusing download of {name} with weak hash algorithm {digest.name}.')
 
     if len(urls) == 0 and not check_digest:
         return path
@@ -8306,7 +8312,8 @@ class ResourceLibrary(DownloadableLibrary, _RewritableLibraryMixin):
         return self.urls
 
     def get_path(self, resolve):
-        return download_file_with_digest(self.name, self.path, self.urls, self.digest, resolve, not self.optional, ext=self.ext, canSymlink=True)
+        compat = self.suite.getMxCompatibility()
+        return download_file_with_digest(self.name, self.path, self.urls, self.digest, resolve, not self.optional, ext=self.ext, canSymlink=True, supported_hash_algorithms=compat.get_supported_hash_algorithms())
 
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
@@ -8636,7 +8643,8 @@ class Library(DownloadableLibrary, ClasspathDependency, _RewritableLibraryMixin)
 
     def get_path(self, resolve):
         bootClassPathAgent = hasattr(self, 'bootClassPathAgent') and getattr(self, 'bootClassPathAgent').lower() == 'true'
-        return download_file_with_digest(self.name, self.path, self.urls, self.digest, resolve, not self.optional, canSymlink=not bootClassPathAgent)
+        compat = self.suite.getMxCompatibility()
+        return download_file_with_digest(self.name, self.path, self.urls, self.digest, resolve, not self.optional, canSymlink=not bootClassPathAgent, supported_hash_algorithms=compat.get_supported_hash_algorithms())
 
     def _check_download_needed(self):
         if not _check_file_with_digest(self.path, self.digest):
@@ -8649,7 +8657,8 @@ class Library(DownloadableLibrary, ClasspathDependency, _RewritableLibraryMixin)
     def get_source_path(self, resolve):
         if self.sourcePath is None:
             return None
-        return download_file_with_digest(self.name, self.sourcePath, self.sourceUrls, self.sourceDigest, resolve, len(self.sourceUrls) != 0, sources=True)
+        compat = self.suite.getMxCompatibility()
+        return download_file_with_digest(self.name, self.sourcePath, self.sourceUrls, self.sourceDigest, resolve, len(self.sourceUrls) != 0, sources=True, supported_hash_algorithms=compat.get_supported_hash_algorithms())
 
     def classpath_repr(self, resolve=True):
         path = self.get_path(resolve)
