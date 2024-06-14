@@ -61,13 +61,14 @@ local common_json = import "../common.json";
     [name]: jdk_base + common_json.jdks[name] + { jdk_version:: parse_labsjdk_version(self), jdk_name:: "jdk-latest"}
     for name in ["oraclejdk-latest"] + variants("labsjdk-ce-latest") + variants("labsjdk-ee-latest")
   },
-  assert std.assertEqual(std.objectFields(common_json.jdks), std.objectFields(jdks_data)),
+  # We do not want to expose galahad-jdk
+  assert std.assertEqual([x for x in std.objectFields(common_json.jdks) if x != "galahad-jdk"], std.objectFields(jdks_data)),
   # Verify oraclejdk-latest and labsjdk-ee-latest versions match
   assert
     local _labsjdk = common_json.jdks["labsjdk-ee-latest"];
     local _oraclejdk = common_json.jdks["oraclejdk-latest"];
-    local _ov = "ee-%s+%s" % [_oraclejdk.version, _oraclejdk.build_id];
-    local _lv = _labsjdk.version;
+    local _ov = _oraclejdk.build_id;
+    local _lv = std.strReplace(_labsjdk.version, "ee-", "jdk-");
     # Skip the check if we are not using a labsjdk. This can happen on JDK integration branches.
     local no_labsjdk = _labsjdk.name != "labsjdk";
     assert no_labsjdk || std.startsWith(_lv, _ov) : "update oraclejdk-latest to match labsjdk-ee-latest: %s+%s vs %s" % [_oraclejdk.version, _oraclejdk.build_id, _labsjdk.version];
@@ -115,6 +116,8 @@ local common_json = import "../common.json";
     "linux-jdk19": { packages+: { "devkit:gcc11.2.0-OL6.4+1": "==0" }},
     "linux-jdk20": { packages+: { "devkit:gcc11.2.0-OL6.4+1": "==0" }},
     "linux-jdk21": { packages+: { "devkit:gcc11.2.0-OL6.4+1": "==0" }},
+    "linux-jdk-latest": { packages+: { "devkit:gcc13.2.0-OL6.4+1": "==0" }},
+    "linux-jdkLatest": self["linux-jdk-latest"],
   },
 
   # Dependencies
@@ -213,7 +216,7 @@ local common_json = import "../common.json";
 
     truffleruby:: {
       packages+: (if self.os == "linux" && self.arch == "amd64" then {
-        ruby: "==3.1.2", # Newer version, also used for benchmarking
+        ruby: "==3.2.2", # Newer version, also used for benchmarking
       } else {
         ruby: "==3.0.2",
       }) + (if self.os == "linux" then {
@@ -228,6 +231,9 @@ local common_json = import "../common.json";
     },
 
     svm:: {
+      packages+: {
+        cmake: "==3.22.2",
+      },
       environment+: {
         DEFAULT_VM: "server",
         LANG: "en_US.UTF-8",
@@ -340,7 +346,8 @@ local common_json = import "../common.json";
     },
 
     local linux   = { os:: "linux",   capabilities+: [self.os] },
-    local darwin  = { os:: "darwin",  capabilities+: [self.os] },
+    # Run darwin jobs on Big Sur or later by excluding all older versions
+    local darwin  = { os:: "darwin",  capabilities+: [self.os, "!darwin_sierra", "!darwin_mojave", "!darwin_catalina"] },
     local windows = { os:: "windows", capabilities+: [self.os] },
 
     local amd64   = { arch:: "amd64",   capabilities+: [self.arch] },
