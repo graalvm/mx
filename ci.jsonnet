@@ -112,7 +112,7 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "build"],
         ],
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal", "--branch", "cpu/graal-vm/24.0"],
             [mx, "-p", "../graal/compiler", "build"],
             [mx, "-p", "../graal/compiler", "profrecord", "-E", "gate-xcomp", "$JAVA_HOME/bin/java", "-Xcomp", "foo", "||", "true"],
             [mx, "-p", "../graal/compiler", "profpackage", "gate-xcomp"],
@@ -165,7 +165,7 @@ local with(platform, java_release, timelimit="15:00") = {
             PATH: "$BUILD_DIR/main:$PATH", # add ./mx on PATH
         },
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/graalvm/truffleruby.git", "--dest", "../truffleruby"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/graalvm/truffleruby.git", "--dest", "../truffleruby", "--branch", "cpu/graal-vm/24.0"],
             ["cd", "../truffleruby"],
             ["bin/jt", "build", "--env", "native", "--native-images=truffleruby"],
             ["bin/jt", "-u", "native", "ruby", "-v", "-e", 'puts "Hello Ruby!"'],
@@ -177,7 +177,7 @@ local with(platform, java_release, timelimit="15:00") = {
             make: ">=" + versions.make,
         },
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal", "--branch", "cpu/graal-vm/24.0"],
         ] + self.java_home_in_env("../graal/vm", "vm") + [
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
         ],
@@ -220,7 +220,7 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "6def1af6dac47b0c2b7ebf7cbbde821ef8f4b41d",
+    overlay: "c88b1aada9c0105c3c09696b390c823b40c6113e",
 
     # For use by overlay
     versions:: versions,
