@@ -780,6 +780,17 @@ class _ArchiveStager(object):
                         + self.manifest['Main-Class'] + " of the " + dist.name + " distribution. There should be only one definition.")
             self.manifest['Main-Class'] = mainClass
 
+        if self.dist.maven:
+            developer = self.dist.suite.developer
+            release_version = self.dist.suite.release_version()
+
+            self.manifest.setdefault('Name', self.dist.maven_artifact_id())
+
+            for group in 'Specification', 'Implementation':
+                self.manifest.setdefault(f'{group}-Version', release_version)
+                if 'organization' in developer:
+                    self.manifest.setdefault(f'{group}-Vendor', developer['organization'])
+
         for dep in head + tail:
             self.stage_dep(dep)
 
