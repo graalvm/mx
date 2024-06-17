@@ -3710,11 +3710,19 @@ def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=
     check_digest = digest and digest.value != 'NOCHECK'
     canSymlink = canSymlink and can_symlink()
 
-    if supported_hash_algorithms is not None:
+    if supported_hash_algorithms is None:
+        # Legacy usage of download_file_with_digest without enforcing strong hash.
+        # Check algorithm against the newest allowlist, but warn only for backwards compatibility.
+        algos = mx_compat.getMxCompatibility(version).get_supported_hash_algorithms()
+        if digest.name in algos:
+            warn(f'Deprecated use of dowload_file_with_digest without supported_hash_algorithms argument.\nVerifying download of {name} with strong hash {digest.name}, but this is not enforced.\nConsider bumping mxversion in suite.py to at least 7.27.0 to get rid of this warning.')
+        else:
+            warn(f'Verifying download of {name} with unsupported or weak hash algorithm {digest.name}.\nThe recommended algorithms are {algos}.')
+    else:
         if not check_digest:
             abort(f'Refusing download of {name} without checking digest.')
         if digest.name not in supported_hash_algorithms:
-            abort(f'Refusing download of {name} with weak hash algorithm {digest.name}.')
+            abort(f'Refusing download of {name} with unsupported or weak hash algorithm {digest.name}.\nThe recommended algorithms are {supported_hash_algorithms}.')
 
     if len(urls) == 0 and not check_digest:
         return path
