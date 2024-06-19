@@ -145,14 +145,14 @@ suite = {
     },
 
     "JUNIT" : {
-      "digest": "sha512:5974670c3d178a12da5929ba5dd9b4f5ff461bdc1b92618c2c36d53e88650df7adbf3c1684017bb082b477cb8f40f15dcf7526f06f06183f93118ba9ebeaccce",
-      "sourceDigest": "sha512:5c36f1671b1567919baa633e01765cf8e67c75f37f52876e11f764e3fccfa7b3c2b4cf2214b8956fd58a06f502694c80a208e8b88bcaca3893fc9c62820322a2",
+      "digest": "sha512:a31b9950f929a7e5a600d89787ef40e42a8a8e2392e210d0c0f45b3572937670a18a524f1815508cd1152cd1eaa7275cb7430ba45c053be365c83c231bccd3f0",
+      "sourceDigest": "sha512:b6299ee0f7b0ed187539d81115eb5a2cc0443172db2da63821cb683da3fafa765cd38227ac0cdfe74f2cf8e61fb8679224cebfd1057331dd9d85aa2325417481",
       "dependencies" : ["HAMCREST"],
       "licence" : "CPL",
       "maven" : {
         "groupId" : "junit",
         "artifactId" : "junit",
-        "version" : "4.12",
+        "version" : "4.13.2",
       }
     },
 

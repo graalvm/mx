@@ -80,7 +80,7 @@ public final class MxJUnitRequest {
         private final List<Failure> missingClasses = new ArrayList<>();
 
         public Builder() {
-            super(true);
+            super();
         }
 
         protected Class<?> resolveClass(String name) throws ClassNotFoundException {

@@ -18194,7 +18194,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.27.0")  # strong digest check
+version = VersionSpec("7.27.1")  # GR-41919 Upgrade mx junit version to at least 4.13.1.
 
 _mx_start_datetime = datetime.utcnow()
 
