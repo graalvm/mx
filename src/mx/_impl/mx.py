@@ -321,6 +321,8 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from typing import Callable, IO, AnyStr, Union, Iterable, Any
 
+from mx._impl.support import java_argument_file
+
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
@@ -7421,8 +7423,7 @@ class JavacLikeCompiler(JavaCompiler):
 
         fileList = join(project.get_output_root(), 'javafilelist.txt')
         with open(fileList, 'w') as fp:
-            sourceFiles = ['"' + sourceFile.replace("\\", "\\\\") + '"' for sourceFile in sourceFiles]
-            fp.write(os.linesep.join(sourceFiles))
+            java_argument_file.write_to_file(fp, sourceFiles)
         javacArgs.append('@' + _cygpathU2W(fileList))
 
         tempFiles = [fileList]
