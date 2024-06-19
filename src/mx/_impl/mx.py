@@ -3718,6 +3718,10 @@ def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=
             warn(f'Deprecated use of dowload_file_with_digest without supported_hash_algorithms argument.\nVerifying download of {name} with strong hash {digest.name}, but this is not enforced.\nConsider bumping mxversion in suite.py to at least 7.27.0 to get rid of this warning.')
         else:
             warn(f'Verifying download of {name} with unsupported or weak hash algorithm {digest.name}.\nThe recommended algorithms are {algos}.')
+    elif 'all' in supported_hash_algorithms:
+        # Concious decision of the programmer that the hash check in this usage of `download_file_with_digest` is not security relevant.
+        # So we don't need to enforce a strong hash algorithm here.
+        pass
     else:
         if not check_digest:
             abort(f'Refusing download of {name} without checking digest.')
