@@ -104,7 +104,9 @@ def fetch_jdk(args):
                 except Exception as e: #pylint: disable=broad-except
                     mx.abort(f'Error retrieving {sha_url}: {e}')
 
-                mx.download_file_with_digest(artifact, archive_location, [url], digest, resolve=True, mustExist=True, sources=False)
+                # Disable enforcment of strong hash algorithm for this download. The hash comes from the same server as the file,
+                # so there is no extra security benefit from this check. This is only checking for corrupted downloads.
+                mx.download_file_with_digest(artifact, archive_location, [url], digest, resolve=True, mustExist=True, sources=False, supported_hash_algorithms=['all'])
 
                 extractor = mx.Extractor.create(archive_location)
 
