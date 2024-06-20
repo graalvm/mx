@@ -586,9 +586,10 @@ def _run_mx_suite_tests():
             violations = nl.join([f'line {content[0:m.start()].count(nl) + 1}: {m.group()}' for m in matches])
             assert False, f'{mx_util_py} must only import from the Python standard library:{nl}{violations}'
 
-    from tests import os_arch_tests, bench_rules_tests
+    from tests import os_arch_tests, bench_rules_tests, java_argument_file_test
     os_arch_tests.tests()
     bench_rules_tests.tests()
+    java_argument_file_test.tests()
 
     from tests import test_maven_projects
     test_maven_projects.tests()

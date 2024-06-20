@@ -42,13 +42,17 @@ __all__ = [
     "unittest",
 ]
 
-from . import mx, mx_util
+import fnmatch
 import os
 import re
 import tempfile
-import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
 from os.path import exists, join, basename, isdir, isabs
+from pathlib import Path
+
+from . import mx, mx_util
+from .support import java_argument_file
+
 
 def _newest(path):
     """
@@ -140,7 +144,23 @@ def _find_classes_by_annotated_methods(annotations, dists, buildCacheDir, jdk=No
 
         cp = mx.classpath(['com.oracle.mxtool.junit'] + list(jarsToDists.values()), jdk=jdk)
         out = mx.LinesOutputCapture()
-        mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jarsToParse, out=out, addDefaultArgs=False)
+
+        # Store argument list in a separate file since it can get quite large and exceed maximum commandline size on
+        # some systems (e.g. windows).
+        # Cannot directly use NamedTemporaryFile because, on Windows, the executed Java process cannot read the file
+        # while it is still opened here (and closing it would delete it).
+        with tempfile.TemporaryDirectory(prefix="find_classes_by_annotated_methods") as tmpdir:
+            with open(Path(tmpdir) / "args.txt", "w") as args_file:
+                java_argument_file.write_to_file(
+                    args_file,
+                    ["-cp", cp, "com.oracle.mxtool.junit.FindClassesByAnnotatedMethods"] + annotations + jarsToParse,
+                )
+
+            mx.run_java(
+                [f"@{args_file.name}"],
+                out=out,
+                addDefaultArgs=False,
+            )
 
         for line in out.lines:
             parts = line.split(os.pathsep)

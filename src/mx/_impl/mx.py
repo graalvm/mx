@@ -321,6 +321,8 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from typing import Callable, IO, AnyStr, Union, Iterable, Any
 
+from mx._impl.support import java_argument_file
+
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
@@ -7421,8 +7423,7 @@ class JavacLikeCompiler(JavaCompiler):
 
         fileList = join(project.get_output_root(), 'javafilelist.txt')
         with open(fileList, 'w') as fp:
-            sourceFiles = ['"' + sourceFile.replace("\\", "\\\\") + '"' for sourceFile in sourceFiles]
-            fp.write(os.linesep.join(sourceFiles))
+            java_argument_file.write_to_file(fp, sourceFiles)
         javacArgs.append('@' + _cygpathU2W(fileList))
 
         tempFiles = [fileList]
@@ -18194,7 +18195,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.27.1")  # GR-41919 Upgrade mx junit version to at least 4.13.1.
+version = VersionSpec("7.27.2")  # Use arguments file for unittest discovery
 
 _mx_start_datetime = datetime.utcnow()
 
