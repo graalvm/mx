@@ -3712,6 +3712,9 @@ def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=
     check_digest = digest and digest.value != 'NOCHECK'
     canSymlink = canSymlink and can_symlink()
 
+    if len(urls) == 0 and not check_digest:
+        return path
+
     if supported_hash_algorithms is None:
         # Legacy usage of download_file_with_digest without enforcing strong hash.
         # Check algorithm against the newest allowlist, but warn only for backwards compatibility.
@@ -3729,9 +3732,6 @@ def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=
             abort(f'Refusing download of {name} without checking digest.')
         if digest.name not in supported_hash_algorithms:
             abort(f'Refusing download of {name} with unsupported or weak hash algorithm {digest.name}.\nThe recommended algorithms are {supported_hash_algorithms}.')
-
-    if len(urls) == 0 and not check_digest:
-        return path
 
     if not _check_file_with_digest(path, digest, mustExist=resolve and mustExist):
         if len(urls) == 0:
@@ -18195,7 +18195,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.27.2")  # Use arguments file for unittest discovery
+version = VersionSpec("7.27.3")  # strong digest check bugfix
 
 _mx_start_datetime = datetime.utcnow()
 
