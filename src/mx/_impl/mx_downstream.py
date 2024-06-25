@@ -226,6 +226,11 @@ def checkout_downstream(args):
         mx.log(f"The '$DOWNSTREAM_BRANCH' env var is set. Adding '{ci_downstream_branch}' to the list of downstream branch candidates")
         ci_downstream_branch_candidates.append(ci_downstream_branch)
         ci_downstream_branch_candidates += re.findall(ci_downstream_branch + '_gate(?:_[0-9]+)?', _run_git_cmd(downstream_suite.vc_dir, ['branch', '-r']))
+    ci_to_branch = mx.get_env('TO_BRANCH', None)
+    if ci_to_branch is not None:
+        mx.log(f"The '$TO_BRANCH' env var is set. Adding '{ci_to_branch}' to the list of downstream branch candidates")
+        ci_downstream_branch_candidates.append(ci_to_branch)
+    if ci_downstream_branch_candidates:
         mx.log(f"Complete list of downstream branch candidates: {ci_downstream_branch_candidates}")
 
     if not _checkout_upstream_revision(upstream_commit, ci_downstream_branch_candidates, upstream_suite, downstream_suite):
