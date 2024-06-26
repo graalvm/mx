@@ -183,6 +183,34 @@ local with(platform, java_release, timelimit="15:00") = {
         ],
     },
 
+    mx_mergetool_gate:: self.with_name("gate-mergetool-tests") + {
+        local test_mergetool(repo, local_rev, remote_rev, reference_rev) = [
+          # git setup
+          ["git", "-C", repo, "config", "user.name", "ol-automation_ww"],
+          ["git", "-C", repo, "config", "user.email", "ol-automation_ww@oracle.com"],
+          ["git", "-C", repo, "config", "mergetool.mx-suite-import.cmd",
+            # use printf subcommand to work around environment variable substitution of $LOCAL, $BASE, etc. [GR-52812]
+            ["printf", '${MX_HOME}/' + mx + ' -p ${MX_HOME} mergetool-suite-import "\\x24LOCAL" "\\x24BASE" "\\x24REMOTE" "\\x24MERGED"']
+          ],
+          ["git", "-C", repo, "config", "mergetool.mx-suite-import.trustExitCode", "true"],
+          # merging
+          ["git", "-C", repo, "checkout", local_rev],
+          ["git", "-C", repo, "merge", "--no-ff", "--no-commit", remote_rev, "||", "git", "-C", repo, "mergetool", "--tool", "mx-suite-import"],
+          ["test", "-z", ["git", "-C", repo, "diff", reference_rev]],
+        ],
+      local test_repo = "test_repo",
+      environment+: {
+        MERGETOOL_TEST_REPO: "<mergetool-test-repo>",
+      },
+      setup: [
+        ["set-export", "MX_HOME", ["pwd"]],
+        ["git", "clone", "${MERGETOOL_TEST_REPO}", test_repo],
+      ],
+      run:
+        test_mergetool(test_repo, "caffcf0fe72", "172acf1141f", "ebf58d86069f5450adfe4a617aa3b52a9887a257")+ # GR-54826
+        test_mergetool(test_repo, "195c215f9cf", "a6862ad4f37", "8f54cbb8faed3a765069d81b4f075b923bf39533 "), # GR-54649
+    },
+
     version_update_check:: self.with_name("version-update-check") + {
         publishArtifacts: [
           {
@@ -234,6 +262,7 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").proftool_test,
         with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").build_graalvm_ce,
         with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
+        with(common.linux_amd64, self.primary_jdk_version).mx_mergetool_gate,
         with(common.linux_amd64, self.primary_jdk_version).version_update_check,
         with(common.linux_amd64, self.primary_jdk_version).post_merge_tag_version,
 
