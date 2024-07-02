@@ -35,7 +35,7 @@ from . import mx
 
 def remove_conflict_markers(filename):
     """
-    Removes conflicts markers from a file's content, keeps only the content of the first
+    Removes conflicts markers from a file's content, keeps only the content of the (last) remote
     conflict branch and returns the result.
 
     Merge conflict marker might be nested. A basic example looks like:
@@ -98,20 +98,20 @@ def remove_conflict_markers(filename):
         keep = True
         for line in suite_content.splitlines(keepends=True):
             if line.startswith("<<"):
-                if conflict_level > 0:
-                    # inner conflict scope -> stop printing
-                    keep = False
+                # local branch -> stop printing
+                keep = False
                 conflict_level += 1
                 continue
             if line.startswith("||"):
-                # in a conflict scope and not in the first branch -> stop printing
+                # base branch -> stop printing
                 keep = False
                 continue
             if line.startswith("=="):
-                # in a conflict scope and not in the first branch -> stop printing
-                keep = False
+                # remote branch -> start printing if we are on the outer scope
+                keep = conflict_level <= 1
                 continue
             if line.startswith(">>"):
+                # end of conflict marker
                 conflict_level -= 1
                 if conflict_level == 0:
                     # end of conflict scope -> restart printing
