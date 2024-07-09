@@ -7728,7 +7728,10 @@ class CompilerDaemon(Daemon):
                 raise RuntimeError(f'Error starting {myself}: returncode={returncode}\n{"".join(pout)}')
             if retries == 299:
                 warn(f'Killing {myself} after failing to see port number after nearly 30 seconds')
-                os.kill(p.pid, signal.SIGKILL)
+                if is_windows():
+                    p.terminate()
+                else:
+                    os.kill(p.pid, signal.SIGKILL)
                 time.sleep(1.0)
             elif retries > 300:
                 raise RuntimeError(f'Error starting {myself}: No port number was found in output after 30 seconds\n{"".join(pout)}')
@@ -18195,7 +18198,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.27.5")  # mergetool conflict marker fix
+version = VersionSpec("7.27.6")  # GR-55163
 
 _mx_start_datetime = datetime.utcnow()
 
