@@ -241,7 +241,7 @@ def _parse_args(args):
     """
     settings = {}
     settings["keep-archive"] = False
-    settings["jdks-dir"] = join(mx.dot_mx_dir(), 'jdks')
+    settings["jdks-dir"] = default_jdks_dir()
 
     # Order in which to look for common.json:
     # 1. Primary suite path (i.e. -p mx option)
@@ -438,6 +438,10 @@ def _parse_args(args):
     settings["digest-check"] = args.digest_check
 
     return settings
+
+
+def default_jdks_dir():
+    return join(mx.dot_mx_dir(), 'jdks')
 
 
 def _get_jdk_binary_or_abort(jdk_binaries, jdk_id, selector):
