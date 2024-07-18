@@ -18198,7 +18198,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.27.6")  # GR-55163
+version = VersionSpec("7.28.0")  # GR-55586: Proguard fails when a dependency is a multi version jar with JDK-22 overlay.
 
 _mx_start_datetime = datetime.utcnow()
 
