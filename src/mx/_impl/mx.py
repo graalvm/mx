@@ -13027,6 +13027,7 @@ def _expand_java_home(home):
         return home
     elif home.startswith(JAVA_HOME_LOOKUP_PREFIX):
         lookup_args = home[len(JAVA_HOME_LOOKUP_PREFIX):].split(",")
+        logv(f'Looking up JDK using `mx get-jdk-path {" ".join(lookup_args)}`')
         return mx_fetchjdk.get_jdk_path(lookup_args)
     elif not isdir(home):
         jdks_dir = mx_fetchjdk.default_jdks_dir()
