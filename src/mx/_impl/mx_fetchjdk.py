@@ -243,27 +243,9 @@ def _parse_args(args):
     settings["keep-archive"] = False
     settings["jdks-dir"] = default_jdks_dir()
 
-    # Order in which to look for common.json:
-    # 1. Primary suite path (i.e. -p mx option)
-    # 2. Current working directory
-    # 4. $MX_HOME/common.json
-    path_list = PathList()
-    if mx._primary_suite_path:
-        path_list.add(_find_file(mx._primary_suite_path, 'common.json'))
-    path_list.add(_find_file(os.getcwd(), 'common.json'))
-    path_list.add(join(_mx_home, 'common.json'))
-    default_jdk_defs_location = path_list.paths[0]
+    default_jdk_defs_location = common_json_location()
 
-    # Order in which to look for jdk-binaries.json:
-    # 1. Primary suite path (i.e. -p mx option)
-    # 2. Current working directory
-    # 4. $MX_HOME/jdk-binaries.json
-    path_list = PathList()
-    if mx._primary_suite_path:
-        path_list.add(_find_file(mx._primary_suite_path, 'jdk-binaries.json'))
-    path_list.add(_find_file(os.getcwd(), 'jdk-binaries.json'))
-    path_list.add(join(_mx_home, 'jdk-binaries.json'))
-    default_jdk_binaries_location = str(path_list)
+    default_jdk_binaries_location = _default_jdk_binaries_location()
 
     parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id> [<selector>]]' + r"""
         Download and install JDKs.
@@ -402,11 +384,8 @@ def _parse_args(args):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
                  "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
-    jdk_defs_location = _check_exists_or_None(args.configuration) or default_jdk_defs_location
-    jdk_binaries_locations = (args.jdk_binaries or default_jdk_binaries_location).split(os.pathsep)
-
-    jdk_defs = _parse_jdk_defs(jdk_defs_location)
-    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, args.arch)
+    jdk_binaries, jdk_defs = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration,
+                                               default_jdk_binaries_location, default_jdk_defs_location)
 
     settings["list"] = args.list
 
@@ -438,6 +417,48 @@ def _parse_args(args):
     settings["digest-check"] = args.digest_check
 
     return settings
+
+
+def common_json_location():
+    """Gets the location of the `common.json` file:
+
+    Order in which to look for common.json:
+    1. Primary suite path (i.e. -p mx option)
+    2. Current working directory
+    4. $MX_HOME/common.json
+    """
+    path_list = PathList()
+    if mx._primary_suite_path:
+        path_list.add(_find_file(mx._primary_suite_path, 'common.json'))
+    path_list.add(_find_file(os.getcwd(), 'common.json'))
+    path_list.add(join(_mx_home, 'common.json'))
+    default_jdk_defs_location = path_list.paths[0]
+    return default_jdk_defs_location
+
+
+def _default_jdk_binaries_location():
+    """Returns a list of jdk-binaries.json files as an `os.pathsep` separated string.
+
+    Order in which to look for jdk-binaries.json:
+    1. Primary suite path (i.e. -p mx option)
+    2. Current working directory
+    4. $MX_HOME/jdk-binaries.json
+    """
+    path_list = PathList()
+    if mx._primary_suite_path:
+        path_list.add(_find_file(mx._primary_suite_path, 'jdk-binaries.json'))
+    path_list.add(_find_file(os.getcwd(), 'jdk-binaries.json'))
+    path_list.add(join(_mx_home, 'jdk-binaries.json'))
+    default_jdk_binaries_location = str(path_list)
+    return default_jdk_binaries_location
+
+
+def _get_jdk_binaries(arch, binaries, configuration, default_jdk_binaries_location, default_jdk_defs_location):
+    jdk_defs_location = _check_exists_or_None(configuration) or default_jdk_defs_location
+    jdk_binaries_locations = (binaries or default_jdk_binaries_location).split(os.pathsep)
+    jdk_defs = _parse_jdk_defs(jdk_defs_location)
+    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, arch)
+    return jdk_binaries, jdk_defs
 
 
 def default_jdks_dir():
