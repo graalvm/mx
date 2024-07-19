@@ -13019,9 +13019,20 @@ _probed_JDKs = {}
 def is_quiet():
     return _opts.quiet
 
+
+JAVA_HOME_LOOKUP_PREFIX="lookup:"
+
+
 def _expand_java_home(home):
     if isabs(home):
         return home
+    elif home.startswith(JAVA_HOME_LOOKUP_PREFIX):
+        jdk_binaries, _ = mx_fetchjdk._get_jdk_binaries(get_arch(), None, None, mx_fetchjdk._default_jdk_binaries_location(), mx_fetchjdk.common_json_location())
+        jdk_ids = home[len(JAVA_HOME_LOOKUP_PREFIX):].split(",")
+        for jdk_id in jdk_ids:
+            if jdk_id in jdk_binaries:
+                return jdk_binaries[jdk_id].get_final_path(mx_fetchjdk.default_jdks_dir())
+        abort(f"None of the JDK ids ({', '.join(jdk_ids)}) not found in common.json. Available ids are\n  {'\n  '.join(jdk_binaries.keys())}")
     elif not isdir(home):
         jdks_dir = mx_fetchjdk.default_jdks_dir()
         jdks_dir_home = join(jdks_dir, home)
