@@ -243,10 +243,6 @@ def _parse_args(args):
     settings["keep-archive"] = False
     settings["jdks-dir"] = default_jdks_dir()
 
-    default_jdk_defs_location = common_json_location()
-
-    default_jdk_binaries_location = _default_jdk_binaries_location()
-
     parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id> [<selector>]]' + r"""
         Download and install JDKs.
 
@@ -356,14 +352,10 @@ def _parse_args(args):
     jdk_id_group = parser.add_mutually_exclusive_group()
     jdk_id_group.add_argument('jdk_id_pos', action='store', metavar='<jdk-id>', nargs='?', help='see --jdk-id')
     jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
-    parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
-    parser.add_argument('--configuration', action='store', metavar='<path>', help=f'location of JSON file containing JDK definitions (default: {default_jdk_defs_location})')
-    parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {default_jdk_binaries_location})')
-    parser.add_argument('--to', action='store', metavar='<dir>', help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {settings['jdks-dir']})")
+    _add_shared_args(parser)
     alias_group = parser.add_mutually_exclusive_group()
     alias_group.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
     alias_group.add_argument('--auto-alias', '-A', action='store_const', dest='alias', const='-', help='make the extracted JDK available via its name (e.g. via a symlink). The path will be resolved against the value of the --to option.')
-    parser.add_argument('--arch', action='store', metavar='<name>', help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
@@ -384,8 +376,7 @@ def _parse_args(args):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
                  "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
-    jdk_binaries, jdk_defs = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration,
-                                               default_jdk_binaries_location, default_jdk_defs_location)
+    jdk_binaries, jdk_defs = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
 
     settings["list"] = args.list
 
@@ -417,6 +408,18 @@ def _parse_args(args):
     settings["digest-check"] = args.digest_check
 
     return settings
+
+
+def _add_shared_args(parser):
+    parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
+    parser.add_argument('--configuration', action='store', metavar='<path>',
+                        help=f'location of JSON file containing JDK definitions (default: {common_json_location()})')
+    parser.add_argument('--jdk-binaries', action='store', metavar='<path>',
+                        help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {_default_jdk_binaries_location()})')
+    parser.add_argument('--to', action='store', metavar='<dir>',
+                        help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {default_jdks_dir()})")
+    parser.add_argument('--arch', action='store', metavar='<name>',
+                        help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
 
 
 def common_json_location():
@@ -453,9 +456,9 @@ def _default_jdk_binaries_location():
     return default_jdk_binaries_location
 
 
-def _get_jdk_binaries(arch, binaries, configuration, default_jdk_binaries_location, default_jdk_defs_location):
-    jdk_defs_location = _check_exists_or_None(configuration) or default_jdk_defs_location
-    jdk_binaries_locations = (binaries or default_jdk_binaries_location).split(os.pathsep)
+def _get_jdk_binaries(arch, binaries, configuration):
+    jdk_defs_location = _check_exists_or_None(configuration) or common_json_location()
+    jdk_binaries_locations = (binaries or _default_jdk_binaries_location()).split(os.pathsep)
     jdk_defs = _parse_jdk_defs(jdk_defs_location)
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, arch)
     return jdk_binaries, jdk_defs
