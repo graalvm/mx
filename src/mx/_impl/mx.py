@@ -13022,23 +13022,12 @@ def is_quiet():
 
 JAVA_HOME_LOOKUP_PREFIX="lookup:"
 
-def _get_java_home_lookup_argument_parser():
-    parser = ArgumentParser(prog='--java-home=lookup:')
-    parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+', help='JDK ids to lookup. The first existing is chosen.')
-    mx_fetchjdk._add_shared_args(parser)
-    return parser
-
 def _expand_java_home(home):
     if isabs(home):
         return home
     elif home.startswith(JAVA_HOME_LOOKUP_PREFIX):
         lookup_args = home[len(JAVA_HOME_LOOKUP_PREFIX):].split(",")
-        parsed_args = _get_java_home_lookup_argument_parser().parse_args(lookup_args)
-        jdk_binaries, _ = mx_fetchjdk._get_jdk_binaries(parsed_args.arch, parsed_args.jdk_binaries, parsed_args.configuration)
-        for jdk_id in parsed_args.jdk_ids:
-            if jdk_id in jdk_binaries:
-                return jdk_binaries[jdk_id].get_final_path(mx_fetchjdk.default_jdks_dir())
-        abort(f"None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) not found in common.json. Available ids are\n  {'\n  '.join(jdk_binaries.keys())}")
+        return mx_fetchjdk.get_jdk_path(lookup_args)
     elif not isdir(home):
         jdks_dir = mx_fetchjdk.default_jdks_dir()
         jdks_dir_home = join(jdks_dir, home)
