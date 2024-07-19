@@ -241,7 +241,6 @@ def _parse_args(args):
     """
     settings = {}
     settings["keep-archive"] = False
-    settings["jdks-dir"] = default_jdks_dir()
 
     parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id> [<selector>]]' + r"""
         Download and install JDKs.
@@ -365,12 +364,7 @@ def _parse_args(args):
         ''')
     args = parser.parse_args(args)
 
-    if args.to is not None:
-        if args.to == '<system>':
-            args.to = _default_system_jdks_dir()
-        settings["jdks-dir"] = args.to
-    elif args.arch != mx.get_arch():
-        settings["jdks-dir"] = join(settings["jdks-dir"], args.arch)
+    settings["jdks-dir"] = get_jdk_dir(args)
 
     if not _check_write_access(settings["jdks-dir"]):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
@@ -466,6 +460,36 @@ def _get_jdk_binaries(arch, binaries, configuration):
 
 def default_jdks_dir():
     return join(mx.dot_mx_dir(), 'jdks')
+
+
+def get_jdk_dir(to, arch):
+    jdks_dir = default_jdks_dir()
+    if to is not None:
+        if to == '<system>':
+            to = _default_system_jdks_dir()
+        jdks_dir = to
+    elif arch != mx.get_arch():
+        jdks_dir = join(jdks_dir, arch)
+    return jdks_dir
+
+
+@command('mx', 'get-jdk-path', '[options]')
+@suite_context_free
+def get_jdk_path_cli(args):
+    print(get_jdk_path(args))
+
+
+def get_jdk_path(args):
+    parser = ArgumentParser(prog='mx get-jdk-path', description='Returns the path to the local path to the first existing <jdk-id>')
+    parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+', help='JDK ids to lookup. The first existing is chosen.')
+    _add_shared_args(parser)
+    parsed_args = parser.parse_args(args)
+    jdk_binaries, _ = _get_jdk_binaries(parsed_args.arch, parsed_args.jdk_binaries, parsed_args.configuration)
+    to = get_jdk_dir(parsed_args.to, parsed_args.arch)
+    for jdk_id in parsed_args.jdk_ids:
+        if jdk_id in jdk_binaries:
+            return jdk_binaries[jdk_id].get_final_path(to)
+    mx.abort(f"None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) not found in common.json. Available ids are\n  {'\n  '.join(jdk_binaries.keys())}")
 
 
 def _get_jdk_binary_or_abort(jdk_binaries, jdk_id, selector):
