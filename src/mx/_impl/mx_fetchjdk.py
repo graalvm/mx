@@ -364,7 +364,7 @@ def _parse_args(args):
         ''')
     args = parser.parse_args(args)
 
-    settings["jdks-dir"] = get_jdk_dir(args)
+    settings["jdks-dir"] = get_jdk_dir(args.to, args.arch)
 
     if not _check_write_access(settings["jdks-dir"]):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
