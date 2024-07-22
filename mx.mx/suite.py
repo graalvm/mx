@@ -559,6 +559,24 @@ suite = {
       }
     },
 
+    "ORG_JSON_20231013" : {
+      "digest": "sha512:a5cdd1ed984448d6538746429f2d1a0ec8f64f93af0e84870ce898a9f07a81d11bf27d2ee081471975772efc8a0d3d5e05541197a532066e9edb09ad032d31a3",
+      "maven" : {
+        "groupId" : "org.json",
+        "artifactId" : "json",
+        "version" : "20231013",
+      }
+    },
+
+    "GSON_2.9.0" : {
+      "digest": "sha512:13ff22a60ee6a72ba0c4e8fe3702b8f3f6be6b67ed4279079a9843f57ad0ca125d4ecc1564ac4e736eab10fb6254d2c011b2c08c514d708be7f8091332ed2c2c",
+      "maven" : {
+        "groupId" : "com.google.code.gson",
+        "artifactId" : "gson",
+        "version" : "2.9.0",
+      }
+    },
+
     # As of 8.0.0, the versioning of ProGuardCORE is unlinked from ProguardBASE and ProguardRETRACE
     # since ProGuardCORE is a general library used by other projects.
     # https://github.com/Guardsquare/proguard/issues/132#issuecomment-887610759
@@ -692,6 +710,42 @@ suite = {
       # Built from https://github.com/graalvm/proguard-core/tree/da/jdk21
       "digest": "sha512:4605e7374736faebd71a4c49eb05cbd6da7894630fb037936335767d3b094201638b1ca7052db040b3dd804cf4eff5861d79c130ce8cec4ebf96c1ad42790283",
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/proguard-core-9.0.8-jdk21-backport.jar"],
+    },
+
+    "PROGUARD_BASE_7_5_0" : {
+      "digest": "sha512:da7c0cc01daabbec0a6861288ae0a6f2aa5d70bb4ff01e356724cd0a9448f10789de793d1dcc5a9f246dc335041e66a4d0c9d4f5ec885a8fc56bc5dd82c9345a",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.5.0",
+      },
+      "dependencies" : [
+        "PROGUARD_CORE_9_1_4",
+        "GSON_2.9.0",
+        "LOG4J_CORE_2_19_0",
+        "LOG4J_API_2_19_0",
+        "ORG_JSON_20231013"
+      ],
+    },
+
+    "PROGUARD_RETRACE_7_5_0" : {
+      "digest": "sha512:0bfeb05ebd170670684193883c660003ffd079f0d889166c220ebc3ebc12c16bffa92e8291bd4d802753a21f2cae1864ccaada781b5027458e7a694ae7ab9c63",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-retrace",
+        "version" : "7.5.0",
+      },
+      "dependencies" : ["PROGUARD_BASE_7_5_0"],
+    },
+
+    "PROGUARD_CORE_9_1_4" : {
+      "digest": "sha512:a385b489b649377d1bc0aced28dc84e24c61460edb32d126162a48465055323aa2e5d92c9a83d29e31629378651a299a964c2576d58f4fc56e7c15ce46fd6424",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-core",
+        "version" : "9.1.4",
+      },
+      "dependencies" : ["LOG4J_CORE_2_19_0", "LOG4J_API_2_19_0"],
     },
 
     "NINJA" : {

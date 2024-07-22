@@ -781,6 +781,19 @@ class MxCompatibility727(MxCompatibility713):
         return ['sha256', 'sha512', 'sha3_384', 'sha3_512']
 
 
+class MxCompatibility728(MxCompatibility727):
+
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.28.0")
+
+    def proguard_libs(self):
+        return {
+            'CORE': '9_1_4',
+            'BASE': '7_5_0',
+            'RETRACE': '7_5_0',
+        }
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]
