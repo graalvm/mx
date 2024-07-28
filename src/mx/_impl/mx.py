@@ -1827,8 +1827,11 @@ class Suite(object):
         with open(suiteFile, "r") as f:
             suiteContents = f.read()
         try:
-            result = re.match(".*?suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
-            part = result.group(1)
+            # This code tries to keep text on the same line and column as much as possible so that in case of json parse
+            # errors, the location matches the one in the python file
+            result = re.match("(.*?)suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
+            pre = result.group(1)
+            part = result.group(2)
             stack = 0
             endIdx = 0
             for c in part:
@@ -1840,6 +1843,9 @@ class Suite(object):
                 if stack == 0:
                     break
             part = part[:endIdx]
+            if pre:
+                # add empty lines to ensure the location of errors matches up
+                part = ('\n' * len(pre.splitlines())) + part
 
             # convert python boolean constants to json boolean constants
             part = re.sub("True", "true", part)
@@ -1850,8 +1856,8 @@ class Suite(object):
             def python_to_json_string(m):
                 return "\"" + m.group(1).replace("\n", "\\n") + "\""
 
-            # remove all spaces between a comma and ']' or '{'
-            part = re.sub(",\\s*(\\]|\\})", "\\1", part)
+            # remove trailing commas before ']' or '}'
+            part = re.sub(",(\\s*(\\]|\\}))", " \\1", part)
 
             # convert python multiline strings to json strings with embedded newlines
             part = re.sub("\"\"\"(.*?)\"\"\"", python_to_json_string, part, flags=re.DOTALL)
