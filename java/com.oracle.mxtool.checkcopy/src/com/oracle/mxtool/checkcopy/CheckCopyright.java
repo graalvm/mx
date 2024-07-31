@@ -670,14 +670,12 @@ public class CheckCopyright {
             } else {
                 cmd = new String[]{gitPath, "ls-files", "-c", "-m", "-o", "--exclude-from=.gitignore"};
             }
-            List<String> output = exec(null, cmd, true);
-            return output;
+            return exec(null, cmd, true);
         }
 
         @Override
         Info getInfo(String fileName, List<String> logInfo) {
-            for (int i = 0; i < logInfo.size(); i++) {
-                String line = logInfo.get(i);
+            for (String line : logInfo) {
                 if (line.startsWith("Date:")) {
                     int lastYear = getYear(line);
                     return new Info(fileName, -1, lastYear);
@@ -723,7 +721,7 @@ public class CheckCopyright {
                 // no option set, default to ALL
                 filesToCheck = vc.getFiles(true);
             }
-            if (filesToCheck != null && filesToCheck.size() > 0) {
+            if (filesToCheck != null && !filesToCheck.isEmpty()) {
                 processFiles(filesToCheck);
             } else {
                 System.out.println("nothing to check");
@@ -739,24 +737,24 @@ public class CheckCopyright {
         final List<String> projects = PROJECT.getValue();
         Calendar cal = Calendar.getInstance();
 
-        int threadCount = 1;
-        threadCount = Runtime.getRuntime().availableProcessors();
+        int threadCount = Runtime.getRuntime().availableProcessors();
 
-        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
-        List<Future<?>> tasks = new ArrayList<>();
+        try (ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>())) {
+            List<Future<?>> tasks = new ArrayList<>();
 
-        for (String fileName : fileNames) {
-            if (projects == null || isInProjects(fileName, projects)) {
-                File file = new File(fileName);
-                if (file.isDirectory()) {
-                    continue;
+            for (String fileName : fileNames) {
+                if (projects == null || isInProjects(fileName, projects)) {
+                    File file = new File(fileName);
+                    if (file.isDirectory()) {
+                        continue;
+                    }
+                    tasks.add(threadPool.submit(() -> processFile(cal, fileName)));
                 }
-                tasks.add(threadPool.submit(() -> processFile(cal, fileName)));
             }
-        }
 
-        for (Future<?> task : tasks) {
-            task.get();
+            for (Future<?> task : tasks) {
+                task.get();
+            }
         }
     }
 
@@ -770,7 +768,7 @@ public class CheckCopyright {
                 info = getFromLastModified(cal, fileName);
             } else {
                 final List<String> logInfo = vc.log(fileName);
-                if (logInfo.size() == 0) {
+                if (logInfo.isEmpty()) {
                     // an added file, so go with last modified
                     info = getFromLastModified(cal, fileName);
                 } else {
@@ -806,22 +804,16 @@ public class CheckCopyright {
 
     private static List<String> readFileList(String fileListName) throws IOException {
         final List<String> result = new ArrayList<>();
-        BufferedReader b = null;
-        try {
-            b = new BufferedReader(new FileReader(fileListName));
+        try (BufferedReader b = new BufferedReader(new FileReader(fileListName))) {
             while (true) {
                 final String fileName = b.readLine();
                 if (fileName == null) {
                     break;
                 }
-                if (fileName.length() == 0) {
+                if (fileName.isEmpty()) {
                     continue;
                 }
                 result.add(fileName);
-            }
-        } finally {
-            if (b != null) {
-                b.close();
             }
         }
         return result;
