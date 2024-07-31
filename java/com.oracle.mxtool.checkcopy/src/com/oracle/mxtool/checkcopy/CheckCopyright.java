@@ -764,7 +764,7 @@ public class CheckCopyright {
                 System.out.println("checking " + fileName);
             }
             Info info;
-            if (DIR_WALK.getValue()) {
+            if (DIR_WALK.getValue() || FILE_LIST.getValue() != null) {
                 info = getFromLastModified(cal, fileName);
             } else {
                 final List<String> logInfo = vc.log(fileName);
