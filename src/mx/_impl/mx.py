@@ -13976,7 +13976,7 @@ class JDKConfig(Comparable):
                 addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
                 out = LinesOutputCapture()
                 app = join(_mx_home, 'java', 'ListModules.java')
-                run([self.java, addExportsArg, app], out=out)
+                run([self.java, addExportsArg, '-Xint', app], out=out)
                 lines = out.lines
                 if isJDKImage:
                     for dst, content in [(cache_source, self.home), (cache, '\n'.join(lines))]:
@@ -18198,7 +18198,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.28.1")  # GR-56803: mx checkcopyrights -- --file-list should use file mtime (or current year) and not git log
+version = VersionSpec("7.29.0")  # GR-56858: Run ListModules without compilation.
 
 _mx_start_datetime = datetime.utcnow()
 
