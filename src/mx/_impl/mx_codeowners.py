@@ -33,6 +33,7 @@ import argparse
 import fnmatch
 import json
 import os
+import logging as log
 
 from . import mx
 from . import mx_stoml
@@ -71,6 +72,7 @@ def _load_toml_from_fd(fd):
             'rule': tree,
         }
     except RuntimeError as e:
+        log.error(f"Failed at parsing {fd.name} using the in-house parser. You can try again after installing the 'tomllib' or 'toml' package.")
         raise _TomlParsingException(e)
 
 
