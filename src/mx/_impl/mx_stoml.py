@@ -111,7 +111,7 @@ class _StomlParser:
         while True:
             while streamer.peek().isspace():
                 streamer.pull()
-            if streamer.peek().isalpha():
+            if self.valid_identifier_character(streamer.peek()):
                 self.keyvalue(streamer, rule)
             else:
                 return rule
@@ -132,9 +132,12 @@ class _StomlParser:
             streamer.terminate("Expected either a string or a list of strings.")
         rule[key] = value
 
+    def valid_identifier_character(self, c):
+        return c.isalpha() or c == "_"
+
     def identifier(self, streamer):
         ident = ""
-        while streamer.peek().isalpha():
+        while self.valid_identifier_character(streamer.peek()):
             ident = ident + streamer.peek()
             streamer.pull()
         return ident

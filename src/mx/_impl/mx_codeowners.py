@@ -71,6 +71,7 @@ def _load_toml_from_fd(fd):
             'rule': tree,
         }
     except RuntimeError as e:
+        mx.log_error(f"Failed at parsing {fd.name} using the in-house parser. You can try again after installing the 'tomllib' or 'toml' package.")
         raise _TomlParsingException(e)
 
 
