@@ -18198,7 +18198,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.29.0")  # GR-56858: Run ListModules without compilation.
+version = VersionSpec("7.29.1")  # GR-57159: Parse underscores inside .toml identifiers.
 
 _mx_start_datetime = datetime.utcnow()
 
