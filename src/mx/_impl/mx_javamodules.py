@@ -512,6 +512,15 @@ _special_versioned_prefix = 'META-INF/_versions/'  # used for versioned services
 _versioned_re = re.compile(r'META-INF/_?versions/([1-9][0-9]*)/(.+)')
 _javamodule_buildlevel = None
 
+def _check_uses(uses, context):
+    """
+    Checks that no class names in `uses` contain "$".
+    """
+    for use in uses:
+        if "$" in use:
+            mx.abort(f"specification of service {use} must use non-binary name of nested class (i.e. replace '$' with '.')", context=context)
+    return uses
+
 def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name=None):
     """
     Creates a Java module from a distribution.
@@ -739,7 +748,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 # override automatic qualifiers like transitive if they are explicitly specified in the module info
                 # this allows to customize the default behavior.
                 requires[name] = qualifiers
-            base_uses.update(module_info.get('uses', []))
+            base_uses.update(_check_uses(module_info.get('uses', []), dist))
+
             _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
 
             opens = module_info.get('opens', {})
@@ -755,7 +765,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
         with mx.Timer('projects', times):
             for project in java_projects:
-                base_uses.update(getattr(project, 'uses', []))
+                base_uses.update(_check_uses(getattr(project, 'uses', []), project))
                 for m in getattr(project, 'runtimeDeps', []):
                     requires.setdefault(m, set()).add('static')
 
