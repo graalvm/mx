@@ -11589,8 +11589,6 @@ def maven_deploy(args):
 
         generateJavadoc = None if args.suppress_javadoc else s.getMxCompatibility().mavenDeployJavadoc()
 
-        action = 'Installing' if repo == maven_local_repository() else 'Deploying'
-        log(f'{action} {s.name} distributions for version {versionGetter(s)}')
         _maven_deploy_dists(dists, versionGetter, repo, args.settings,
                             dryRun=args.dry_run,
                             validateMetadata=args.validate,
@@ -18198,7 +18196,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.29.2")  # GR-57114: service names in module info must use non-binary class names
+version = VersionSpec("7.29.3")  # GR-57188 Too verbose output when using mx maven_deploy()
 
 _mx_start_datetime = datetime.utcnow()
 
