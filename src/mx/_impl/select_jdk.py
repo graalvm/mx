@@ -240,8 +240,25 @@ class JDKInfo(object):
         timestamp = JDKInfo.release_timestamp(self.java_home)
         return f'{self.java_home}|{self.java_specification_version}|{self.java_version}|{self.java_vm_version}|{timestamp}'
 
+    @staticmethod
+    def zero_pad_int(version_element):
+        if isinstance(version_element, str) and version_element.isdigit():
+            return f"{int(version_element):016}"
+        return version_element
+
+    @staticmethod
+    def zero_pad_ints(version_tuple):
+        """
+        Adds leading zeroes to any numeric strings in `version_tuple` so that
+        lexicographic ordering is also numeric ordering.
+        """
+        return tuple((JDKInfo.zero_pad_int(e) for e in version_tuple))
+
     def sort_key(self):
-        return (self.name, self.java_specification_version, self.java_vm_version, self.java_home)
+        # Splits a VM version into its components: "24+10-jvmci-b01" -> "24", "10", "jvmci", "b01"
+        java_vm_version = JDKInfo.zero_pad_ints(re.split(r'[^0-9A-Za-z]', self.java_vm_version))
+        key = (self.name, self.java_specification_version, java_vm_version, self.java_home)
+        return JDKInfo.zero_pad_ints(key)
 
     def __lt__(self, other):
         return self.sort_key() < other.sort_key()
