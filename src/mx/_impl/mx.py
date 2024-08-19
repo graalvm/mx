@@ -18196,7 +18196,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.29.3")  # GR-57188 Too verbose output when using mx maven_deploy()
+version = VersionSpec("7.29.4")  # GR-57280 select_jdk sort order sometimes wrong
 
 _mx_start_datetime = datetime.utcnow()
 
