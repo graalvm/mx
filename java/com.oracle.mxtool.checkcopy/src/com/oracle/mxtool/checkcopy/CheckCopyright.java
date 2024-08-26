@@ -739,7 +739,8 @@ public class CheckCopyright {
 
         int threadCount = Runtime.getRuntime().availableProcessors();
 
-        try (ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>())) {
+        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+        try {
             List<Future<?>> tasks = new ArrayList<>();
 
             for (String fileName : fileNames) {
@@ -755,6 +756,8 @@ public class CheckCopyright {
             for (Future<?> task : tasks) {
                 task.get();
             }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
