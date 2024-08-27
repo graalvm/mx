@@ -3313,6 +3313,47 @@ class BenchmarkExecutor(object):
         suite._currently_running_benchmark = None
         return processedResults
 
+    def benchpoints(self, args):
+        parser = ArgumentParser(
+            prog="mx benchpoints",
+            add_help=False,
+            description=benchpoints.__doc__,
+            usage="mx benchpoints <options>",
+            formatter_class=RawTextHelpFormatter)
+        parser.add_argument(
+            "results-file", nargs="?", default=None,
+            help="path to results file to modify")
+        parser.add_argument(
+            "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
+        parser.add_argument(
+            "--machine-name", default=None, help="Abstract name of the target machine.")
+        parser.add_argument(
+            "--machine-node", default=None, help="Machine node the benchmark is executed on.")
+        parser.add_argument(
+            "--machine-ip", default=None, help="Machine ip the benchmark is executed on.")
+        parser.add_argument(
+            "--triggering-suite", default=None,
+            help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
+        parser.add_argument(
+            "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
+            help="A comma-separated list of suite dependencies whose commit info must not be included.")
+        parser.add_argument(
+            "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file.")
+        parser.add_argument(
+            "-h", "--help", action="store_true", default=None,
+            help="Show usage information.")
+        args = parser.parse_args(args)
+        # TODO
+        if args.help:
+            parser.print_help()
+            exit(0)
+
+        suite = JMHRunnerMxBenchmarkSuite() # TODO remove this. It's a hack to test the feature, but we should allow the suite to be None
+        dims = self.dimensions(suite, args, "")
+        import pprint
+        pprint.pprint(dims)
+        # TODO modify input file(s)
+
     def benchmark(self, mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=False):
         """Run a benchmark suite."""
         parser = ArgumentParser(
@@ -3611,6 +3652,14 @@ def benchmark(args, returnSuiteAndResults=False):
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
     return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=returnSuiteAndResults)
+
+
+def benchpoints(args):
+    """
+    Returns base dimensions if no arg is provided. If a results json is given, it is modified and all data points are
+    expanded with missing fields that would have been present through an mx run.
+    """
+    return _benchmark_executor.benchpoints(args)
 
 class OutputDump:
     def __init__(self, out):

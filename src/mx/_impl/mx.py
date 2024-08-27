@@ -17816,6 +17816,7 @@ update_commands("mx", {
     'pyformat': [pyformat, '[options]'],
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
+    'benchpoints' : [mx_benchmark.benchpoints, '[options]'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
     'benchplot': [mx_benchplot.benchplot, '[options]'],
     'binary-url': [binary_url, '<repository id> <distribution name>'],
