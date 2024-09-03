@@ -504,6 +504,8 @@ public class CheckCopyright {
     private static final Options options = new Options();
     private static final Option<Boolean> help = Options.newBooleanOption("help", false, "Show help message and exit.");
     private static final Option<String> COPYRIGHT_DIR = Options.newStringOption("copyright-dir", null, "override default location of copyright files");
+    private static final Option<Boolean> ASSUME_MODIFIED = Options.newBooleanOption("assumed-modified", false,
+                    "assume the given files are modified and so the last year should be current year. Always the case for --list-dir.");
     private static final Option<List<String>> FILES_TO_CHECK = Options.newStringListOption("files", null, "list of files to check");
     private static final Option<String> FILE_LIST = Options.newStringOption("file-list", null, "file containing list of files to check");
     private static final Option<Boolean> DIR_WALK = Options.newBooleanOption("list-dir", false, "check all files in directory tree requiring a copyright (ls -R)");
@@ -767,7 +769,7 @@ public class CheckCopyright {
                 System.out.println("checking " + fileName);
             }
             Info info;
-            if (DIR_WALK.getValue() || FILE_LIST.getValue() != null) {
+            if (DIR_WALK.getValue() || ASSUME_MODIFIED.getValue()) {
                 info = getFromLastModified(cal, fileName);
             } else {
                 final List<String> logInfo = vc.log(fileName);
