@@ -18202,7 +18202,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.27.5.1")  # GR-56702: fix manifest version
+version = VersionSpec("7.27.5.2")  # GR-58956: Add 'barista' JVM benchmark suite
 
 _mx_start_datetime = datetime.utcnow()
 

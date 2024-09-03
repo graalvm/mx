@@ -51,6 +51,9 @@ __all__ = [
     "JsonBaseRule",
     "JsonStdOutFileRule",
     "JsonFixedFileRule",
+    "JsonArrayRule",
+    "JsonArrayStdOutFileRule",
+    "JsonArrayFixedFileRule",
     "JMHJsonRule",
     "BenchmarkFailureError",
     "StdOutBenchmarkSuite",
@@ -59,6 +62,8 @@ __all__ = [
     "WarnDeprecatedMixin",
     "VmBenchmarkSuite",
     "JavaBenchmarkSuite",
+    "CustomHarnessBenchmarkSuite",
+    "CustomHarnessCommand",
     "TemporaryWorkdirMixin",
     "Vm",
     "GuestVm",
@@ -90,6 +95,8 @@ __all__ = [
     "RssTracker",
     "PsrecordTracker",
     "PsrecordMaxrssTracker",
+    "RssPercentilesTracker",
+    "RssPercentilesAndMaxTracker",
     "BenchmarkExecutor",
     "make_hwloc_bind",
     "init_benchmark_suites",
@@ -119,7 +126,7 @@ import zipfile
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
-from collections import OrderedDict
+from collections import OrderedDict, abc
 from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List, Collection
 from .support.logging import log_deprecation
 
@@ -985,8 +992,12 @@ class JsonBaseRule(BaseRule):
     """
     Parses JSON files and creates a measurement result using the replacement.
 
-    Keys in the JSON object containing periods ('.') cannot be matched. The period
-    is interpreted as indexing into the object.
+    Cannot handle arrays within the JSON files.
+
+    By default, keys in the JSON object containing periods ('.') cannot be matched
+    as the period is interpreted as indexing into the object. If you wish to match
+    keys containing periods you should provide an alternative `indexer_str`
+    (e.g. double period ('..') or double underscore ('__')).
 
     Example:
 
@@ -1006,48 +1017,68 @@ class JsonBaseRule(BaseRule):
 
         { "metric": ("<key1.key2>", str) }
 
-    This rule would generated:
+    This rule would generate:
 
     ::
 
-        { "metric": "value" }
+        [{ "metric": "value" }]
 
     :ivar keys: Only these keys are available in the replacement using ``<key>`` syntax
     """
-    keys: Collection[str]
-
-    def __init__(self, replacement, keys: Collection[str]):
+    def __init__(self, replacement, keys: Collection[str], indexer_str: str = "."):
         super(JsonBaseRule, self).__init__(replacement)
         self.keys = keys
+        self.indexer_str = indexer_str
         assert len(keys) == len(set(keys)), f"Duplicate keys in list {keys}"
+
+    def resolve_keys(self, json_obj: dict) -> List[Dict[str, str]]:
+        """Resolve each of the keys and combine the extracted values.
+
+        The return type is a list, allowing `parseResults` to function in derived
+        classes that can potentially extract multiple datapoints from each json object.
+
+        :param json_obj: The object from which values are to be extracted.
+        :return: List of dictionaries containing extracted values.
+        """
+        values = {}
+        for key in self.keys:
+            value = self.resolve_key(json_obj, key)
+            # Only store the value if the full key was resolved
+            if value is not None:
+                values[key] = value
+        return [values]
+
+    def resolve_key(self, json_obj: dict, key: str) -> str:
+        """Resolve a key and extract the corresponding value from the json object.
+
+        :param json_obj: The object from which value is to be extracted.
+        :param key: The key of which the value is to be extracted.
+        :return: Value corresponding to the key.
+        """
+        components = key.split(self.indexer_str)
+        current = json_obj
+        for component in components:
+            if component not in current:
+                return None
+            current = current[component]
+        return str(current)
 
     def parseResults(self, text) -> Sequence[dict]:
         """
         Parses all json files (see :meth:`getJsonFiles`) and extracts the requested keys (see :attr:`keys`) and their
-        values into a dictionary.
+        values into a list of flat dictionaries.
 
-        Periods in keys are treated as accessing nested elements, so ``a.b`` would access key ``b`` in the value of the
-        top-level key ``a``.
+        Occurrences of `indexer_str` (which is a period (".") by default) in keys are treated as accessing nested elements,
+        so ``a.b`` would access key ``b`` in the value of the top-level key ``a``.
 
-        Creates one dictionary per file.
+        Creates a list of flat dictionaries.
         """
         dicts = []
         for f in self.getJsonFiles(text):
             mx.logv(f"Parsing results using '{self.__class__.__name__}' on file: {f}")
             with open(f) as fp:
                 json_obj = json.load(fp)
-                values = {}
-                for key in self.keys:
-                    components = key.split(".")
-                    current = json_obj
-                    for component in components:
-                        if component not in current:
-                            break
-                        current = current[component]
-                    else:
-                        # Store the value only if the full key could be resolved in the json file
-                        values[key] = str(current)
-                dicts.append(values)
+                dicts += self.resolve_keys(json_obj)
         return dicts
 
     def getJsonFiles(self, text):
@@ -1064,8 +1095,8 @@ class JsonBaseRule(BaseRule):
 class JsonStdOutFileRule(JsonBaseRule):
     """Rule that looks for JSON file names in the output of the benchmark."""
 
-    def __init__(self, pattern, match_name, replacement, keys):
-        super(JsonStdOutFileRule, self).__init__(replacement, keys)
+    def __init__(self, pattern, match_name, replacement, keys, indexer_str: str = "."):
+        super(JsonStdOutFileRule, self).__init__(replacement, keys, indexer_str)
         self.pattern = pattern
         self.match_name = match_name
 
@@ -1076,8 +1107,175 @@ class JsonStdOutFileRule(JsonBaseRule):
 class JsonFixedFileRule(JsonBaseRule):
     """Rule that parses a JSON file with a predefined name."""
 
-    def __init__(self, filename, replacement, keys):
-        super(JsonFixedFileRule, self).__init__(replacement, keys)
+    def __init__(self, filename, replacement, keys, indexer_str: str = "."):
+        super(JsonFixedFileRule, self).__init__(replacement, keys, indexer_str)
+        self.filename = filename
+
+    def getJsonFiles(self, text):
+        return [self.filename]
+
+
+def element_wise_product_converter(values: Dict[str, List]) -> List[Dict[str, str]]:
+    """Converts a dictionary of list values into a list of flat dictionaries, as long as the original lists are either equal length or single-element lists.
+
+    This implementation can only combine an input dictionary that contains values that are either:
+        * one-element lists
+        * multi-element lists of the same length
+    Two multi-element lists A and B are combined iff len(A) == len(B), in a way that the Nth element of list A is combined with the Nth element of list B.
+    A one-element list A is combined with a multi-element list B by combining the 0th element of A with every element of list B.
+
+    For an example input:
+    {
+        "benchmark": ["hello-world"],
+        "throughput": [100, 200, 300],
+        "duration": ["10s", "20s", "30s"],
+    }
+    The output would be a 3-element list:
+    [
+        {"benchmark": "hello-world", "throughput": 100, "duration": "10s"},
+        {"benchmark": "hello-world", "throughput": 200, "duration": "20s"},
+        {"benchmark": "hello-world", "throughput": 300, "duration": "30s"},
+    ]
+    The "benchmark" one element list ["hello-world"] is combined by using the 0th value ("hello-world") for every element of the output.
+    The "throughput" 3 element list [100, 200, 300] is combined by using the 0th value (100) for the 0th output element, the 1st value (200)
+    for the 1st output element, and the 2nd value (300) for the 2nd output element.
+    The "duration" 3 element list is handled in the same way as the "throughput" list.
+
+    :param values: Dictionary of list values to be converted.
+    :return: List of flat dictionaries compiled from the :param values: dictionary.
+    """
+    length = 1
+    one_element_list_keys = []
+    multi_element_list_keys = []
+    # Collect one-element and multi-element list keys
+    # Veryfing that the multi-element lists are of equal length
+    for key, value_list in values.items():
+        if len(value_list) == 1:
+            one_element_list_keys.append(key)
+            continue
+        if length != 1 and length != len(value_list):
+            raise ValueError("All lists with more than one element should be of equal length")
+        length = len(value_list)
+        multi_element_list_keys.append(key)
+
+    result = [{} for idx in range(length)]
+    # Use 0th element of one-element-lists for every element of the result
+    for key in one_element_list_keys:
+        for idx in range(length):
+            result[idx][key] = values[key][0]
+    # Use Nth element of multi-element-lists for the Nth element of the result
+    for key in multi_element_list_keys:
+        for idx in range(length):
+            result[idx][key] = values[key][idx]
+    return result
+
+
+class JsonArrayRule(JsonBaseRule):
+    """
+    Parses JSON files that may contain arrays and creates a measurement result using the replacement.
+
+    Given a JSON object:
+    {
+        "benchmark": "hello-world",
+        "latency": [
+            {"percentile": 90.0, "value": 1.0},
+            {"percentile": 99.0, "value": 2.0},
+            {"percentile": 99.9, "value": 10.0},
+        ],
+    }
+    And ["benchmark", "latency.percentile", "latency.value"] as the keys, this rule would
+    intermediately produce (after invoking `super.resolve_keys`):
+    {
+        "benchmark": ["hello-world"],
+        "latency.percentile": [90.0, 99.0, 99.9],
+        "latency.value": [1.0, 2.0, 10.0]
+    }
+    And then combine these lists using its `list_to_flat_dict_converter` property.
+    The final result of `parseResults`, assuming the default `element_wise_product_converter` is used, would be:
+    [
+        {"benchmark": "hello-world", "latency.percentile": 90.0, "latency.value": 1.0},
+        {"benchmark": "hello-world", "latency.percentile": 99.0, "latency.value": 2.0},
+        {"benchmark": "hello-world", "latency.percentile": 99.9, "latency.value": 10.0}
+    ]
+
+    This class can handle nested arrays, e.g:
+    {
+        "data": [{"values": [1, 2]}, {"values": [3, 4, 5]}]
+    }
+    This class cannot handle multi-dimensional arrays, e.g:
+    {
+        "data": [[1, 2, 3], [4, 5, 6], [7, 8]]
+    }
+    """
+    def __init__(self, replacement, keys: Collection[str], indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+        """
+        :param list_to_flat_dict_converter: Function that converts a dictionary of list values into a list of flat dictionaries,
+        defaults to `element_wise_product_converter`.
+
+        The :param list_to_flat_dict_converter: is expected to have the following signature:
+        :param values: Dictionary of list values to be converted.
+        :result: List of flat dictionaries converted from the :param values: dictionary.
+        :rtype: list[dict]
+        """
+        super().__init__(replacement, keys, indexer_str)
+        self.list_to_flat_dict_converter = list_to_flat_dict_converter
+
+    def resolve_keys(self, json_obj: dict) -> List[Dict[str, str]]:
+        """Resolve each of the keys and combine the extracted values using the `list_to_flat_dict_converter` function.
+
+        :param json_obj: The object from which values are to be extracted.
+        :return: List of dictionaries containing extracted values.
+        """
+        # The resolve_keys method of JsonBaseRule always returns a list of one dictionary
+        values = super().resolve_keys(json_obj)[0]
+        return self.list_to_flat_dict_converter(values)
+
+    def resolve_key(self, json_obj: dict, key: str) -> List[str]:
+        """Resolve a key and extract the corresponding value(s) from the json object.
+
+        :param json_obj: The object from which values are to be extracted.
+        :param key: The key of which the value(s) are to be extracted.
+        :return: Value(s) corresponding to the key.
+        """
+        components = key.split(self.indexer_str)
+        # To handle lists inside the object we employ a BFS-like resolution algorithm
+        current_layer = [json_obj]
+        next_layer = []
+        for component in components:
+            for current_node in current_layer:
+                if component in current_node:
+                    node_value = current_node[component]
+                    if isinstance(node_value, abc.Sequence) and not isinstance(node_value, str):
+                        # Node value is a list
+                        next_layer += node_value
+                    else:
+                        # Node value is not a list
+                        next_layer.append(node_value)
+            current_layer = next_layer
+            next_layer = []
+        # Return None if the full key could not be resolved
+        if not current_layer:
+            return None
+        return [str(el) for el in current_layer]
+
+
+class JsonArrayStdOutFileRule(JsonArrayRule):
+    """Rule that looks for JSON file names in the output of the benchmark."""
+
+    def __init__(self, pattern, match_name, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+        super().__init__(replacement, keys, indexer_str, list_to_flat_dict_converter)
+        self.pattern = pattern
+        self.match_name = match_name
+
+    def getJsonFiles(self, text):
+        return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
+
+
+class JsonArrayFixedFileRule(JsonArrayRule):
+    """Rule that parses a JSON file with a predefined name."""
+
+    def __init__(self, filename, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+        super().__init__(replacement, keys, indexer_str, list_to_flat_dict_converter)
         self.filename = filename
 
     def getJsonFiles(self, text):
@@ -2088,6 +2286,32 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
+
+
+class CustomHarnessCommand():
+    def produceHarnessCommand(self, cmd: List[str], suite: BenchmarkSuite) -> List[str]:
+        """Maps a JVM command into a command tailored for a custom harness.
+
+        :param cmd: JVM command to be mapped.
+        :param suite: Benchmark suite that is running the benchmark on the custom harness.
+        :return: Command tailored for a custom harness.
+        """
+        raise NotImplementedError()
+
+
+class CustomHarnessBenchmarkSuite(JavaBenchmarkSuite):
+    """Benchmark suite that enables mapping the final JVM command into a command tailored for a custom harness.
+
+    Mapping of the final JVM command is facilitated by registering the "custom-harness-hook" in the constructor.
+    This ensures that this is the first hook, thereby it is applied last, after all the other hooks apply their modifications.
+    """
+    def __init__(self, custom_harness_command: CustomHarnessCommand, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not isinstance(custom_harness_command, CustomHarnessCommand):
+            raise TypeError(f"Expected an instance of {CustomHarnessCommand.__name__}, instead got an instance of {custom_harness_command.__class__.__name__}")
+        def custom_harness_hook(cmd, suite):
+            return custom_harness_command.produceHarnessCommand(cmd, suite)
+        self.register_command_mapper_hook("custom-harness-hook", custom_harness_hook)
 
 
 class JMeterBenchmarkSuite(JavaBenchmarkSuite, AveragingBenchmarkMixin):
