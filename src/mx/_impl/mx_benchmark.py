@@ -1957,7 +1957,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
 
     def home(self):
         """Returns the JAVA_HOME location of that vm"""
-        raise mx.get_jdk().home
+        return mx.get_jdk().home
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         self.extract_vm_info(args)
