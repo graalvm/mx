@@ -568,7 +568,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         moduleName, _, module_jar = info  # pylint: disable=unpacking-non-sequence
         exports = {}
         requires = {}
-        opens = {}
+        opens = []
         concealedRequires = {}
         base_uses = set()
 
@@ -632,7 +632,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             for library in java_libraries:
                 module_packages.update(library.defined_java_packages())
 
-        def _parse_packages_spec(packages_spec, available_packages, project_scope):
+        def _parse_packages_spec(packages_spec, available_packages, project_scope, directive):
             """
             Parses a packages specification against a set of available packages:
               "org.graalvm.foo,org.graalvm.bar" -> set("org.graalvm.foo", "org.graalvm.bar")
@@ -643,6 +643,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
             :param dict available_packages: map from package names to JavaCompliance values
             :return dict: entries from `available_packages` selected by `packages_spec`
             """
+            assert directive in ['export', 'open']
             if not packages_spec:
                 mx.abort('exports attribute cannot have entry with empty packages specification', context=dist)
             res = set()
@@ -651,17 +652,20 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     prefix = spec[0:-1]
                     selection = set(p for p in available_packages if p.startswith(prefix))
                     if not selection:
-                        mx.abort(f'The export package specifier "{spec}" does not match any of {available_packages}', context=dist)
+                        mx.abort(f'The {directive} package specifier "{spec}" does not match any of {available_packages}', context=dist)
                     res.update(selection)
                 elif spec == '<package-info>':
                     if not isinstance(project_scope, mx.Project):
-                        mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
+                        if directive == 'export':
+                            mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
+                        else:
+                            mx.abort(f'The package specifier "<package-info>" cannot be used for the "opens" attribute', context=dist)
                     res.update(mx._find_packages(project_scope, onlyPublic=True))
                 else:
                     if spec not in module_packages:
-                        mx.abort(f'Cannot export package {spec} from {moduleName} as it is not defined by any project in the module {moduleName}', context=dist)
+                        mx.abort(f'Cannot {directive} package {spec} from {moduleName} as it is not defined by any project in the module {moduleName}', context=dist)
                     if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
-                        mx.abort(f'Package {spec} in "exports" attribute not defined by project {project_scope}', context=project_scope)
+                        mx.abort(f'Package {spec} in "{directive}s" attribute not defined by project {project_scope}', context=project_scope)
                     res.add(spec)
             return res
 
@@ -674,14 +678,28 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     targets = [n.strip() for n in splitpackage[1].split(',')]
                     if not targets:
                         mx.abort('exports attribute must have at least one target for qualified export', context=dist)
-                    for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
+                    for p in _parse_packages_spec(packages_spec, available_packages, project_scope, 'export'):
                         exports.setdefault(p, set()).update(targets)
                 else:
                     unqualified_exports.append(export)
 
             for unqualified_export in unqualified_exports:
-                for p in _parse_packages_spec(unqualified_export, available_packages, project_scope):
+                for p in _parse_packages_spec(unqualified_export, available_packages, project_scope, 'export'):
                     exports[p] = set()
+
+        def _process_opens(open_specs, available_packages):
+            for open_spec in open_specs:
+                if ' to ' in open_spec:
+                    splitpackage = open_spec.split(' to ')
+                    packages_spec = splitpackage[0].strip()
+                    targets = splitpackage[1]
+                    if not targets.strip():
+                        mx.abort('opens attribute must have at least one target for qualified open', context=dist)
+                    for p in _parse_packages_spec(packages_spec, available_packages, None, 'open'):
+                        opens.append(f"{p} to {targets}")
+                else:
+                    for p in _parse_packages_spec(open_spec, available_packages, None, 'open'):
+                        opens.append(p)
 
         module_info = getattr(dist, 'moduleInfo', None)
         alt_module_info = None
@@ -752,7 +770,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
             _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
 
-            opens = module_info.get('opens', {})
+            _process_opens(module_info.get('opens', []), module_packages)
             ignored_service_types = module_info.get("ignoredServiceTypes", [])
             if not isinstance(ignored_service_types, list):
                 mx.abort('"ignoredServiceTypes" must be a list', context=dist)
