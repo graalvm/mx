@@ -18197,7 +18197,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.30.0")  # advanced opens
+version = VersionSpec("7.31.0")  # GR-57631 Extend mx with benchpoints command
 
 _mx_start_datetime = datetime.utcnow()
 

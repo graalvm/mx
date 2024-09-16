@@ -121,6 +121,7 @@ from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict
 from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List, Collection
+
 from .support.logging import log_deprecation
 
 from . import mx
@@ -3084,17 +3085,17 @@ class BenchmarkExecutor(object):
         return socket.gethostname()
 
     def machineName(self, mxBenchmarkArgs):
-        if mxBenchmarkArgs.machine_name:
+        if hasattr(mxBenchmarkArgs, 'machine_name') and mxBenchmarkArgs.machine_name:
             return mxBenchmarkArgs.machine_name
         return mx.get_env("MACHINE_NAME", default="")
 
     def machineNode(self, mxBenchmarkArgs):
-        if mxBenchmarkArgs.machine_node:
+        if hasattr(mxBenchmarkArgs, 'machine_node') and mxBenchmarkArgs.machine_node:
             return mxBenchmarkArgs.machine_node
         return mx.get_env("MACHINE_NODE", default="")
 
     def machineIp(self, mxBenchmarkArgs):
-        if mxBenchmarkArgs.machine_ip:
+        if hasattr(mxBenchmarkArgs, 'machine_ip') and mxBenchmarkArgs.machine_ip:
             return mxBenchmarkArgs.machine_ip
         return mx.get_env("NODE_NAME", default="")
 
@@ -3141,19 +3142,19 @@ class BenchmarkExecutor(object):
         pass
 
     def triggeringSuite(self, mxBenchmarkArgs):
-        if mxBenchmarkArgs.triggering_suite:
+        if hasattr(mxBenchmarkArgs, "triggering_suite") and mxBenchmarkArgs.triggering_suite:
             return mxBenchmarkArgs.triggering_suite
         return mx.get_env("TRIGGERING_SUITE", default=None)
 
     def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
         standard = {
           "metric.uuid": self.uid(),
-          "group": self.group(suite),
-          "subgroup": suite.subgroup(),
-          "bench-suite": suite.name(),
-          "bench-suite-version": suite.version(),
-          "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
-          "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
+          "group": self.group(suite) if suite else '',
+          "subgroup": suite.subgroup() if suite else '',
+          "bench-suite": suite.name() if suite else '',
+          "bench-suite-version": suite.version() if suite else '',
+          "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)) if suite else '',
+          "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)) if suite else '',
           "config.build-flags": self.buildFlags(),
           "machine.name": self.machineName(mxBenchmarkArgs),
           "machine.node": self.machineNode(mxBenchmarkArgs),
@@ -3177,7 +3178,8 @@ class BenchmarkExecutor(object):
         if mx.get_env("MACHINE_CONFIG_HASH", default=None):
             standard.update({"machine.config-hash": mx.get_env("MACHINE_CONFIG_HASH")[:7]})
 
-        standard.update(suite.suiteDimensions())
+        if suite:
+            standard.update(suite.suiteDimensions())
         standard.update(self.extras(mxBenchmarkArgs))
 
         def commit_info(prefix, mxsuite):
@@ -3321,38 +3323,43 @@ class BenchmarkExecutor(object):
             usage="mx benchpoints <options>",
             formatter_class=RawTextHelpFormatter)
         parser.add_argument(
-            "results-file", nargs="?", default=None,
-            help="path to results file to modify")
-        parser.add_argument(
-            "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
-        parser.add_argument(
-            "--machine-name", default=None, help="Abstract name of the target machine.")
-        parser.add_argument(
-            "--machine-node", default=None, help="Machine node the benchmark is executed on.")
-        parser.add_argument(
-            "--machine-ip", default=None, help="Machine ip the benchmark is executed on.")
-        parser.add_argument(
-            "--triggering-suite", default=None,
-            help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
+            "results_file", nargs="?", default=None,
+            help="path to benchmark results json file to modify")
         parser.add_argument(
             "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
             "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file.")
         parser.add_argument(
+            '--dry-run', action='store_true', help="Only displays the resulting file without saving it.")
+        parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
         args = parser.parse_args(args)
-        # TODO
+
         if args.help:
             parser.print_help()
-            exit(0)
+            sys.exit(0)
 
-        suite = JMHRunnerMxBenchmarkSuite() # TODO remove this. It's a hack to test the feature, but we should allow the suite to be None
-        dims = self.dimensions(suite, args, "")
-        import pprint
-        pprint.pprint(dims)
-        # TODO modify input file(s)
+        dims = self.dimensions(None, args, "")
+        mx.logv(f"The points will be augumented with the following fields: {json.dumps(dims, indent=4)}")
+
+        # Update the results files with populated dimensions
+        if args.results_file:
+            try:
+                with open(args.results_file, 'r', encoding='utf-8') as result_file_handle:
+                    data_points = json.load(result_file_handle)
+                data_points['queries'] =  [{**dims, **result} for result in data_points['queries']]
+                if not args.dry_run:
+                    with open(args.results_file, 'w', encoding='utf-8') as results_file_handle:
+                        json.dump(data_points, results_file_handle)
+                    mx.log(f"Saved modified output to: {args.results_file}")
+                    mx.log(f"Augmented dimensions of {len(data_points['queries'])} data points")
+                else:
+                    mx.logv(f"Printing the output of the augmented {args.results_file}")
+                    print(json.dumps(data_points, indent=2))
+            except (IOError, json.JSONDecodeError) as exc:
+                mx.abort(f"Error while augmenting input file {args.results_file}: {str(exc)}")
 
     def benchmark(self, mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=False):
         """Run a benchmark suite."""
@@ -3656,8 +3663,10 @@ def benchmark(args, returnSuiteAndResults=False):
 
 def benchpoints(args):
     """
-    Returns base dimensions if no arg is provided. If a results json is given, it is modified and all data points are
-    expanded with missing fields that would have been present through an mx run.
+    Returns base dimensions if no arg is provided. Otherwise, it expects a results JSON file:  all data points are then
+    expanded with missing fields that would have been present through a mx run. If certain field is defined in both the
+    input file and the generated mx dimensions, then the fields in the input file takes precedence. E.g. if the field
+    `benchmark-suite` is set to `graalos` in the input file, then it is not set to `''` from this command.
     """
     return _benchmark_executor.benchpoints(args)
 
