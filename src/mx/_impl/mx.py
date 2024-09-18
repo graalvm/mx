@@ -17816,6 +17816,7 @@ update_commands("mx", {
     'pyformat': [pyformat, '[options]'],
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
+    'benchpoints' : [mx_benchmark.benchpoints, '[options]'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
     'benchplot': [mx_benchplot.benchplot, '[options]'],
     'binary-url': [binary_url, '<repository id> <distribution name>'],
@@ -18196,7 +18197,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.30.0")  # advanced opens
+version = VersionSpec("7.31.0")  # GR-57631 Extend mx with benchpoints command
 
 _mx_start_datetime = datetime.utcnow()
 
