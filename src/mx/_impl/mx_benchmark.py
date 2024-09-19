@@ -1495,7 +1495,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             for datapoint in parsedpoints:
                 datapoint.update(dims)
                 if "bench-suite" not in datapoint:
-                    datapoint["bench-suite"] = self.name()
+                    datapoint["bench-suite"] = self.benchSuiteName()
                 if "bench-suite-version" not in datapoint:
                     datapoint["bench-suite-version"] = self.version()
                 if "is-default-bench-suite-version" not in datapoint:
