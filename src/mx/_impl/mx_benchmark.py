@@ -3375,7 +3375,7 @@ class BenchmarkExecutor(object):
           "metric.uuid": self.uid(),
           "group": self.group(suite) if suite else '',
           "subgroup": suite.subgroup() if suite else '',
-          "bench-suite": suite.name() if suite else '',
+          "bench-suite": suite.benchSuiteName() if suite else '',
           "bench-suite-version": suite.version() if suite else '',
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)) if suite else '',
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)) if suite else '',
