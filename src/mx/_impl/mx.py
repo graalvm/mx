@@ -3665,7 +3665,7 @@ from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_p
 
 def get_mx_path():
     """Absolute path to the mx executable"""
-    return join(_mx_home, 'mx')
+    return join(_mx_home, 'mx.cmd' if is_windows() else 'mx')
 
 
 # Location of mx repo
@@ -18197,7 +18197,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.31.0")  # GR-57631 Extend mx with benchpoints command
+version = VersionSpec("7.31.1")  # GR-58394 Fix Eclipse config for VSCode and Windows
 
 _mx_start_datetime = datetime.utcnow()
 

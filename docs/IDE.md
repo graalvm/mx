@@ -119,6 +119,7 @@ Once you have installed Eclipse, if you have multiple Java versions on your comp
 ```
 
 Run `mx eclipseinit` to create the Eclipse project configurations.
+You may set the `WORKSPACE` environment variable to an Eclipse workspace directory, otherwise the workspace is expected to be a parent of the primary suite.
 This will print the following instructions on how to import projects:
 
 ```
@@ -178,3 +179,48 @@ In the same setting window, a `black` executable with the correct version should
 the [Style Guide](./Styleguide.md) for more information.
 
 To auto-format on save, select `Auto-format editor contents before saving?` under `Window > PyDev > Editor > Save Actions`.
+
+### VSCode
+This section describes how to set up VSCode for development.
+
+VSCode is supported via the Eclipse-based [Language Support for Java](https://marketplace.visualstudio.com/items?itemName=redhat.java).
+Follow the instructions of the plugin to set it up first.
+
+Run `mx vscodeinit` to create the project configurations.
+This generates Eclipse project configurations and a `.code-workspace` file to open in VSCode.
+It will print instructions about how to import and which workspace file to open:
+
+```
+----------------------------------------------
+VSCode project generation successfully completed for /home/dev/graalpython.code-workspace
+
+The recommended next steps are:
+ 1) Run mx build. This ensures all shaded JARs and annotation processors are built.
+ 2) Open VSCode.
+ 3) Make sure you have installed the 'Language Support for Java' extension.
+ 4) Open /home/dev/graalpython.code-workspace as workspace.
+
+Note that setting MX_BUILD_EXPLODED=true can improve build times. See "Exploded builds" in the mx README.md.
+----------------------------------------------
+```
+
+Use `File` > `Open Workspace from File...` and select the `.code-workspace` file.
+
+> After updating your sources and re-running `mx vscodeinit`, new projects may be created and old ones removed. This usually results in an error message indicating that a project is missing another required Java project. To handle this, you simply need repeat the steps above for importing projects.
+
+In order to debug with VSCode, you should launch using the `-d` global option.
+
+#### Experimental parallel distribution building
+
+The options above for Eclipse apply to VSCode as well.
+Read above for how to use `MX_IDE_ECLIPSE_ASYNC_DISTRIBUTIONS`.
+
+#### Mx and Suite Development
+
+VSCode is a capable Python IDE, so just adding the `mx.*` folders to your workspace is enough.
+Upon opening a Python file for the first time, VSCode will ask if it should install the recommended extensions.
+
+##### Formatting
+
+You can use the [Black Formatter](https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter) extension.
+See the [Style Guide](./Styleguide.md) for more information on custom options.

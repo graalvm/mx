@@ -41,7 +41,7 @@ __all__ = [
     "generate_eclipse_workingsets",
 ]
 
-import os, time, zipfile, tempfile
+import json, os, re, time, zipfile, tempfile
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 from collections import namedtuple
@@ -455,6 +455,86 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     mx.update_file(sourcesFile, '\n'.join(sources))
     return mx.update_file(launchFile, launch)
 
+
+@mx.command(
+    'mx',
+    'vscodeinit',
+    usage_msg="Generate Eclipse project configuration suitable for using with VSCode.\nThis differs from normal Eclipse config only in how annotation processors paths are set up, to account for differences in the VSCode Eclipse language server versus full Eclipse."
+)
+def vscodeinit(args):
+    """(re)generate Eclipse project configurations and working sets for VSCode usage"""
+    parser = ArgumentParser(prog='mx vscodeinit')
+    parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
+    parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
+    args = parser.parse_args(args)
+
+    eclipseinit(None, args.buildProcessorJars, logToConsole=True, force=args.force, absolutePaths=True, pythonProjects=False)
+
+    projects = sorted([p.dir for suite in mx.suites(True) for p in suite.projects if exists(join(p.dir, ".project"))])
+    dists = sorted([d.get_ide_project_dir() for suite in mx.suites(True) for d in suite.dists if exists(join(getattr(d, "get_ide_project_dir", lambda: "")() or "", ".project"))])
+    workspace = {
+        "folders": [{"path": p} for p in projects + dists],
+        "settings": {
+            # Do not use shared indexes, otherwise VSCode will try to share
+            # index data even across different checkouts and get confused
+            "java.sharedIndexes.enabled": "off",
+            # Add Eclipse default filters minus org.graalvm.* and jdk.* so we
+            # get completion for JVMCI and Graal code
+            "java.completion.filteredTypes": [
+                "java.awt.*",
+                "com.sun.*",
+                "sun.*",
+                "io.micrometer.shaded.*"
+            ],
+        },
+    }
+
+    # Add debug attach config for the first project
+    java_projects = [p for p in mx.primary_suite().projects if p.isJavaProject()]
+    if java_projects:
+        workspace["launch"] = {
+            "configurations": [
+                {
+                    "type": "java",
+                    "name": f"Attach to {mx.primary_suite().name}",
+                    "projectName": java_projects[0].name,
+                    "request": "attach",
+                    "hostName": "localhost",
+                    "port": 8000,
+                },
+            ],
+        }
+
+    # Configure JDKs
+    if _EclipseJRESystemLibraries:
+        rts = workspace["settings"]["java.configuration.runtimes"] = []
+        for idx, name in enumerate(_EclipseJRESystemLibraries):
+            rts.append({
+                "name": name,
+                "path": mx.get_jdk(re.sub("[^0-9]+", "", name)).home,
+                "default": idx == 0
+            })
+
+    workspace_dir = dirname(abspath(mx.primary_suite().vc_dir))
+    workspace_file = join(workspace_dir, mx.primary_suite().name + ".code-workspace")
+    with open(workspace_file, "w") as f:
+        json.dump(workspace, f)
+
+    mx.log(f'''
+----------------------------------------------
+VSCode project generation successfully completed for {workspace_file}
+
+The recommended next steps are:
+ 1) Run mx build. This ensures all shaded JARs and annotation processors are built.
+ 2) Open VSCode.
+ 3) Make sure you have installed the 'Language Support for Java' extension.
+ 4) Open {workspace_file} as workspace.
+
+Note that setting MX_BUILD_EXPLODED=true can improve build times. See "Exploded builds" in the mx README.md.
+----------------------------------------------
+    ''')
+
+
 @mx.command('mx', 'eclipseinit')
 def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
@@ -593,7 +673,7 @@ def _add_eclipse_linked_resources(xml_doc, project_loc, linked_resources, absolu
             xml_doc.open('link')
             xml_doc.element('name', data=lr.name)
             xml_doc.element('type', data=lr.type)
-            xml_doc.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, project_loc) if not absolutePaths else lr.location)
+            xml_doc.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, project_loc) if not absolutePaths else f"file://{lr.location.replace(os.sep, '/')}")
             xml_doc.close('link')
         xml_doc.close('linkedResources')
 
@@ -610,6 +690,7 @@ def _eclipse_project_rel(project_loc, path, linked_resources, res_type=IRESOURCE
         return name
     else:
         return os.path.relpath(path, project_loc)
+
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     # PROJECT_LOC Eclipse variable
     project_loc = mx_util.ensure_dir_exists(p.dir)
@@ -853,7 +934,10 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         processorsPath = mx.classpath_entries(names=processors)
         for e in processorsPath:
             if e.isDistribution() and not isinstance(e.suite, mx.BinarySuite):
-                out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : f'/{e.name}/{basename(e.path)}', 'enabled' : 'true', 'runInBatchMode' : 'false'})
+                if absolutePaths:
+                    out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.path, 'enabled' : 'true', 'runInBatchMode' : 'false'})
+                else:
+                    out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : f'/{e.name}/{basename(e.path)}', 'enabled' : 'true', 'runInBatchMode' : 'false'})
             elif e.isJdkLibrary() or e.isJreLibrary():
                 path = e.classpath_repr(jdk, resolve=True)
                 if path:
