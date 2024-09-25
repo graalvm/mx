@@ -2660,7 +2660,7 @@ class SourceSuite(Suite):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
-        _release = self._get_early_suite_dict_property('release')
+        _release = self.is_release_from_suite()
         if _release is not None:
             return _release
         if not self.vc:
@@ -2670,6 +2670,9 @@ class SourceSuite(Suite):
             return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
         else:
             return self.vc.is_release_from_tags(self.vc_dir, self.name)
+
+    def is_release_from_suite(self):
+        return self._get_early_suite_dict_property('release')
 
     def release_version(self, snapshotSuffix='dev'):
         """
@@ -2687,7 +2690,7 @@ class SourceSuite(Suite):
     def release_version_from_suite(self, snapshotSuffix='dev'):
         _version = self._get_early_suite_dict_property('version')
         if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
-            if not self.is_release():
+            if not self.is_release_from_suite():
                 _version = _version + '-' + snapshotSuffix
         return _version
 
