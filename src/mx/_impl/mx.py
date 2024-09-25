@@ -2660,7 +2660,7 @@ class SourceSuite(Suite):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
-        _release = self._get_early_suite_dict_property('release')
+        _release = self.is_release_from_suite()
         if _release is not None:
             return _release
         if not self.vc:
@@ -2671,21 +2671,28 @@ class SourceSuite(Suite):
         else:
             return self.vc.is_release_from_tags(self.vc_dir, self.name)
 
+    def is_release_from_suite(self):
+        return self._get_early_suite_dict_property('release')
+
     def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
         if snapshotSuffix not in self._releaseVersion:
-            _version = self._get_early_suite_dict_property('version')
-            if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
-                if not self.is_release():
-                    _version = _version + '-' + snapshotSuffix
+            _version = self.release_version_from_suite(snapshotSuffix=snapshotSuffix)
             if not _version and self.vc:
                 _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not _version:
                 _version = f"unknown-{platform.node()}-{time.strftime('%Y-%m-%d_%H-%M-%S_%Z')}"
             self._releaseVersion[snapshotSuffix] = _version
         return self._releaseVersion[snapshotSuffix]
+
+    def release_version_from_suite(self, snapshotSuffix='dev'):
+        _version = self._get_early_suite_dict_property('version')
+        if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
+            if not self.is_release_from_suite():
+                _version = _version + '-' + snapshotSuffix
+        return _version
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm
@@ -18197,7 +18204,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.31.2")  # GR-55288 support for new BaristaBenchmarkSuite
+version = VersionSpec("7.32.0")  # GR-56702: fix manifest version
 
 _mx_start_datetime = datetime.utcnow()
 

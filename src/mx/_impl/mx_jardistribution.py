@@ -781,12 +781,17 @@ class _ArchiveStager(object):
 
         if self.dist.maven:
             developer = self.dist.suite.developer
-            release_version = self.dist.suite.release_version()
+            release_version = self.dist.suite.release_version_from_suite()
+            if release_version is None:
+                public_tag = 'public'
+                if isinstance(self.dist.maven, dict) and public_tag in self.dist.maven.get('tag', []):
+                    mx.warn(f"Distribution '{self.dist.name}' has a maven dictionary with tag '{public_tag}' but its declaring suite ('{self.dist.suite.name}') does not have a version. Therefore, its manifest will not contain version information.")
 
             self.manifest.setdefault('Name', self.dist.maven_artifact_id())
 
             for group in 'Specification', 'Implementation':
-                self.manifest.setdefault(f'{group}-Version', release_version)
+                if release_version is not None:
+                    self.manifest.setdefault(f'{group}-Version', release_version)
                 if 'organization' in developer:
                     self.manifest.setdefault(f'{group}-Vendor', developer['organization'])
 
