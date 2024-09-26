@@ -112,7 +112,7 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "build"],
         ],
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--branch", "cpu/graal-vm/24.1", "--dest", "../graal"],
             [mx, "-p", "../graal/compiler", "build"],
             [mx, "-p", "../graal/compiler", "profrecord", "-E", "gate-xcomp", "$JAVA_HOME/bin/java", "-Xcomp", "foo", "||", "true"],
             [mx, "-p", "../graal/compiler", "profpackage", "gate-xcomp"],
@@ -165,7 +165,7 @@ local with(platform, java_release, timelimit="15:00") = {
             make: ">=" + versions.make,
         },
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--branch", "cpu/graal-vm/24.1", "--dest", "../graal"],
         ] + self.java_home_in_env("../graal/vm", "vm") + [
             # Test the ce env file
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
@@ -204,7 +204,7 @@ local with(platform, java_release, timelimit="15:00") = {
       },
       setup: [
         ["set-export", "MX_HOME", ["pwd"]],
-        ["git", "clone", "${MERGETOOL_TEST_REPO}", test_repo],
+        ["git", "clone", "--branch", "cpu/graal-vm/24.1", "${MERGETOOL_TEST_REPO}", test_repo],
       ],
       run:
         test_mergetool(test_repo, "caffcf0fe72", "172acf1141f", "ebf58d86069f5450adfe4a617aa3b52a9887a257")+ # GR-54826
@@ -241,7 +241,7 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "4c0f01b4995da0869a88a54863ca99a30f8e75d5",
+    overlay: "7a409577b7cc99b8e4f6192d988dc0519ffea0fe",
 
     # For use by overlay
     versions:: versions,
