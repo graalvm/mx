@@ -265,7 +265,7 @@ def _parse_args(args):
     path_list.add(join(_mx_home, 'jdk-binaries.json'))
     default_jdk_binaries_location = str(path_list)
 
-    parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id>]' + r"""
+    parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id> [<selector>]]' + r"""
         Download and install JDKs.
 
         The set of JDKs available for download are specified by the "jdks" field of the JSON
@@ -374,6 +374,7 @@ def _parse_args(args):
     jdk_id_group = parser.add_mutually_exclusive_group()
     jdk_id_group.add_argument('jdk_id_pos', action='store', metavar='<jdk-id>', nargs='?', help='see --jdk-id')
     jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
+    parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
     parser.add_argument('--configuration', action='store', metavar='<path>', help=f'location of JSON file containing JDK definitions (default: {default_jdk_defs_location})')
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {default_jdk_binaries_location})')
     parser.add_argument('--to', action='store', metavar='<dir>', help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {settings['jdks-dir']})")
@@ -417,7 +418,7 @@ def _parse_args(args):
     # use positional or option argument
     jdk_id = args.jdk_id_pos or args.jdk_id
     if jdk_id is not None:
-        settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, jdk_id)
+        settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, jdk_id, args.selector)
     else:
         if is_quiet():
             parser.print_usage()
@@ -439,10 +440,12 @@ def _parse_args(args):
     return settings
 
 
-def _get_jdk_binary_or_abort(jdk_binaries, jdk_id):
+def _get_jdk_binary_or_abort(jdk_binaries, jdk_id, selector):
     jdk_binary = jdk_binaries.get(jdk_id)
     if not jdk_binary:
         mx.abort(f"Unknown JDK identifier: {jdk_id} [Known JDKs: {', '.join(jdk_binaries.keys())}]")
+    if selector is not None:
+        return jdk_binary.with_selector(selector)
     return jdk_binary
 
 
