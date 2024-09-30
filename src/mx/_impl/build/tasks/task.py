@@ -28,10 +28,12 @@
 from __future__ import annotations
 from abc import ABCMeta, abstractmethod
 from argparse import Namespace
+from threading import Lock
 from typing import Dict, Optional, MutableSequence
 
 from ..daemon import Daemon
 from ..suite import Dependency
+from ... import mx
 from ...support.logging import nyi, setLogTask
 from ...support.processes import Process
 
@@ -51,6 +53,8 @@ class Task(object, metaclass=ABCMeta):
     parallelism: int
     proc: Optional[Process]
 
+    consoleLock = Lock()
+
     def __init__(self, subject: Dependency, args: Args, parallelism: int):
         """
         :param subject: the dependency for which this task is executed
@@ -62,6 +66,8 @@ class Task(object, metaclass=ABCMeta):
         self.parallelism = parallelism
         self.deps = []
         self.proc = None
+        self._log = mx.LinesOutputCapture()
+        self._echoLogs = not hasattr(args, 'build_logs') or args.build_logs == "full"
         self._exitcode = 0
 
     def __str__(self) -> str:
@@ -80,6 +86,13 @@ class Task(object, metaclass=ABCMeta):
     def abort(self, code):
         self._exitcode = code
         raise TaskAbortException(code)
+
+    def log(self, msg, echo=False, log=True):
+        if log:
+            self._log(msg)
+        if echo or self._echoLogs:
+            with Task.consoleLock:
+                print(msg.rstrip())
 
     @property
     def exitcode(self):

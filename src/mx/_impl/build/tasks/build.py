@@ -181,10 +181,13 @@ class BuildTask(Buildable, Task):
         return ''
 
     def logBuild(self, reason: Optional[str] = None) -> None:
+        timestamp = self._timestamp()
+        if self.args.build_logs == 'oneline':
+            self.log(f'{timestamp}{self}...', echo=True, log=False)
         if reason:
-            log(self._timestamp() + f'{self}... [{reason}]')
+            self.log(f'{timestamp}{self}... [{reason}]')
         else:
-            log(self._timestamp() + f'{self}...')
+            self.log(f'{timestamp}{self}...')
 
     def logBuildDone(self, duration: float) -> None:
         timestamp = self._timestamp()
@@ -193,10 +196,10 @@ class BuildTask(Buildable, Task):
             # Strip hours if 0
             if durationStr.startswith('0:'):
                 durationStr = durationStr[2:]
-            log(timestamp + f'{self} [duration: {duration}]')
+            self.log(f'{timestamp}{self} [duration: {duration}]', echo=True)
 
     def logClean(self) -> None:
-        log(f'Cleaning {self.name}...')
+        self.log(f'Cleaning {self.name}...')
 
     def logSkip(self, reason: Optional[str] = None) -> None:
         if reason:

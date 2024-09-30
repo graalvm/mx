@@ -37,6 +37,7 @@ __all__ = [
     "nyi",
     "colorize",
     "warn",
+    "getLogTask",
     "setLogTask",
 ]
 
@@ -59,7 +60,6 @@ _ansi_color_table = {
 }
 
 _logTask = threading.local()
-_logTask.task = None
 
 
 def setLogTask(task):
@@ -67,6 +67,8 @@ def setLogTask(task):
 
 
 def getLogTask():
+    if not hasattr(_logTask, "task"):
+        return None
     return _logTask.task
 
 
@@ -133,6 +135,10 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
     All script output goes through this method thus allowing a subclass
     to redirect it.
     """
+    task = getLogTask()
+    if task is not None:
+        task.log(msg)
+        return
     if vars(_opts).get("quiet"):
         return
     if msg is None:
@@ -234,7 +240,12 @@ def warn(msg: str, context=None) -> None:
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        _print_impl(colorize("WARNING: " + msg, color="magenta", bright=True, stream=sys.stderr), file=sys.stderr)
+        msg = colorize("WARNING: " + msg, color="magenta", bright=True, stream=sys.stderr)
+        task = getLogTask()
+        if task is None:
+            _print_impl(msg, file=sys.stderr)
+        else:
+            task.log(msg)
 
 
 def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoReturn:

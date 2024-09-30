@@ -370,7 +370,7 @@ from .build.daemon import Daemon
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
 from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn, \
-    _check_stdout_encoding
+    _check_stdout_encoding, getLogTask
 from .support.options import _opts, _opts_parsed_deferrables
 from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
@@ -13406,6 +13406,13 @@ def run(
                     f(line.decode())
             stream.close()
 
+        t = getLogTask()
+        if t is not None:
+            if out is None:
+                out = t.log
+            if err is None:
+                err = t.log
+
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
         stdin_pipe = None if stdin is None else subprocess.PIPE
@@ -14439,6 +14446,16 @@ def build(cmd_args, parser=None):
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
     parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored.\nIf the extension is ps, pdf, svg, png, git, or jpg, it will be rendered.', metavar='<path>', default=None)
 
+    def get_default_build_logs():
+        ret = get_env('MX_BUILD_LOGS')
+        if ret is not None:
+            return ret
+        if get_opts().verbose:
+            return "full"
+        else:
+            return "oneline"
+    parser.add_argument('--build-logs', action='store', choices=['silent', 'oneline', 'full'], help='what to do with log output of the individual build tasks.\nOne of silent (only print on error), oneline (print one line per task) or full (print all output).\nCan also be set with the MX_BUILD_LOGS env variable.', default=get_default_build_logs())
+
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
     compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). '
@@ -14762,6 +14779,8 @@ def build(cmd_args, parser=None):
         if len(failed):
             for t in failed:
                 log_error(f'{t} failed')
+                for l in t._log.lines:
+                    log(l)
             for daemon in daemons.values():
                 daemon.shutdown()
             abort(f'{len(failed)} build tasks failed')
