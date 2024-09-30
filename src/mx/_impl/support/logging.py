@@ -296,12 +296,14 @@ def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoR
     else:
         error_message = codeOrMessage
         error_code = 1
-    log_error(error_message)
 
     t = getLogTask()
     if t is not None:
+        if error_message:
+            t.log(error_message)
         t.abort(error_code)
     else:
+        log_error(error_message)
         raise SystemExit(error_code)
 
 

@@ -94,6 +94,12 @@ class Task(object, metaclass=ABCMeta):
             with Task.consoleLock:
                 print(msg.rstrip())
 
+    def getLastLogLine(self):
+        for line in reversed(self._log.lines):
+            if line.strip():
+                return line
+        return None
+
     @property
     def exitcode(self):
         if self._exitcode != 0:

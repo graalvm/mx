@@ -14452,9 +14452,19 @@ def build(cmd_args, parser=None):
             return ret
         if get_opts().verbose:
             return "full"
+        elif is_continuous_integration():
+            return "oneline"
+        elif not sys.stdout.closed and sys.stdout.isatty():
+            # Note that this check is different from mx.is_interactive().
+            # mx.is_interactive checks whether `stdin` is a tty, i.e. whether we can interactively ask questions.
+            # Here we check whether `stdout` is a tty, i.e. whether we can update a single line with \r.
+            return "interactive"
         else:
             return "oneline"
-    parser.add_argument('--build-logs', action='store', choices=['silent', 'oneline', 'full'], help='what to do with log output of the individual build tasks.\nOne of silent (only print on error), oneline (print one line per task) or full (print all output).\nCan also be set with the MX_BUILD_LOGS env variable.', default=get_default_build_logs())
+    parser.add_argument('--build-logs', action='store', choices=['silent', 'oneline', 'interactive', 'full'], default=get_default_build_logs(),
+                        help='what to do with log output of the individual build tasks.\n' +
+                        'One of silent (only print on error), oneline (print one line per task), interactive (print an interactive status line) or full (print all output).\n' +
+                        'Can also be set with the MX_BUILD_LOGS env variable.')
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -14626,17 +14636,6 @@ def build(cmd_args, parser=None):
     daemons = {}
     if args.parallelize and onlyDeps is None:
         _before_fork()
-        def joinTasks(tasks):
-            failed = []
-            for t in tasks:
-                t.proc.join()
-                _removeSubprocess(t.sub)
-                if t.proc.exitcode != 0:
-                    failed.append(t)
-                # Release the pipe file descriptors ASAP (only available on Python 3.7+)
-                if hasattr(t.proc, 'close'):
-                    t.proc.close()
-            return failed
 
         def checkTasks(tasks):
             active = []
@@ -14679,6 +14678,7 @@ def build(cmd_args, parser=None):
         def anyJavaTask(tasks):
             return any(isinstance(task, (JavaBuildTask, JARArchiveTask)) for task in tasks)
 
+        totalTasks = len(sortedTasks)
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
@@ -14689,11 +14689,63 @@ def build(cmd_args, parser=None):
                 cpus += t.parallelism
             return cpus
 
+        progressIdx = 0
+        curProgressTask = None
+        isInteractive = args.build_logs == "interactive"
+        def showProgress():
+            if not isInteractive or totalTasks < 2:
+                return
+            running = len(active)
+            pending = len(worklist)
+            err = len(failed)
+            done = totalTasks - pending - running - err
+            statusline = ""
+            if err > 0:
+                statusline += f"[{colorize(str(err), color='red')}/"
+            else:
+                statusline += "["
+            statusline += f"{colorize(str(running), color='blue')}/{colorize(str(done), color='green')}/{totalTasks}]"
+            if running > 0:
+                nonlocal progressIdx, curProgressTask
+                if curProgressTask not in active:
+                    curProgressTask = active[0]
+                elif progressIdx % 5 == 0:
+                    idx = active.index(curProgressTask)
+                    curProgressTask = active[(idx + 1) % running]
+                progressIdx += 1
+                statusline += f" {curProgressTask}"
+                lastLine = curProgressTask.getLastLogLine()
+                if lastLine:
+                    statusline += " | " + lastLine
+            columns = shutil.get_terminal_size(fallback=(120,50)).columns
+            aligned = statusline + columns * " "
+            aligned = aligned[0:columns]
+            sys.stdout.write(aligned + "\r")
+            if done == totalTasks:
+                sys.stdout.write(statusline + " done\n")
+            elif running == 0 and err > 0:
+                sys.stdout.write(statusline + " failed\n")
+
+        def joinTasks():
+            for t in active[:]:
+                showProgress()
+                t.proc.join(timeout=0.2 if isInteractive else None)
+                if t.proc.exitcode is None:
+                    continue
+                active.remove(t)
+                _removeSubprocess(t.sub)
+                if t.proc.exitcode != 0:
+                    failed.append(t)
+                # Release the pipe file descriptors ASAP (only available on Python 3.7+)
+                if hasattr(t.proc, 'close'):
+                    t.proc.close()
+
         while len(worklist) != 0:
             while True:
                 active, failed = checkTasks(active)
                 if len(failed) != 0:
                     break
+                showProgress()
                 if _activeCpus(active) >= cpus:
                     # Sleep for 0.2 second
                     time.sleep(0.2)
@@ -14750,7 +14802,9 @@ def build(cmd_args, parser=None):
 
             worklist = sortWorklist(worklist)
 
-        failed += joinTasks(active)
+        while len(active) > 0:
+            joinTasks()
+        showProgress()
 
         def dump_task_stats(f):
             """
