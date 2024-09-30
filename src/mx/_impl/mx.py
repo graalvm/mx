@@ -13421,6 +13421,9 @@ def run(
 
         p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, start_new_session=start_new_session, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs)
         sub = _addSubprocess(p, args)
+        if t is not None:
+            t.addSubproc(p)
+
         joiners = []
         if callable(out):
             t = Thread(target=redirect, args=(p.pid, p.stdout, out))
@@ -14801,6 +14804,11 @@ def build(cmd_args, parser=None):
                 time.sleep(0.2)
 
             worklist = sortWorklist(worklist)
+
+        if len(failed) > 0:
+            # cancel pending build subprocesses on failure
+            for t in active:
+                t.cancelSubprocs()
 
         while len(active) > 0:
             joinTasks()

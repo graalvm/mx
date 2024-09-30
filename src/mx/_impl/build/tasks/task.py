@@ -66,6 +66,7 @@ class Task(object, metaclass=ABCMeta):
         self.parallelism = parallelism
         self.deps = []
         self.proc = None
+        self.subprocs = []
         self._log = mx.LinesOutputCapture()
         self._echoLogs = not hasattr(args, 'build_logs') or args.build_logs == "full"
         self._exitcode = 0
@@ -99,6 +100,20 @@ class Task(object, metaclass=ABCMeta):
             if line.strip():
                 return line
         return None
+
+    def addSubproc(self, p):
+        self.subprocs += [p]
+
+    def cancelSubprocs(self):
+        from ...support.processes import _is_process_alive, _kill_process
+        from signal import SIGTERM
+        for p in self.subprocs:
+            if not _is_process_alive(p):
+                continue
+            if mx.is_windows():
+                p.terminate()
+            else:
+                _kill_process(p.pid, SIGTERM)
 
     @property
     def exitcode(self):
