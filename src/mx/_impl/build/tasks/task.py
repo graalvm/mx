@@ -88,8 +88,16 @@ class Task(object, metaclass=ABCMeta):
         self._exitcode = code
         raise TaskAbortException(code)
 
-    def log(self, msg, echo=False, log=True):
+    def log(self, msg, echo=False, log=True, replace=False):
+        """
+        Log output for this build task. `echo=True` forces the output to go to the terminal regardless
+        of the --build-logs setting. `log=False` can be used to only do output, without including it
+        in the log. `replace=True` replaces the last logged line. This is useful for status output, e.g.
+        download progress.
+        """
         if log:
+            if replace:
+                del self._log.lines[-1]
             self._log(msg)
         if echo or self._echoLogs:
             with Task.consoleLock:

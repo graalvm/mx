@@ -4245,6 +4245,9 @@ def _attempt_download(url, path, jarEntryName=None):
             bytesRead = 0
             chunkSize = 8192
 
+            if progress:
+                logTask = getLogTask()
+
             with open(tmp, 'wb') as fp:
                 chunk = conn.read(chunkSize)
                 while chunk:
@@ -4252,15 +4255,21 @@ def _attempt_download(url, path, jarEntryName=None):
                     fp.write(chunk)
                     if length == -1:
                         if progress:
-                            sys.stdout.write(f'\r {bytesRead} bytes')
+                            if logTask:
+                                logTask.log(f'{bytesRead} bytes', replace=True)
+                            else:
+                                sys.stdout.write(f'\r {bytesRead} bytes')
                     else:
                         if progress:
-                            sys.stdout.write(f'\r {bytesRead} bytes ({bytesRead * 100 / length:.0f}%)')
+                            if logTask:
+                                logTask.log(f'{bytesRead} bytes ({bytesRead * 100 / length:.0f}%)', replace=True)
+                            else:
+                                sys.stdout.write(f'\r {bytesRead} bytes ({bytesRead * 100 / length:.0f}%)')
                         if bytesRead == length:
                             break
                     chunk = conn.read(chunkSize)
 
-            if progress:
+            if progress and not logTask:
                 sys.stdout.write('\n')
 
             if length not in (-1, bytesRead):
