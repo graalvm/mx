@@ -1495,7 +1495,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             for datapoint in parsedpoints:
                 datapoint.update(dims)
                 if "bench-suite" not in datapoint:
-                    datapoint["bench-suite"] = self.name()
+                    datapoint["bench-suite"] = self.benchSuiteName()
                 if "bench-suite-version" not in datapoint:
                     datapoint["bench-suite-version"] = self.version()
                 if "is-default-bench-suite-version" not in datapoint:
@@ -3375,7 +3375,7 @@ class BenchmarkExecutor(object):
           "metric.uuid": self.uid(),
           "group": self.group(suite) if suite else '',
           "subgroup": suite.subgroup() if suite else '',
-          "bench-suite": suite.name() if suite else '',
+          "bench-suite": suite.benchSuiteName() if suite else '',
           "bench-suite-version": suite.version() if suite else '',
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)) if suite else '',
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)) if suite else '',
