@@ -1747,7 +1747,7 @@ def build_capture_command(files, command_line, extra_vm_args=None, options=None)
     perf_cmd, vm_args = build_capture_args(files, extra_vm_args, options)
 
     # Transform JVM options for Truffle language launchers
-    if os.path.exists(executable) and re.search(r'/languages/\w+/bin/', os.path.realpath(executable)):
+    if os.path.exists(executable) and not is_executable_compiled_by_native_image(executable) and not executable.endswith('java'):
         for i in range(len(vm_args)):
             vm_args[i] = '--vm.' + vm_args[i][1:]
 

@@ -18204,7 +18204,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.32.2")  # [GR-50987] Use correct bench-suite name if missing
+version = VersionSpec("7.32.3")  # [GR-58959] Fix the detection of Truffle language launchers in proftool
 
 _mx_start_datetime = datetime.utcnow()
 
