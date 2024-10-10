@@ -7042,11 +7042,22 @@ class JavaProject(Project, ClasspathDependency):
 
                     parse_requiresConcealed_attribute(jdk, getattr(self, 'requiresConcealed', None), concealed, None, self)
 
-                    # JVMCI is special as it not concealed in JDK 8 but is concealed in JDK 9+.
+                    compat = self.suite.getMxCompatibility()
                     if 'jdk.internal.vm.ci' in (jmd.name for jmd in jdk.get_modules()) and self.get_declaring_module_name() != 'jdk.internal.vm.ci':
                         jvmci_packages = [p for p in self.imported_java_packages(projectDepsOnly=False) if p.startswith('jdk.vm.ci')]
                         if jvmci_packages:
-                            concealed.setdefault('jdk.internal.vm.ci', set()).update(jvmci_packages)
+                            concealed_packages = concealed.setdefault('jdk.internal.vm.ci', set())
+                            missing = frozenset(jvmci_packages).difference(concealed_packages)
+                            if missing:
+                                if compat.automatically_export_jvmci_packages():
+                                    concealed_packages.update(missing)
+                                else:
+                                    nl = os.linesep
+                                    msg = f'As of mx {compat.version()}, JVMCI packages are not automatically exported to projects that import them. ' \
+                                          f'Instead projects must use a "requiresConcealed" attribute:{nl}{nl}'
+                                    packages = '", "'.join(sorted(missing))
+                                    msg += f'  "requiresConcealed" : {{ "jdk.internal.vm.ci": ["{packages}"] }}'
+                                    self.abort(msg)
 
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)
@@ -18204,7 +18215,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.32.4")  # [GR-58295] Ignore commit info for foreign suites in mx benchmarks
+version = VersionSpec("7.33.0")  # [GR-58951] Do not automatically export JVMCI packages
 
 _mx_start_datetime = datetime.utcnow()
 

@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2015, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -307,6 +307,13 @@ class MxCompatibility500(object):
         """
         return None
 
+    def automatically_export_jvmci_packages(self):
+        """
+        JVMCI packages seen in import statements of a project's Java sources
+        will automatically result in an --add-exports option being added to the
+        javac command line for the project.
+        """
+        return True
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -793,6 +800,15 @@ class MxCompatibility728(MxCompatibility727):
             'BASE': '7_5_0',
             'RETRACE': '7_5_0',
         }
+
+class MxCompatibility733(MxCompatibility728):
+
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.33.0")
+
+    def automatically_export_jvmci_packages(self):
+        return False
 
 def minVersion():
     _ensureCompatLoaded()
