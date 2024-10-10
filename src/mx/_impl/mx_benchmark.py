@@ -3426,7 +3426,7 @@ class BenchmarkExecutor(object):
         standard.update(commit_info("", mx.primary_suite()))
         for mxsuite in mx.suites():
             ignored = mxBenchmarkArgs.ignore_suite_commit_info
-            if (ignored and mxsuite.name in ignored) or mxsuite.ignore_suite_commit_info:
+            if (ignored and mxsuite.name in ignored) or mxsuite.ignore_suite_commit_info or mxsuite.foreign:
                 continue
             standard.update(commit_info(mxsuite.name + ".", mxsuite))
         triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
