@@ -1228,7 +1228,10 @@ class JsonArrayRule(JsonBaseRule):
         """
         # The resolve_keys method of JsonBaseRule always returns a list of one dictionary
         values = super().resolve_keys(json_obj)[0]
-        return self.list_to_flat_dict_converter(values)
+        flat_dict_list = self.list_to_flat_dict_converter(values)
+        # Filter out any dicts that do not contain a value for every key
+        filtered_flat_dict_list = list(filter(lambda flat_dict: all(key in flat_dict for key in self.keys), flat_dict_list))
+        return filtered_flat_dict_list
 
     def resolve_key(self, json_obj: dict, key: str) -> List[str]:
         """Resolve a key and extract the corresponding value(s) from the json object.
@@ -1692,6 +1695,14 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         :rtype: list
         """
         raise NotImplementedError()
+
+    def all_command_line_args_are_vm_args(self):
+        """Denotes if the arguments returned by ``createCommandLineArgs`` contain just VM arguments.
+
+        Useful for ``CustomHarnessBenchmarkSuite`` suites that perform command line manipulation at the very end,
+        and only provide VM arguments to the VM.
+        """
+        return False
 
     def setupProfilers(self, benchmarks, bmSuiteArgs):
         if self.profilerNames(bmSuiteArgs) is not None:
