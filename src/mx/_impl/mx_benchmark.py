@@ -1208,7 +1208,7 @@ class JsonArrayRule(JsonBaseRule):
         "data": [[1, 2, 3], [4, 5, 6], [7, 8]]
     }
     """
-    def __init__(self, replacement, keys: Collection[str], indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+    def __init__(self, replacement, keys: Collection[str], indexer_str: str = ".", list_to_flat_dict_converter: Callable[[Dict[str, List]], List[Dict[str, str]]] = element_wise_product_converter):
         """
         :param list_to_flat_dict_converter: Function that converts a dictionary of list values into a list of flat dictionaries,
         defaults to `element_wise_product_converter`.
@@ -1266,7 +1266,7 @@ class JsonArrayRule(JsonBaseRule):
 class JsonArrayStdOutFileRule(JsonArrayRule):
     """Rule that looks for JSON file names in the output of the benchmark."""
 
-    def __init__(self, pattern, match_name, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+    def __init__(self, pattern, match_name, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[[Dict[str, List]], List[Dict[str, str]]] = element_wise_product_converter):
         super().__init__(replacement, keys, indexer_str, list_to_flat_dict_converter)
         self.pattern = pattern
         self.match_name = match_name
@@ -1278,7 +1278,7 @@ class JsonArrayStdOutFileRule(JsonArrayRule):
 class JsonArrayFixedFileRule(JsonArrayRule):
     """Rule that parses a JSON file with a predefined name."""
 
-    def __init__(self, filename, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+    def __init__(self, filename, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[[Dict[str, List]], List[Dict[str, str]]] = element_wise_product_converter):
         super().__init__(replacement, keys, indexer_str, list_to_flat_dict_converter)
         self.filename = filename
 
