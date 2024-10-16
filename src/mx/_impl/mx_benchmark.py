@@ -1208,7 +1208,7 @@ class JsonArrayRule(JsonBaseRule):
         "data": [[1, 2, 3], [4, 5, 6], [7, 8]]
     }
     """
-    def __init__(self, replacement, keys: Collection[str], indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+    def __init__(self, replacement, keys: Collection[str], indexer_str: str = ".", list_to_flat_dict_converter: Callable[[Dict[str, List]], List[Dict[str, str]]] = element_wise_product_converter):
         """
         :param list_to_flat_dict_converter: Function that converts a dictionary of list values into a list of flat dictionaries,
         defaults to `element_wise_product_converter`.
@@ -1229,7 +1229,10 @@ class JsonArrayRule(JsonBaseRule):
         """
         # The resolve_keys method of JsonBaseRule always returns a list of one dictionary
         values = super().resolve_keys(json_obj)[0]
-        return self.list_to_flat_dict_converter(values)
+        flat_dict_list = self.list_to_flat_dict_converter(values)
+        # Filter out any dicts that do not contain a value for every key
+        filtered_flat_dict_list = list(filter(lambda flat_dict: all(key in flat_dict for key in self.keys), flat_dict_list))
+        return filtered_flat_dict_list
 
     def resolve_key(self, json_obj: dict, key: str) -> List[str]:
         """Resolve a key and extract the corresponding value(s) from the json object.
@@ -1263,7 +1266,7 @@ class JsonArrayRule(JsonBaseRule):
 class JsonArrayStdOutFileRule(JsonArrayRule):
     """Rule that looks for JSON file names in the output of the benchmark."""
 
-    def __init__(self, pattern, match_name, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+    def __init__(self, pattern, match_name, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[[Dict[str, List]], List[Dict[str, str]]] = element_wise_product_converter):
         super().__init__(replacement, keys, indexer_str, list_to_flat_dict_converter)
         self.pattern = pattern
         self.match_name = match_name
@@ -1275,7 +1278,7 @@ class JsonArrayStdOutFileRule(JsonArrayRule):
 class JsonArrayFixedFileRule(JsonArrayRule):
     """Rule that parses a JSON file with a predefined name."""
 
-    def __init__(self, filename, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[Dict[str, List]] = element_wise_product_converter):
+    def __init__(self, filename, replacement, keys, indexer_str: str = ".", list_to_flat_dict_converter: Callable[[Dict[str, List]], List[Dict[str, str]]] = element_wise_product_converter):
         super().__init__(replacement, keys, indexer_str, list_to_flat_dict_converter)
         self.filename = filename
 
@@ -1693,6 +1696,14 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         :rtype: list
         """
         raise NotImplementedError()
+
+    def all_command_line_args_are_vm_args(self):
+        """Denotes if the arguments returned by ``createCommandLineArgs`` contain just VM arguments.
+
+        Useful for ``CustomHarnessBenchmarkSuite`` suites that perform command line manipulation at the very end,
+        and only provide VM arguments to the VM.
+        """
+        return False
 
     def setupProfilers(self, benchmarks, bmSuiteArgs):
         if self.profilerNames(bmSuiteArgs) is not None:
