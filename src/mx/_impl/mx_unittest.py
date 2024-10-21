@@ -720,7 +720,7 @@ def unittest(args, test_report_tags=None):
         junit_args.append('-JUnitJsonResults')
         junit_args.append(test_results)
     try:
-        _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
+        _unittest(args, ['@Theory', '@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
         if make_test_report:
             from . import mx_gate
             assert 'task' in test_report_tags, 'Task tag is mandatory'
