@@ -7295,7 +7295,7 @@ class JavaBuildTask(ProjectBuildTask):
                 sourceFiles=[_cygpathU2W(f) for f in sorted(javafiles.keys())],
                 project=self.subject,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk, ignoreStripped=True)),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk, ignoreStripped=True, forBuild=True)),
                 sourceGenDir=self.subject.source_gen_dir(),
                 jnigenDir=self.subject.jni_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
@@ -12196,7 +12196,7 @@ def library(name, fatalIfMissing=True, context=None):
     return l
 
 
-def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None):
+def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None, forBuild=False):
     """
     Gets the transitive set of dependencies that need to be on the class path
     given the root set of projects and distributions in `names`.
@@ -12247,7 +12247,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             return False
         if dst in roots:
             return True
-        if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
+        if edge and edge.src.isJARDistribution() and edge.kind in (DEP_STANDARD, DEP_BUILD):
             if isinstance(edge.src.suite, BinarySuite) or not preferProjects:
                 return dst.isJARDistribution()
             else:
@@ -12261,7 +12261,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
         if dep.isPOMDistribution():
             return
         cpEntries.append(dep)
-    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_BUILD])
+    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR] + ([] if forBuild else [DEP_BUILD]))
     return cpEntries
 
 
@@ -12305,13 +12305,13 @@ def _entries_to_classpath(cpEntries, resolve=True, includeBootClasspath=False, j
     return os.pathsep.join(cp)
 
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False):
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False, forBuild=False):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
     then all registered dependencies are used.
     """
-    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
+    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects, forBuild=forBuild)
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
