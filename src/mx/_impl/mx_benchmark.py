@@ -420,6 +420,8 @@ class VmRegistry(object):
         return vm_object
 
     def add_vm(self, vm, suite=None, priority=0):
+        if not vm.canonical_configuration:
+            mx.abort(f"{vm.__class__.__name__}({vm.name()}, {vm.config_name()}) got configured with a non-canonical vm config, which is not allowed!")
         key = (vm.name(), vm.config_name())
         if key in self._vms:
             mx.abort(f"{self.vm_type_name} and config '{key}' already exist.")
@@ -1937,6 +1939,13 @@ class Vm(object): #pylint: disable=R0922
         It just returns the provided config otherwise.
         """
         return config_name
+
+    @property
+    def canonical_configuration(self):
+        """
+        :return: returns True if a VM got configured using a canonical form (i.e. without syntactic sugar).
+        """
+        return getattr(self, '_canonical_configuration', True)
 
     def extract_vm_info(self, args=None):
         """Extract vm information."""
