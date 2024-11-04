@@ -430,9 +430,11 @@ class VmRegistry(object):
     def get_vm(self, vm_name, vm_config):
         resolved_name = None
         for (candidate_vm_name, candidate_vm_config), candidate_vm in self._vms.items():
-            if vm_name == candidate_vm_name and candidate_vm.canonical_config_name(vm_config) == candidate_vm_config:
+            canonical_name = candidate_vm.canonical_config_name(vm_config)
+            if vm_name == candidate_vm_name and canonical_name == candidate_vm_config:
                 resolved_name = candidate_vm_config
-                mx.log(f"Resolved the '{vm_config}' vm config to: {resolved_name}")
+                if vm_config != canonical_name:
+                    mx.log(f"Canonicalized the '{vm_config}' vm config to: {resolved_name}")
                 break
         key = (vm_name, resolved_name or vm_config)
         if key not in self._vms:
