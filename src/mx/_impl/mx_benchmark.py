@@ -420,6 +420,8 @@ class VmRegistry(object):
         return vm_object
 
     def add_vm(self, vm, suite=None, priority=0):
+        if not vm.canonical_configuration:
+            mx.abort(f"{vm.__class__.__name__}({vm.name()}, {vm.config_name()}) got configured with a non-canonical vm config, which is not allowed!")
         key = (vm.name(), vm.config_name())
         if key in self._vms:
             mx.abort(f"{self.vm_type_name} and config '{key}' already exist.")
@@ -428,7 +430,15 @@ class VmRegistry(object):
         self._vms_priority[key] = priority
 
     def get_vm(self, vm_name, vm_config):
-        key = (vm_name, vm_config)
+        resolved_name = None
+        for (candidate_vm_name, candidate_vm_config), candidate_vm in self._vms.items():
+            canonical_name = candidate_vm.canonical_config_name(vm_config)
+            if vm_name == candidate_vm_name and canonical_name == candidate_vm_config:
+                resolved_name = candidate_vm_config
+                if vm_config != canonical_name:
+                    mx.log(f"Canonicalized the '{vm_config}' vm config to: {resolved_name}")
+                break
+        key = (vm_name, resolved_name or vm_config)
         if key not in self._vms:
             mx.abort(f"{self.vm_type_name} and config '{key}' do not exist.\n{self.get_available_vm_configs_help()}")
         return self._vms[key]
@@ -1920,6 +1930,22 @@ class Vm(object): #pylint: disable=R0922
     def config_name(self):
         """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
         raise NotImplementedError()
+
+    @staticmethod
+    def canonical_config_name(config_name):
+        """
+        Some VMs may allow different names to be aliases for the exact same configuration.
+        This method will return the canonical version of the configuration in this case.
+        It just returns the provided config otherwise.
+        """
+        return config_name
+
+    @property
+    def canonical_configuration(self):
+        """
+        :return: returns True if a VM got configured using a canonical form (i.e. without syntactic sugar).
+        """
+        return getattr(self, '_canonical_configuration', True)
 
     def extract_vm_info(self, args=None):
         """Extract vm information."""
