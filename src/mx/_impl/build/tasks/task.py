@@ -70,6 +70,8 @@ class Task(object, metaclass=ABCMeta):
         self._log = mx.LinesOutputCapture()
         self._echoLogs = not hasattr(args, 'build_logs') or args.build_logs == "full"
         self._exitcode = 0
+        self.status = None
+        self.statusInfo = ""
 
     def __str__(self) -> str:
         return nyi('__str__', self)
@@ -82,10 +84,17 @@ class Task(object, metaclass=ABCMeta):
         return self.subject.name
 
     def enter(self):
+        self.status = "running"
         setLogTask(self)
+
+    def leave(self):
+        if self.status == "running":
+            self.status = "success"
+        setLogTask(None)
 
     def abort(self, code):
         self._exitcode = code
+        self.status = "failed"
         raise TaskAbortException(code)
 
     def log(self, msg, echo=False, log=True, replace=False):

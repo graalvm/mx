@@ -202,7 +202,9 @@ class BuildTask(Buildable, Task):
         self.log(f'Cleaning {self.name}...')
 
     def logSkip(self, reason: Optional[str] = None) -> None:
+        self.status = "skipped"
         if reason:
+            self.statusInfo = reason
             logv(f'[{reason} - skipping {self.name}]')
         else:
             logv(f'[skipping {self.name}]')
