@@ -11782,6 +11782,13 @@ def get_dynamic_imports():
 
 ### ~~~~~~~~~~~~~ XML
 
+def _write_data(writer, data):
+    "Writes datachars to writer."
+    if data:
+        data = data.replace("&", "&amp;").replace("<", "&lt;"). \
+                    replace("\"", "&quot;").replace(">", "&gt;")
+        writer.write(data)
+
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
         writer.write(indent + "<" + self.tagName)
@@ -11791,7 +11798,7 @@ class XMLElement(xml.dom.minidom.Element):
 
         for a_name in a_names:
             writer.write(f" {a_name}=\"")
-            xml.dom.minidom._write_data(writer, attrs[a_name].value)
+            _write_data(writer, attrs[a_name].value)
             writer.write("\"")
         if self.childNodes:
             if not self.ownerDocument.padTextNodeWithoutSiblings and len(self.childNodes) == 1 and isinstance(self.childNodes[0], xml.dom.minidom.Text):
