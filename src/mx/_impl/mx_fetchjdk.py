@@ -668,7 +668,15 @@ class _JdkBinary(object):
                 infile = os.path.join(temp_dir, "fetch-jdk-provider-request.json")
                 with open(infile, "w") as in_fp:
                     in_fp.write(json_input)
-                mx.run_mx([provider, infile, outfile], quiet=True)
+
+                # Since fetch-jdk is often run to get a more recent JAVA_HOME,
+                # JVMCI_VERSION_CHECK should be set to "ignore" when calling a fetch-jdk
+                # provider to prevent the JVMCI version check failing. A fetch-jdk provider
+                # in a suite that has a JVMCI version check must not use JAVA_HOME.
+                env = os.environ.copy()
+                env["JVMCI_VERSION_CHECK"] = "ignore"
+
+                mx.run_mx([provider, infile, outfile], quiet=True, env=env)
                 with open(outfile) as out_fp:
                     return out_fp.read().splitlines()
 
