@@ -662,7 +662,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 saved_config = fp.read()
             if current_config != saved_config:
                 import difflib
-                mx.log(f'{self} distribution config changed:' + os.linesep + ''.join(difflib.unified_diff(saved_config.splitlines(True), current_config.splitlines(True))))
+                mx.logv(f'{self} distribution config changed:' + os.linesep + ''.join(difflib.unified_diff(saved_config.splitlines(True), current_config.splitlines(True))))
                 return f'{config_file} changed'
         else:
             return f'{config_file} does not exist'
