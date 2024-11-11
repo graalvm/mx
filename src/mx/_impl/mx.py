@@ -11782,6 +11782,13 @@ def get_dynamic_imports():
 
 ### ~~~~~~~~~~~~~ XML
 
+def _write_data(writer, data):
+    "Writes datachars to writer."
+    if data:
+        data = data.replace("&", "&amp;").replace("<", "&lt;"). \
+                    replace("\"", "&quot;").replace(">", "&gt;")
+        writer.write(data)
+
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
         writer.write(indent + "<" + self.tagName)
@@ -11791,7 +11798,7 @@ class XMLElement(xml.dom.minidom.Element):
 
         for a_name in a_names:
             writer.write(f" {a_name}=\"")
-            xml.dom.minidom._write_data(writer, attrs[a_name].value)
+            _write_data(writer, attrs[a_name].value)
             writer.write("\"")
         if self.childNodes:
             if not self.ownerDocument.padTextNodeWithoutSiblings and len(self.childNodes) == 1 and isinstance(self.childNodes[0], xml.dom.minidom.Text):
@@ -18215,7 +18222,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.34.2")  # [GR-59700] set JVMCI_VERSION_CHECK to ignore when calling a fetch-jdk provider
+version = VersionSpec("7.35.0")  # [GR-59726] Fix use of internal xml function changed in Python 3.13+
 
 _mx_start_datetime = datetime.utcnow()
 
