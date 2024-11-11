@@ -18222,7 +18222,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.34.2")  # [GR-59700] set JVMCI_VERSION_CHECK to ignore when calling a fetch-jdk provider
+version = VersionSpec("7.35.0")  # [GR-59726] Fix use of internal xml function changed in Python 3.13+
 
 _mx_start_datetime = datetime.utcnow()
 
