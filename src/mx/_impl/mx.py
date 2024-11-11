@@ -4149,6 +4149,9 @@ def clean(args, parser=None):
     parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
     parser.add_argument('--aggressive', action='store_true', help='clear all suite output')
     parser.add_argument('--disk-usage', action='store_true', help='compute and show disk usage before and after')
+    parser.add_argument('--keep-logs', action='store_true',
+                        help='keep old build logs (default: delete them unless in a CI job)',
+                        default=is_continuous_integration())
 
     args = parser.parse_args(args)
 
@@ -4156,6 +4159,16 @@ def clean(args, parser=None):
     disk_usage = None
     if args.disk_usage:
         disk_usage = {s:mx_gc._get_size_in_bytes(root) for s, root in suite_roots.items()}
+
+    if not args.keep_logs:
+        # Delete old build logs unless specifically told to keep them.
+        # Off the CI, on local dev machines, we don't want build logs accumulating infinitely.
+        # On the CI, this defaults to "keep the logs". We're assuming that `mxbuild` directories on the CI
+        # are ephemeral anyway, and we never want to lose logs when running complex jobs on the CI that
+        # might contain `mx clean` in the middle.
+        for root in suite_roots.values():
+            for buildlog in glob.iglob(os.path.join(root, 'buildlog-*.html')):
+                os.unlink(buildlog)
 
     def _collect_clean_dependencies():
         if args.all:

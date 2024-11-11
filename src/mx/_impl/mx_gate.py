@@ -747,7 +747,7 @@ def _run_gate(cleanArgs, args, tasks):
             mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
             fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags # pylint: disable=unsupported-membership-test
             if fullbuild:
-                gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
+                gate_clean(cleanArgs + ['--keep-logs'], tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
 
     with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
         if t:
