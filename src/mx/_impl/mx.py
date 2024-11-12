@@ -14420,7 +14420,7 @@ def resolve_targets(names):
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
-    with BuildReport() as build_report:
+    with BuildReport(cmd_args) as build_report:
         _build_with_report(cmd_args, build_report=build_report, parser=parser)
 
 def _build_with_report(cmd_args, build_report, parser=None):
@@ -14550,23 +14550,30 @@ def _build_with_report(cmd_args, build_report, parser=None):
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
         log('JAVA_HOME: ' + _java_home())
+        build_report.add_info('JAVA_HOME', _java_home())
 
         if _extra_java_homes():
             log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(_extra_java_homes()))
+            build_report.add_info('EXTRA_JAVA_HOMES', _extra_java_homes())
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
+            _reasons = []
+            for _, reason in _removedDeps.items():
+                if isinstance(reason, tuple):
+                    reason, _ = reason
+                _reasons.append(reason)
+            build_report.add_info("unsatisfied dependencies were removed from build", _reasons)
             if _opts.verbose:
                 log('Dependencies removed from build:')
-                for _, reason in _removedDeps.items():
-                    if isinstance(reason, tuple):
-                        reason, _ = reason
+                for reason in _reasons:
                     log(f' {reason}')
             else:
                 log(f'{len(_removedDeps)} unsatisfied dependencies were removed from build (use -v to list them)')
 
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
         if removed:
+            build_report.add_info("non-default dependencies were removed from build", removed)
             if _opts.verbose:
                 log('Non-default dependencies removed from build (use mx build --all to build them):')
                 for d in removed:

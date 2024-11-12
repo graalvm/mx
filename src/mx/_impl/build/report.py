@@ -45,6 +45,7 @@ def write_task_report(f, task):
 def write_style(f):
     f.write('''
     <style>
+        .header dt { font-weight: bold; }
         .success:before { content: "success"; color: green; }
         .failed:before { content: "failed"; color: red; }
         .skipped:before { content: "skipped"; margin-right: 2em; color: blue; }
@@ -54,11 +55,31 @@ def write_style(f):
     ''')
 
 class BuildReport:
-    def __init__(self):
+    def __init__(self, cmd_args):
         self.tasks = []
+        self.properties = {}
+        if cmd_args:
+            self.properties['arguments'] = " ".join(cmd_args)
 
     def set_tasks(self, tasks):
         self.tasks = tasks
+
+    def add_info(self, key, value):
+        self.properties[key] = value
+
+    def _write_header(self, f):
+        f.write('<h1>mx build report</h1>\n<dl class="header">\n')
+        for k in self.properties:
+            f.write(f"    <dt>{k}</dt>\n")
+            v = self.properties[k]
+            if isinstance(v, list):
+                f.write("        <dd>\n")
+                for i in v:
+                    f.write(f"            {html.escape(str(i))}<br/>\n")
+                f.write("        </dd>\n")
+            else:
+                f.write(f"        <dd>{html.escape(str(v))}</dd>\n")
+        f.write('</dl>\n')
 
     def _write_report(self, filename):
         allSkipped = True
@@ -73,6 +94,7 @@ class BuildReport:
             f.write('<!DOCTYPE html>\n')
             f.write('<html>\n')
             f.write('<body>\n')
+            self._write_header(f)
             for t in self.tasks:
                 if t.status is not None:
                     # only report on tasks that were started
@@ -83,9 +105,12 @@ class BuildReport:
         mx.log(f"mx build log written to {filename}")
 
     def __enter__(self):
+        self.properties['started'] = time.strftime("%Y-%m-%d %H:%M:%S")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.properties['finished'] = time.strftime("%Y-%m-%d %H:%M:%S")
+
         reportDir = mx.primary_suite().get_output_root(jdkDependent=False)
         mx.ensure_dir_exists(reportDir)
         base_name = time.strftime("buildlog-%Y%m%d-%H%M%S")
