@@ -27,6 +27,8 @@
 
 import html
 
+from ..support.logging import log
+
 def write_task_report(f, task):
     f.write('\n<div class="task">\n')
     f.write(f'    <h2>{task.name}</h2>\n')
@@ -69,3 +71,4 @@ def write_build_report(filename, tasks):
         write_style(f)
         f.write('</body>\n')
         f.write('</html>\n')
+    log(f"mx build log written to {filename}")
