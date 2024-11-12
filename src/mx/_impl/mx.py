@@ -367,7 +367,7 @@ import posixpath
 from .build.suite import Dependency, SuiteConstituent
 from .build.tasks import BuildTask, NoOpTask, TaskAbortException, TaskSequence
 from .build.daemon import Daemon
-from .build.report import write_build_report
+from .build.report import BuildReport
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
 from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn, \
@@ -14420,6 +14420,11 @@ def resolve_targets(names):
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
+    with BuildReport() as build_report:
+        _build_with_report(cmd_args, build_report=build_report, parser=parser)
+
+def _build_with_report(cmd_args, build_report, parser=None):
+    """builds the artifacts of one or more dependencies"""
     global _gmake_cmd
 
     suppliedParser = parser is not None
@@ -14611,6 +14616,8 @@ def build(cmd_args, parser=None):
         edges.append((src, dst, edge.kind))
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
+
+    build_report.set_tasks(sortedTasks)
 
     if args.graph_file:
         ext = get_file_extension(args.graph_file)
@@ -14852,16 +14859,6 @@ def build(cmd_args, parser=None):
         while len(active) > 0:
             joinTasks()
         showProgress()
-
-        reportDir = primary_suite().get_output_root(jdkDependent=False)
-        ensure_dir_exists(reportDir)
-        base_name = time.strftime("buildlog-%Y%m%d-%H%M%S")
-        reportFile = os.path.join(reportDir, base_name + ".html")
-        reportIdx = 0
-        while os.path.exists(reportFile):
-            reportIdx += 1
-            reportFile = os.path.join(reportDir, f'{base_name}_{reportIdx}.html')
-        write_build_report(reportFile, sortedTasks)
 
         def dump_task_stats(f):
             """

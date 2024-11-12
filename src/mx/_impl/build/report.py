@@ -26,8 +26,10 @@
 #
 
 import html
+import os
+import time
 
-from ..support.logging import log
+from .. import mx
 
 def write_task_report(f, task):
     f.write('\n<div class="task">\n')
@@ -51,24 +53,45 @@ def write_style(f):
     </style>
     ''')
 
-def write_build_report(filename, tasks):
-    allSkipped = True
-    for t in tasks:
-        if t.status != "skipped":
-            allSkipped = False
-            break
-    if allSkipped:
-        # don't bother writing a build log if there was nothing to do
-        return
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write('<!DOCTYPE html>\n')
-        f.write('<html>\n')
-        f.write('<body>\n')
-        for t in tasks:
-            if t.status is not None:
-                # only report on tasks that were started
-                write_task_report(f, t)
-        write_style(f)
-        f.write('</body>\n')
-        f.write('</html>\n')
-    log(f"mx build log written to {filename}")
+class BuildReport:
+    def __init__(self):
+        self.tasks = []
+
+    def set_tasks(self, tasks):
+        self.tasks = tasks
+
+    def _write_report(self, filename):
+        allSkipped = True
+        for t in self.tasks:
+            if t.status != "skipped":
+                allSkipped = False
+                break
+        if allSkipped:
+            # don't bother writing a build log if there was nothing to do
+            return
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write('<!DOCTYPE html>\n')
+            f.write('<html>\n')
+            f.write('<body>\n')
+            for t in self.tasks:
+                if t.status is not None:
+                    # only report on tasks that were started
+                    write_task_report(f, t)
+            write_style(f)
+            f.write('</body>\n')
+            f.write('</html>\n')
+        mx.log(f"mx build log written to {filename}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        reportDir = mx.primary_suite().get_output_root(jdkDependent=False)
+        mx.ensure_dir_exists(reportDir)
+        base_name = time.strftime("buildlog-%Y%m%d-%H%M%S")
+        reportFile = os.path.join(reportDir, base_name + ".html")
+        reportIdx = 0
+        while os.path.exists(reportFile):
+            reportIdx += 1
+            reportFile = os.path.join(reportDir, f'{base_name}_{reportIdx}.html')
+        self._write_report(reportFile)
