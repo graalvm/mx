@@ -129,7 +129,7 @@ def _print_impl(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.s
         )
 
 
-def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
+def log(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout):
     """
     Write a message to the console.
     All script output goes through this method thus allowing a subclass
@@ -142,7 +142,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
     if vars(_opts).get("quiet"):
         return
     if msg is None:
-        _print_impl(end=end)
+        _print_impl(end=end, file=file)
     else:
         # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
         # > A '\n' character is written at the end, unless the print statement
@@ -157,7 +157,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
         # instruction is omitted. By manually adding the newline to the string,
         # there is only a single PRINT_ITEM instruction which is executed
         # atomically, but still prints the newline.
-        _print_impl(str(msg), end=end)
+        _print_impl(str(msg), end=end, file=file)
 
 
 def logv(msg: Optional[str] = None, end="\n") -> None:
