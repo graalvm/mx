@@ -371,7 +371,7 @@ from .build.report import BuildReport
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
 from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn, \
-    _check_stdout_encoding, getLogTask
+    _check_stdout_encoding, getLogTask, setLogTask
 from .support.options import _opts, _opts_parsed_deferrables
 from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
@@ -13421,7 +13421,8 @@ def run(
         else:
             start_new_session, creationflags = (False, 0)
 
-        def redirect(pid, stream, f):
+        def redirect(pid, stream, f, logTask):
+            setLogTask(logTask)  # inherit log task from parent thread
             if isinstance(f, PrefixCapture):
                 for line in iter(stream.readline, b''):
                     f(pid, line.decode())
@@ -13450,12 +13451,12 @@ def run(
 
         joiners = []
         if callable(out):
-            t = Thread(target=redirect, args=(p.pid, p.stdout, out))
+            t = Thread(target=redirect, args=(p.pid, p.stdout, out, getLogTask()))
             # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if callable(err):
-            t = Thread(target=redirect, args=(p.pid, p.stderr, err))
+            t = Thread(target=redirect, args=(p.pid, p.stderr, err, getLogTask()))
             # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
