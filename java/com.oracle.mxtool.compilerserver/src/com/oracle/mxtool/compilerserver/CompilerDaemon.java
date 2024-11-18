@@ -25,6 +25,7 @@
 package com.oracle.mxtool.compilerserver;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
@@ -152,14 +153,7 @@ public abstract class CompilerDaemon {
                     String requestOrigin = connectionSocket.getInetAddress().getHostAddress();
                     String prefix = String.format("[%s:%s] ", Instant.now(), requestOrigin);
                     if (request == null || request.equals(REQUEST_HEADER_SHUTDOWN)) {
-                        logf("%sShutting down%n", prefix);
-                        running = false;
-                        while (threadPool.getActiveCount() > 1) {
-                            threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
-                        }
-                        serverSocket.close();
-                        // Just to be sure...
-                        System.exit(0);
+                        shutdownAndExit(prefix);
                     } else if (request.startsWith(REQUEST_HEADER_COMPILE)) {
                         String commandLine = request.substring(REQUEST_HEADER_COMPILE.length());
                         String[] args = commandLine.split("\u0000");
@@ -188,9 +182,27 @@ public abstract class CompilerDaemon {
                     input.close();
                     connectionSocket.close();
                 }
+            } catch (SocketException se) {
+                // Lost connection to mx
+                shutdownAndExit("");
             } catch (Exception ioe) {
                 ioe.printStackTrace();
             }
+        }
+
+        private void shutdownAndExit(String prefix) {
+            logf("%sShutting down%n", prefix);
+            running = false;
+            try {
+                while (threadPool.getActiveCount() > 1) {
+                    threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
+                }
+                serverSocket.close();
+            } catch (InterruptedException | IOException e) {
+                e.printStackTrace();
+            }
+            // Just to be sure...
+            System.exit(0);
         }
     }
 }

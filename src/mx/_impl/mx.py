@@ -18224,7 +18224,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.35.1")  # [GR-60117] Enable build support for JEP 493 enabled base JDKs
+version = VersionSpec("7.35.2")  # [GR-59878] Exit CompilerDaemon when a SocketException is received
 
 _mx_start_datetime = datetime.utcnow()
 
