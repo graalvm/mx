@@ -849,7 +849,9 @@ environment variables:
         # TODO GR-49766 completely remove this line and usages of `mx_tests`
         # self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
-        self.add_argument('--jmods-dir', action='store', help='path to built jmods (default JAVA_HOME/jmods)', metavar='<path>')
+        self.add_argument('--jmods-dir', action='store', help="path to directory containing jmods which are added to --module-path when compiling "
+                                "module-info.java for a distribution's module. The default is JAVA_HOME/jmods. Specify NO_JMODS to indicate "
+                                "JAVA_HOME is a JEP 493-enabled JDK (i.e. has no jmods).", metavar='<path>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars to be used instead of default versions')
@@ -18222,7 +18224,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.35.0")  # [GR-59726] Fix use of internal xml function changed in Python 3.13+
+version = VersionSpec("7.35.1")  # [GR-60117] Enable build support for JEP 493 enabled base JDKs
 
 _mx_start_datetime = datetime.utcnow()
 

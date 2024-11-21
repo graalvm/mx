@@ -1085,14 +1085,18 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     # The --system=none and --limit-modules options are used to support distribution defined modules
                     # that override non-upgradeable modules in the source JDK (e.g. org.graalvm.sdk is part of a
                     # GraalVM JDK). This means --module-path needs to contain the jmods for the JDK modules.
-                    javac_args.append('--system=none')
+                    use_jmods = not (mx.get_opts().jmods_dir and mx.get_opts().jmods_dir == 'NO_JMODS')
+                    if use_jmods:
+                        javac_args.append('--system=none')
                     if requires_clean:
                         javac_args.append('--limit-modules=' + ','.join(requires_clean.keys()))
                     jdk_jmods = (mx.get_opts().jmods_dir or join(jdk.home, 'jmods'))
-                    if not exists(jdk_jmods):
+                    if use_jmods and not exists(jdk_jmods):
                         mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
-                    modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
-                    javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
+                    if use_jmods:
+                        modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
+                    if modulepath_jars:
+                        javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
 
                     if concealedRequires:
                         for module, packages in concealedRequires.items():
@@ -1105,6 +1109,11 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     # modules in qualified exports (not sure how to avoid these since we build modules
                     # separately).
                     javac_args.append('-Xlint:-options,-module')
+
+                    # Apply module-info compilation participants
+                    for part in dist.module_info_compilation_participants:
+                        javac_args.extend(part(jmd))
+
                     javac_args.append(safe_path_arg(module_info_java))
 
                     # Convert javac args to @args file

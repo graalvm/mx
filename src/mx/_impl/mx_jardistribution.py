@@ -98,6 +98,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         else:
             self._sources_path = '<uninitialized>'
 
+        self.module_info_compilation_participants = []
         self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = mx.JavaCompliance(javaCompliance) if javaCompliance else None
@@ -284,6 +285,17 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
     def origin(self):
         return mx.Dependency.origin(self)
+
+    def add_module_info_compilation_participant(self, participant):
+        """
+        Adds a callable that can add javac args when compiling ``module-info.java``
+        for the Java module derived from this distribution.
+
+        :param participant: a callable that takes a JavaModuleDescriptor (describing this
+                            distribution's Java module) and returns a list of
+                            args to be added to javac when compiling ``module-info.java``
+        """
+        self.module_info_compilation_participants.append(participant)
 
     def classpath_repr(self, resolve=True):
         if resolve and not exists(self.path):
