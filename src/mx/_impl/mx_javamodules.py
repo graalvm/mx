@@ -521,6 +521,9 @@ def _check_uses(uses, context):
             mx.abort(f"specification of service {use} must use non-binary name of nested class (i.e. replace '$' with '.')", context=context)
     return uses
 
+def _jlink_libraries():
+    return not (mx.get_opts().no_jlinking or mx.env_var_to_bool('NO_JLINKING'))
+
 def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name=None):
     """
     Creates a Java module from a distribution.
@@ -1085,14 +1088,23 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     # The --system=none and --limit-modules options are used to support distribution defined modules
                     # that override non-upgradeable modules in the source JDK (e.g. org.graalvm.sdk is part of a
                     # GraalVM JDK). This means --module-path needs to contain the jmods for the JDK modules.
-                    javac_args.append('--system=none')
+                    if _jlink_libraries():
+                        javac_args.append('--system=none')
                     if requires_clean:
                         javac_args.append('--limit-modules=' + ','.join(requires_clean.keys()))
                     jdk_jmods = (mx.get_opts().jmods_dir or join(jdk.home, 'jmods'))
-                    if not exists(jdk_jmods):
+                    if _jlink_libraries() and not exists(jdk_jmods):
                         mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
-                    modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
-                    javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
+                    if _jlink_libraries():
+                        modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
+                    if modulepath_jars:
+                        javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
+                    if not _jlink_libraries():
+                        graal_jar = [m.jarpath for m in modulepath if m.name == "jdk.graal.compiler"]
+                    # Upgrade module path for compilation of module-info.java files when not jlinking the JDK
+                    # This is a no-op for regular GraalVM JDK builds.
+                    if graal_jar:
+                        javac_args.append('--upgrade-module-path=' + safe_path_arg(os.pathsep.join(graal_jar)))
 
                     if concealedRequires:
                         for module, packages in concealedRequires.items():
