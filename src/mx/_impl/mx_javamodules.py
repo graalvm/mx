@@ -1097,12 +1097,12 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
                     if modulepath_jars:
                         javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
-                    if not use_jmods:
-                        graal_jar = [m.jarpath for m in modulepath if m.name == "jdk.graal.compiler"]
-                    # Upgrade module path for compilation of module-info.java files when not using jmods from the JDK
-                    # This is a no-op for regular GraalVM JDK builds.
-                    if graal_jar:
-                        javac_args.append('--upgrade-module-path=' + safe_path_arg(os.pathsep.join(graal_jar)))
+                    # Let distributions which need javac customizations do their work.
+                    if dist.extra_javac_processors:
+                        for proc in dist.extra_javac_processors:
+                            extra_args = proc.__process__(jmd)
+                            for arg in extra_args:
+                                javac_args.append(arg)
 
                     if concealedRequires:
                         for module, packages in concealedRequires.items():
