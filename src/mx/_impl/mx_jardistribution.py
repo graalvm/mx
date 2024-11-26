@@ -98,7 +98,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         else:
             self._sources_path = '<uninitialized>'
 
-        self.extra_javac_processors = []
+        self.module_info_compilation_participants = []
         self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = mx.JavaCompliance(javaCompliance) if javaCompliance else None
@@ -286,17 +286,16 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def origin(self):
         return mx.Dependency.origin(self)
 
-    def set_extra_javac_processor(self, processor):
+    def add_module_info_compilation_participant(self, participant):
         """
-        Adds an extra javac arguments processor when compiling this JARDistribution
+        Adds a callable that can add javac args when compiling ``module-info.java``
+        for the Java module derived from this distribution.
 
-        :param processor: a processor which must define method __process__ taking the
-                          following 1 argument:
-                          :param module_desc: The JavaModuleDescriptor for this jar
-                                              distribution.
-                          :rtype: A list of strings suitable to be passed to javac
+        :param participant: a callable that takes a JavaModuleDescriptor (describing this
+                            distribution's Java module) and returns a list of
+                            args to be added to javac when compiling ``module-info.java``
         """
-        self.extra_javac_processors.append(processor)
+        self.module_info_compilation_participants.append(participant)
 
     def classpath_repr(self, resolve=True):
         if resolve and not exists(self.path):
