@@ -591,6 +591,9 @@ def _run_mx_suite_tests():
     bench_rules_tests.tests()
     java_argument_file_test.tests()
 
+    from tests import code_owners_tests
+    code_owners_tests.tests()
+
     from tests import test_maven_projects
     test_maven_projects.tests()
 
