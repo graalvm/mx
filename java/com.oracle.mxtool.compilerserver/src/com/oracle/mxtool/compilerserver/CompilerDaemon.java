@@ -25,6 +25,7 @@
 package com.oracle.mxtool.compilerserver;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
@@ -102,9 +103,13 @@ public abstract class CompilerDaemon {
                 if (running) {
                     e.printStackTrace();
                 } else {
-                    // Socket was closed
+                    // we're shutting down
                 }
             }
+        }
+        threadPool.shutdown();
+        while (!threadPool.isTerminated()) {
+            threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -152,14 +157,7 @@ public abstract class CompilerDaemon {
                     String requestOrigin = connectionSocket.getInetAddress().getHostAddress();
                     String prefix = String.format("[%s:%s] ", Instant.now(), requestOrigin);
                     if (request == null || request.equals(REQUEST_HEADER_SHUTDOWN)) {
-                        logf("%sShutting down%n", prefix);
-                        running = false;
-                        while (threadPool.getActiveCount() > 1) {
-                            threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
-                        }
-                        serverSocket.close();
-                        // Just to be sure...
-                        System.exit(0);
+                        shutdown(prefix);
                     } else if (request.startsWith(REQUEST_HEADER_COMPILE)) {
                         String commandLine = request.substring(REQUEST_HEADER_COMPILE.length());
                         String[] args = commandLine.split("\u0000");
@@ -177,8 +175,7 @@ public abstract class CompilerDaemon {
                         int unrecognizedRequestCount = unrecognizedRequests.incrementAndGet();
                         System.err.printf("%sUnrecognized request %d (len=%d): \"%s\"%n", prefix, unrecognizedRequestCount, request.length(), printable(request));
                         if (unrecognizedRequestCount > MAX_UNRECOGNIZED_REQUESTS) {
-                            System.err.printf("%sShutting down after receiving %d unrecognized requests%n", prefix, unrecognizedRequestCount);
-                            System.exit(0);
+                            shutdown(String.format("%sReceived %d unrecognized requests: ", prefix, unrecognizedRequestCount));
                         }
                         output.write("-1\n");
                     }
@@ -188,9 +185,22 @@ public abstract class CompilerDaemon {
                     input.close();
                     connectionSocket.close();
                 }
+            } catch (SocketException se) {
+                // Lost connection to mx
+                shutdown("");
             } catch (Exception ioe) {
                 ioe.printStackTrace();
             }
+        }
+    }
+
+    private void shutdown(String prefix) {
+        logf("%sShutting down%n", prefix);
+        running = false;
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }
