@@ -850,7 +850,9 @@ environment variables:
         # TODO GR-49766 completely remove this line and usages of `mx_tests`
         # self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
-        self.add_argument('--jmods-dir', action='store', help='path to built jmods (default JAVA_HOME/jmods)', metavar='<path>')
+        self.add_argument('--jmods-dir', action='store', help="path to directory containing jmods which are added to --module-path when compiling "
+                                "module-info.java for a distribution's module. The default is JAVA_HOME/jmods. Specify NO_JMODS to indicate "
+                                "JAVA_HOME is a JEP 493-enabled JDK (i.e. has no jmods).", metavar='<path>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars to be used instead of default versions')
@@ -11812,6 +11814,13 @@ def get_dynamic_imports():
 
 ### ~~~~~~~~~~~~~ XML
 
+def _write_data(writer, data):
+    "Writes datachars to writer."
+    if data:
+        data = data.replace("&", "&amp;").replace("<", "&lt;"). \
+                    replace("\"", "&quot;").replace(">", "&gt;")
+        writer.write(data)
+
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
         writer.write(indent + "<" + self.tagName)
@@ -11821,7 +11830,7 @@ class XMLElement(xml.dom.minidom.Element):
 
         for a_name in a_names:
             writer.write(f" {a_name}=\"")
-            xml.dom.minidom._write_data(writer, attrs[a_name].value)
+            _write_data(writer, attrs[a_name].value)
             writer.write("\"")
         if self.childNodes:
             if not self.ownerDocument.padTextNodeWithoutSiblings and len(self.childNodes) == 1 and isinstance(self.childNodes[0], xml.dom.minidom.Text):
@@ -18360,7 +18369,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.34.2")  # [GR-59700] set JVMCI_VERSION_CHECK to ignore when calling a fetch-jdk provider
+version = VersionSpec("7.35.3")  # GR-11350
 
 _mx_start_datetime = datetime.utcnow()
 
