@@ -14495,7 +14495,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
         if get_opts().verbose:
             return "full"
         elif is_continuous_integration():
-            return "oneline"
+            return "important"
         elif not sys.stdout.closed and sys.stdout.isatty():
             # Note that this check is different from mx.is_interactive().
             # mx.is_interactive checks whether `stdin` is a tty, i.e. whether we can interactively ask questions.
