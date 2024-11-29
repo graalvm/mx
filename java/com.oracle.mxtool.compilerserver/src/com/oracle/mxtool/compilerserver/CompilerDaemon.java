@@ -28,6 +28,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -81,8 +82,8 @@ public abstract class CompilerDaemon {
             i++;
         }
 
-        // create socket
-        serverSocket = new ServerSocket(0);
+        // create socket bound to localhost
+        serverSocket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress());
         int port = serverSocket.getLocalPort();
 
         // Need at least 2 threads since we dedicate one to the control
