@@ -28,6 +28,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -45,6 +46,7 @@ public abstract class CompilerDaemon {
     // These values are used in mx.py so keep in sync.
     public static final String REQUEST_HEADER_COMPILE = "MX DAEMON/COMPILE: ";
     public static final String REQUEST_HEADER_SHUTDOWN = "MX DAEMON/SHUTDOWN";
+    public static final String RESPONSE_DONE = "MX DAEMON/DONE:";
 
     /**
      * The deamon will shut down after receiving this many requests with an unrecognized header.
@@ -122,7 +124,7 @@ public abstract class CompilerDaemon {
     abstract Compiler createCompiler();
 
     interface Compiler {
-        int compile(String[] args) throws Exception;
+        int compile(String[] args, PrintWriter out) throws Exception;
     }
 
     public class Connection implements Runnable {
@@ -164,21 +166,27 @@ public abstract class CompilerDaemon {
                         String[] args = commandLine.split("\u0000");
                         logf("%sCompiling %s%n", prefix, String.join(" ", args));
 
-                        int result = compiler.compile(args);
-                        if (result != 0 && args.length != 0 && args[0].startsWith("GET / HTTP")) {
-                            // GR-52712
-                            System.err.printf("%sFailing compilation received on %s%n", prefix, connectionSocket);
+                        int result;
+                        PrintWriter log = new PrintWriter(output);
+                        try {
+                            result = compiler.compile(args, log);
+                            if (result != 0 && args.length != 0 && args[0].startsWith("GET / HTTP")) {
+                                // GR-52712
+                                System.err.printf("%sFailing compilation received on %s%n", prefix, connectionSocket);
+                            }
+                        } finally {
+                            log.flush();
                         }
                         logf("%sResult = %d%n", prefix, result);
 
-                        output.write(result + "\n");
+                        output.write(RESPONSE_DONE + result + "\n");
                     } else {
                         int unrecognizedRequestCount = unrecognizedRequests.incrementAndGet();
                         System.err.printf("%sUnrecognized request %d (len=%d): \"%s\"%n", prefix, unrecognizedRequestCount, request.length(), printable(request));
                         if (unrecognizedRequestCount > MAX_UNRECOGNIZED_REQUESTS) {
                             shutdown(String.format("%sReceived %d unrecognized requests: ", prefix, unrecognizedRequestCount));
                         }
-                        output.write("-1\n");
+                        output.write(RESPONSE_DONE + "-1\n");
                     }
                 } finally {
                     // close IO streams, then socket

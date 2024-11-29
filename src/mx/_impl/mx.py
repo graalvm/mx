@@ -365,12 +365,13 @@ from copy import copy, deepcopy
 import posixpath
 
 from .build.suite import Dependency, SuiteConstituent
-from .build.tasks import BuildTask, NoOpTask
+from .build.tasks import BuildTask, NoOpTask, TaskAbortException, TaskSequence
 from .build.daemon import Daemon
+from .build.report import BuildReport
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
 from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn, \
-    _check_stdout_encoding
+    _check_stdout_encoding, getLogTask, setLogTask
 from .support.options import _opts, _opts_parsed_deferrables
 from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
@@ -4150,6 +4151,9 @@ def clean(args, parser=None):
     parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
     parser.add_argument('--aggressive', action='store_true', help='clear all suite output')
     parser.add_argument('--disk-usage', action='store_true', help='compute and show disk usage before and after')
+    parser.add_argument('--keep-logs', action='store_true',
+                        help='keep old build logs (default: delete them unless in a CI job)',
+                        default=is_continuous_integration())
 
     args = parser.parse_args(args)
 
@@ -4157,6 +4161,16 @@ def clean(args, parser=None):
     disk_usage = None
     if args.disk_usage:
         disk_usage = {s:mx_gc._get_size_in_bytes(root) for s, root in suite_roots.items()}
+
+    if not args.keep_logs:
+        # Delete old build logs unless specifically told to keep them.
+        # Off the CI, on local dev machines, we don't want build logs accumulating infinitely.
+        # On the CI, this defaults to "keep the logs". We're assuming that `mxbuild` directories on the CI
+        # are ephemeral anyway, and we never want to lose logs when running complex jobs on the CI that
+        # might contain `mx clean` in the middle.
+        for root in suite_roots.values():
+            for buildlog in glob.iglob(os.path.join(root, 'buildlog-*.html')):
+                os.unlink(buildlog)
 
     def _collect_clean_dependencies():
         if args.all:
@@ -4247,6 +4261,9 @@ def _attempt_download(url, path, jarEntryName=None):
             bytesRead = 0
             chunkSize = 8192
 
+            if progress:
+                logTask = getLogTask()
+
             with open(tmp, 'wb') as fp:
                 chunk = conn.read(chunkSize)
                 while chunk:
@@ -4254,15 +4271,21 @@ def _attempt_download(url, path, jarEntryName=None):
                     fp.write(chunk)
                     if length == -1:
                         if progress:
-                            sys.stdout.write(f'\r {bytesRead} bytes')
+                            if logTask:
+                                logTask.log(f'{bytesRead} bytes', replace=True)
+                            else:
+                                sys.stdout.write(f'\r {bytesRead} bytes')
                     else:
                         if progress:
-                            sys.stdout.write(f'\r {bytesRead} bytes ({bytesRead * 100 / length:.0f}%)')
+                            if logTask:
+                                logTask.log(f'{bytesRead} bytes ({bytesRead * 100 / length:.0f}%)', replace=True)
+                            else:
+                                sys.stdout.write(f'\r {bytesRead} bytes ({bytesRead * 100 / length:.0f}%)')
                         if bytesRead == length:
                             break
                     chunk = conn.read(chunkSize)
 
-            if progress:
+            if progress and not logTask:
                 sys.stdout.write('\n')
 
             if length not in (-1, bytesRead):
@@ -7778,8 +7801,10 @@ class CompilerDaemon(Daemon):
     # See:
     #   com.oracle.mxtool.compilerserver.CompilerDaemon.REQUEST_HEADER_COMPILE
     #   com.oracle.mxtool.compilerserver.CompilerDaemon.REQUEST_HEADER_SHUTDOWN
+    #   com.oracle.mxtool.compilerserver.CompilerDaemon.RESPONSE_DONE
     header_compile = "MX DAEMON/COMPILE: "
     header_shutdown = "MX DAEMON/SHUTDOWN"
+    response_done = "MX DAEMON/DONE:"
 
     def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -7788,13 +7813,17 @@ class CompilerDaemon(Daemon):
         commandLine = u'\x00'.join(compilerArgs)
         s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
         f = s.makefile()
-        response = str(f.readline())
-        if response == '':
-            # Compiler server process probably crashed
-            log('[Compiler daemon process appears to have crashed. ]')
-            retcode = -1
-        else:
-            retcode = int(response)
+        while True:
+            response = str(f.readline())
+            if response.startswith(CompilerDaemon.response_done):
+                retcode = int(response[len(CompilerDaemon.response_done):])
+                break
+            if response == "":
+                # Compiler server process probably crashed
+                log('[Compiler daemon process appears to have crashed. ]')
+                retcode = -1
+                break
+            log(response)
         s.close()
         if retcode:
             detailed_retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))
@@ -8741,6 +8770,7 @@ class LibraryDownloadTask(BuildTask):
         pass
 
     def logSkip(self, reason=None):
+        self.status = "skipped"
         pass
 
     def needsBuild(self, newestInput):
@@ -9273,7 +9303,7 @@ class LinesOutputCapture:
         self.lines = []
 
     def __call__(self, data):
-        self.lines.append(data.rstrip())
+        self.lines.extend(data.rstrip().split(os.linesep))
 
     def __repr__(self):
         return os.linesep.join(self.lines)
@@ -13400,7 +13430,8 @@ def run(
         else:
             start_new_session, creationflags = (False, 0)
 
-        def redirect(pid, stream, f):
+        def redirect(pid, stream, f, logTask):
+            setLogTask(logTask)  # inherit log task from parent thread
             if isinstance(f, PrefixCapture):
                 for line in iter(stream.readline, b''):
                     f(pid, line.decode())
@@ -13408,6 +13439,13 @@ def run(
                 for line in iter(stream.readline, b''):
                     f(line.decode())
             stream.close()
+
+        t = getLogTask()
+        if t is not None:
+            if out is None:
+                out = t.log
+            if err is None:
+                err = t.log
 
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
@@ -13417,14 +13455,17 @@ def run(
 
         p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, start_new_session=start_new_session, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs)
         sub = _addSubprocess(p, args)
+        if t is not None:
+            t.addSubproc(p)
+
         joiners = []
         if callable(out):
-            t = Thread(target=redirect, args=(p.pid, p.stdout, out))
+            t = Thread(target=redirect, args=(p.pid, p.stdout, out, getLogTask()))
             # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if callable(err):
-            t = Thread(target=redirect, args=(p.pid, p.stderr, err))
+            t = Thread(target=redirect, args=(p.pid, p.stderr, err, getLogTask()))
             # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
@@ -14389,6 +14430,11 @@ def resolve_targets(names):
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
+    with BuildReport(cmd_args) as build_report:
+        _build_with_report(cmd_args, build_report=build_report, parser=parser)
+
+def _build_with_report(cmd_args, build_report, parser=None):
+    """builds the artifacts of one or more dependencies"""
     global _gmake_cmd
 
     suppliedParser = parser is not None
@@ -14442,6 +14488,26 @@ def build(cmd_args, parser=None):
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
     parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored.\nIf the extension is ps, pdf, svg, png, git, or jpg, it will be rendered.', metavar='<path>', default=None)
 
+    def get_default_build_logs():
+        ret = get_env('MX_BUILD_LOGS')
+        if ret is not None:
+            return ret
+        if get_opts().verbose:
+            return "full"
+        elif is_continuous_integration():
+            return "important"
+        elif not sys.stdout.closed and sys.stdout.isatty():
+            # Note that this check is different from mx.is_interactive().
+            # mx.is_interactive checks whether `stdin` is a tty, i.e. whether we can interactively ask questions.
+            # Here we check whether `stdout` is a tty, i.e. whether we can update a single line with \r.
+            return "interactive"
+        else:
+            return "oneline"
+    parser.add_argument('--build-logs', action='store', choices=['silent', 'oneline', 'interactive', 'important', 'full'], default=get_default_build_logs(),
+                        help='what to do with log output of the individual build tasks.\n' +
+                        'One of silent (only print on error), oneline (print one line per task), interactive (print an interactive status line), important (print most important build output) or full (print all output).\n' +
+                        'Can also be set with the MX_BUILD_LOGS env variable.')
+
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
     compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). '
@@ -14494,23 +14560,30 @@ def build(cmd_args, parser=None):
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
         log('JAVA_HOME: ' + _java_home())
+        build_report.add_info('JAVA_HOME', _java_home())
 
         if _extra_java_homes():
             log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(_extra_java_homes()))
+            build_report.add_info('EXTRA_JAVA_HOMES', _extra_java_homes())
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
+            _reasons = []
+            for _, reason in _removedDeps.items():
+                if isinstance(reason, tuple):
+                    reason, _ = reason
+                _reasons.append(reason)
+            build_report.add_info("unsatisfied dependencies were removed from build", _reasons)
             if _opts.verbose:
                 log('Dependencies removed from build:')
-                for _, reason in _removedDeps.items():
-                    if isinstance(reason, tuple):
-                        reason, _ = reason
+                for reason in _reasons:
                     log(f' {reason}')
             else:
                 log(f'{len(_removedDeps)} unsatisfied dependencies were removed from build (use -v to list them)')
 
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
         if removed:
+            build_report.add_info("non-default dependencies were removed from build", removed)
             if _opts.verbose:
                 log('Non-default dependencies removed from build (use mx build --all to build them):')
                 for d in removed:
@@ -14560,6 +14633,8 @@ def build(cmd_args, parser=None):
         edges.append((src, dst, edge.kind))
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
+
+    build_report.set_tasks(sortedTasks)
 
     if args.graph_file:
         ext = get_file_extension(args.graph_file)
@@ -14612,17 +14687,6 @@ def build(cmd_args, parser=None):
     daemons = {}
     if args.parallelize and onlyDeps is None:
         _before_fork()
-        def joinTasks(tasks):
-            failed = []
-            for t in tasks:
-                t.proc.join()
-                _removeSubprocess(t.sub)
-                if t.proc.exitcode != 0:
-                    failed.append(t)
-                # Release the pipe file descriptors ASAP (only available on Python 3.7+)
-                if hasattr(t.proc, 'close'):
-                    t.proc.close()
-            return failed
 
         def checkTasks(tasks):
             active = []
@@ -14635,7 +14699,7 @@ def build(cmd_args, parser=None):
                     t.cleanSharedMemoryState()
                     t._finished = True
                     t._end_time = time.time()
-                    if t.proc.exitcode != 0:
+                    if t.exitcode != 0:
                         failed.append(t)
                     _removeSubprocess(t.sub)
                     # Release the pipe file descriptors ASAP (only available on Python 3.7+)
@@ -14665,6 +14729,7 @@ def build(cmd_args, parser=None):
         def anyJavaTask(tasks):
             return any(isinstance(task, (JavaBuildTask, JARArchiveTask)) for task in tasks)
 
+        totalTasks = len(sortedTasks)
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
@@ -14675,11 +14740,76 @@ def build(cmd_args, parser=None):
                 cpus += t.parallelism
             return cpus
 
+        progressIdx = 0
+        curProgressTask = None
+        isInteractive = args.build_logs == "interactive"
+        subTaskIdx = 0
+        def showProgress():
+            if not isInteractive or totalTasks < 2:
+                return
+            running = len(active)
+            pending = len(worklist)
+            err = len(failed)
+            done = totalTasks - pending - running - err
+            statusline = ""
+            if err > 0:
+                statusline += f"[{colorize(str(err), color='red')}/"
+            else:
+                statusline += "["
+            statusline += f"{colorize(str(running), color='blue')}/{colorize(str(done), color='green')}/{totalTasks}]"
+            if running > 0:
+                nonlocal progressIdx, curProgressTask, subTaskIdx
+                if curProgressTask not in active:
+                    curProgressTask = active[0]
+                    subTaskIdx = 0
+                elif progressIdx % 5 == 0:
+                    switchToNext = True
+                    if isinstance(curProgressTask, TaskSequence):
+                        subTaskIdx += 1
+                        if subTaskIdx >= len(curProgressTask.subtasks):
+                            subTaskIdx = 0
+                        else:
+                            switchToNext = False
+                    if switchToNext:
+                        idx = active.index(curProgressTask)
+                        curProgressTask = active[(idx + 1) % running]
+                progressIdx += 1
+                t = curProgressTask
+                if isinstance(t, TaskSequence):
+                    t = t.subtasks[subTaskIdx]
+                statusline += f" {t}"
+                lastLine = t.getLastLogLine()
+                if lastLine:
+                    statusline += " | " + lastLine
+            columns = shutil.get_terminal_size(fallback=(120,50)).columns
+            aligned = statusline + columns * " "
+            aligned = aligned[0:columns]
+            sys.stdout.write(aligned + "\r")
+            if done == totalTasks:
+                sys.stdout.write(statusline + " done\n")
+            elif running == 0 and err > 0:
+                sys.stdout.write(statusline + " failed\n")
+
+        def joinTasks():
+            for t in active[:]:
+                showProgress()
+                t.proc.join(timeout=0.2 if isInteractive else None)
+                if t.proc.exitcode is None:
+                    continue
+                active.remove(t)
+                _removeSubprocess(t.sub)
+                if t.proc.exitcode != 0:
+                    failed.append(t)
+                # Release the pipe file descriptors ASAP (only available on Python 3.7+)
+                if hasattr(t.proc, 'close'):
+                    t.proc.close()
+
         while len(worklist) != 0:
             while True:
                 active, failed = checkTasks(active)
                 if len(failed) != 0:
                     break
+                showProgress()
                 if _activeCpus(active) >= cpus:
                     # Sleep for 0.2 second
                     time.sleep(0.2)
@@ -14693,7 +14823,13 @@ def build(cmd_args, parser=None):
                 if not isinstance(task.proc, Thread):
                     # Clear sub-process list cloned from parent process
                     del _currentSubprocesses[:]
-                task.execute()
+                task.enter()
+                try:
+                    task.execute()
+                except TaskAbortException:
+                    pass
+                finally:
+                    task.leave()
                 task.pushSharedMemoryState()
 
             def depsDone(task):
@@ -14732,7 +14868,14 @@ def build(cmd_args, parser=None):
 
             worklist = sortWorklist(worklist)
 
-        failed += joinTasks(active)
+        if len(failed) > 0:
+            # cancel pending build subprocesses on failure
+            for t in active:
+                t.cancelSubprocs()
+
+        while len(active) > 0:
+            joinTasks()
+        showProgress()
 
         def dump_task_stats(f):
             """
@@ -14761,6 +14904,8 @@ def build(cmd_args, parser=None):
         if len(failed):
             for t in failed:
                 log_error(f'{t} failed')
+                for l in t._log.lines:
+                    log(l)
             for daemon in daemons.values():
                 daemon.shutdown()
             abort(f'{len(failed)} build tasks failed')
@@ -18224,7 +18369,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.35.3")  # GR-11350
+version = VersionSpec("7.36.0")  # GR-58613 improve mx build output
 
 _mx_start_datetime = datetime.utcnow()
 

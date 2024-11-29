@@ -37,6 +37,8 @@ __all__ = [
     "nyi",
     "colorize",
     "warn",
+    "getLogTask",
+    "setLogTask",
 ]
 
 import sys, signal, threading
@@ -56,6 +58,18 @@ _ansi_color_table = {
     "magenta": "35",
     "cyan": "36",
 }
+
+_logTask = threading.local()
+
+
+def setLogTask(task):
+    _logTask.task = task
+
+
+def getLogTask():
+    if not hasattr(_logTask, "task"):
+        return None
+    return _logTask.task
 
 
 def _check_stdout_encoding():
@@ -115,16 +129,20 @@ def _print_impl(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.s
         )
 
 
-def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
+def log(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout, important=True):
     """
     Write a message to the console.
     All script output goes through this method thus allowing a subclass
     to redirect it.
     """
+    task = getLogTask()
+    if task is not None:
+        task.log(msg, important=important)
+        return
     if vars(_opts).get("quiet"):
         return
     if msg is None:
-        _print_impl(end=end)
+        _print_impl(end=end, file=file)
     else:
         # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
         # > A '\n' character is written at the end, unless the print statement
@@ -139,7 +157,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n"):
         # instruction is omitted. By manually adding the newline to the string,
         # there is only a single PRINT_ITEM instruction which is executed
         # atomically, but still prints the newline.
-        _print_impl(str(msg), end=end)
+        _print_impl(str(msg), end=end, file=file)
 
 
 def logv(msg: Optional[str] = None, end="\n") -> None:
@@ -222,7 +240,12 @@ def warn(msg: str, context=None) -> None:
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        _print_impl(colorize("WARNING: " + msg, color="magenta", bright=True, stream=sys.stderr), file=sys.stderr)
+        msg = colorize("WARNING: " + msg, color="magenta", bright=True, stream=sys.stderr)
+        task = getLogTask()
+        if task is None:
+            _print_impl(msg, file=sys.stderr)
+        else:
+            task.log(msg)
 
 
 def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoReturn:
@@ -273,8 +296,15 @@ def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoR
     else:
         error_message = codeOrMessage
         error_code = 1
-    log_error(error_message)
-    raise SystemExit(error_code)
+
+    t = getLogTask()
+    if t is not None:
+        if error_message:
+            t.log(error_message)
+        t.abort(error_code)
+    else:
+        log_error(error_message)
+        raise SystemExit(error_code)
 
 
 def abort_or_warn(message: str, should_abort: bool, context=None) -> Optional[NoReturn]:

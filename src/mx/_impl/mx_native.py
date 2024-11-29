@@ -389,18 +389,22 @@ class Ninja(object):
             cmd += ['-v']
         cmd += args
 
-        out = kwargs.get('out', mx.OutputCapture())
-        err = kwargs.get('err', subprocess.STDOUT)
+        out = kwargs.get('out')
+        err = kwargs.get('err')
         verbose = mx.get_opts().verbose or mx_verbose_env
         if verbose:
             if callable(out) and '-n' not in args:
                 out = mx.TeeOutputCapture(out)
             if callable(err):
                 err = mx.TeeOutputCapture(err)
+        if out is None:
+            out = lambda msg: mx.log(msg, important=False)
+        if err is None:
+            err = lambda msg: mx.log(msg, important=True)
 
         rc = mx.run(cmd, nonZeroIsFatal=False, out=out, err=err, cwd=self.build_dir)
         if rc:
-            mx.abort(rc if verbose else (out, err))
+            mx.abort(rc)
 
 
 class NativeDependency(mx.Dependency):
