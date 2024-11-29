@@ -14503,9 +14503,9 @@ def _build_with_report(cmd_args, build_report, parser=None):
             return "interactive"
         else:
             return "oneline"
-    parser.add_argument('--build-logs', action='store', choices=['silent', 'oneline', 'interactive', 'full'], default=get_default_build_logs(),
+    parser.add_argument('--build-logs', action='store', choices=['silent', 'oneline', 'interactive', 'important', 'full'], default=get_default_build_logs(),
                         help='what to do with log output of the individual build tasks.\n' +
-                        'One of silent (only print on error), oneline (print one line per task), interactive (print an interactive status line) or full (print all output).\n' +
+                        'One of silent (only print on error), oneline (print one line per task), interactive (print an interactive status line), important (print most important build output) or full (print all output).\n' +
                         'Can also be set with the MX_BUILD_LOGS env variable.')
 
     compilerSelect = parser.add_mutually_exclusive_group()

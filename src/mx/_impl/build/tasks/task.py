@@ -68,7 +68,8 @@ class Task(object, metaclass=ABCMeta):
         self.proc = None
         self.subprocs = []
         self._log = mx.LinesOutputCapture()
-        self._echoLogs = not hasattr(args, 'build_logs') or args.build_logs == "full"
+        self._echoImportant = not hasattr(args, 'build_logs') or args.build_logs in ["important", "full"]
+        self._echoAll = hasattr(args, 'build_logs') and args.build_logs == "full"
         self._exitcode = 0
         self.status = None
         self.statusInfo = ""
@@ -97,18 +98,26 @@ class Task(object, metaclass=ABCMeta):
         self.status = "failed"
         raise TaskAbortException(code)
 
-    def log(self, msg, echo=False, log=True, replace=False):
+    def log(self, msg, echo=False, log=True, important=True, replace=False):
         """
-        Log output for this build task. `echo=True` forces the output to go to the terminal regardless
-        of the --build-logs setting. `log=False` can be used to only do output, without including it
-        in the log. `replace=True` replaces the last logged line. This is useful for status output, e.g.
-        download progress.
+        Log output for this build task.
+
+        Whether the output also goes to the console depends on the `--build-logs` option:
+        * In `silent`, `oneline` and `interactive` mode, only messages with `echo=True` are printed.
+        * In `full` mode, all messages are printed.
+        * In `important` mode, only messages with `important=True` are printed.
+
+        `log=False` can be used to only do output, without including it in the log. This is useful
+        in combination with `echo=True` to print a shorter summary of information that's already in
+        the log in a more detailed form.
+
+        `replace=True` replaces the last logged line. This is useful for status output, e.g. download progress.
         """
         if log:
             if replace:
                 del self._log.lines[-1]
             self._log(msg)
-        if echo or self._echoLogs:
+        if echo or self._echoAll or (important and self._echoImportant):
             with Task.consoleLock:
                 print(msg.rstrip())
 

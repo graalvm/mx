@@ -397,6 +397,10 @@ class Ninja(object):
                 out = mx.TeeOutputCapture(out)
             if callable(err):
                 err = mx.TeeOutputCapture(err)
+        if out is None:
+            out = lambda msg: mx.log(msg, important=False)
+        if err is None:
+            err = lambda msg: mx.log(msg, important=True)
 
         rc = mx.run(cmd, nonZeroIsFatal=False, out=out, err=err, cwd=self.build_dir)
         if rc:
