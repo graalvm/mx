@@ -25,6 +25,32 @@ any = "user1@example.com"
     )
 
     yield (
+        "windows line endings",
+        {
+            "rule": [
+                {
+                    "files": "*.win",
+                    "any": "win@example.com",
+                },
+            ],
+        },
+        """[[rule]]\r\nfiles = "*.win"\r\nany = "win@example.com"\r\n""",
+    )
+
+    yield (
+        "mac line endings",
+        {
+            "rule": [
+                {
+                    "files": "*.win",
+                    "any": "win@example.com",
+                },
+            ],
+        },
+        """[[rule]]\rfiles = "*.win"\rany = "win@example.com"\r""",
+    )
+
+    yield (
         "indentation is ignored",
         {
             "rule": [

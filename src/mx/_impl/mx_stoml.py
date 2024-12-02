@@ -64,16 +64,14 @@ class _Streamer:
             return self.content[self.pos + ahead]
         return ""
 
-    def peek_line(self):
-        line = ""
+    def peek_to_whitespace(self):
+        token = ""
         for i in range(len(self.content) - self.pos + 1):
             next_char = self.peek(i)
-            if next_char == "":
-                return line
-            if next_char == "\n":
-                return line
-            line = line + next_char
-        return line
+            if (next_char == "") or next_char.isspace():
+                break
+            token = token + next_char
+        return token
 
     def pull(self, expected=None):
         if expected is None:
@@ -116,19 +114,19 @@ class _StomlParser:
             streamer.pullSpaces()
             if streamer.peek() == "":
                 return
-            next_line = streamer.peek_line()
+            next_token = streamer.peek_to_whitespace()
 
-            is_table = _StomlParser.TABLE_MARKER.match(next_line)
-            is_array_of_tables = _StomlParser.ARRAY_OF_TABLES_MARKER.match(next_line)
+            is_table = _StomlParser.TABLE_MARKER.match(next_token)
+            is_array_of_tables = _StomlParser.ARRAY_OF_TABLES_MARKER.match(next_token)
 
             if is_array_of_tables:
-                streamer.pull(next_line)
+                streamer.pull(next_token)
                 table_name = is_array_of_tables.group("name")
                 if not table_name in tree:
                     tree[table_name] = []
                 tree[table_name].append(self.parse_table(streamer))
             elif is_table:
-                streamer.pull(next_line)
+                streamer.pull(next_token)
                 tree[is_table.group("name")] = self.parse_table(streamer)
             else:
                 streamer.terminate("Expected table or array of tables.")
@@ -136,8 +134,7 @@ class _StomlParser:
     def parse_table(self, streamer):
         result = {}
         while True:
-            while streamer.peek().isspace():
-                streamer.pull()
+            streamer.pullSpaces()
             if self.valid_identifier_character(streamer.peek()):
                 self.keyvalue(streamer, result)
             else:
@@ -154,7 +151,7 @@ class _StomlParser:
         elif streamer.peek() == "[":
             # list of strings
             value = self.list(streamer)
-        elif streamer.peek_line() in ["true", "false"]:
+        elif streamer.peek_to_whitespace() in ["true", "false"]:
             value = self.boolean(streamer)
         else:
             value = None
