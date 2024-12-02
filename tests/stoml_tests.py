@@ -5,6 +5,7 @@ import tempfile
 
 from mx_codeowners import stoml_parse_rules
 
+
 def test_parsing_generate_cases():
     yield (
         "smoke test",
@@ -13,14 +14,14 @@ def test_parsing_generate_cases():
                 {
                     "files": "*.md",
                     "any": "user1@example.com",
-                }
+                },
             ],
         },
         """
 [[rule]]
 files = "*.md"
 any = "user1@example.com"
-"""
+""",
     )
 
     yield (
@@ -37,7 +38,7 @@ any = "user1@example.com"
         [[rule]]
         files = "*.java"
         any = "user2@example.com"
-        """
+        """,
     )
 
     yield (
@@ -51,7 +52,7 @@ any = "user1@example.com"
             ],
             "properties": {
                 "overwrite_parent": True,
-            }
+            },
         },
         """
         [properties]
@@ -59,7 +60,7 @@ any = "user1@example.com"
         [[rule]]
         files = "*"
         any = "user@example.com"
-        """
+        """,
     )
 
     yield (
@@ -73,11 +74,11 @@ any = "user1@example.com"
                 {
                     "tres": "iii",
                     "cuatro": "iv",
-                }
+                },
             ],
             "two": {
                 "cinco": "v",
-            }
+            },
         },
         """
         [[one]]
@@ -90,7 +91,7 @@ any = "user1@example.com"
         [[one]]
         tres = "iii"
         cuatro = "iv"
-        """
+        """,
     )
 
 
