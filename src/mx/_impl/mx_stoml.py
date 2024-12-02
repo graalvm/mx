@@ -67,12 +67,12 @@ class _Streamer:
     def peek_line(self):
         line = ""
         for i in range(len(self.content) - self.pos + 1):
-            next = self.peek(i)
-            if next == "":
+            next_char = self.peek(i)
+            if next_char == "":
                 return line
-            if next == "\n":
+            if next_char == "\n":
                 return line
-            line = line + self.peek(i)
+            line = line + next_char
         return line
 
     def pull(self, expected=None):
