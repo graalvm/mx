@@ -26,6 +26,7 @@
 #
 
 from argparse import ArgumentParser
+import re
 
 def parse_fd(fd, path="<fd>"):
     content = fd.read().decode('utf-8')
@@ -63,6 +64,17 @@ class _Streamer:
             return self.content[self.pos + ahead]
         return ""
 
+    def peek_line(self):
+        line = ""
+        for i in range(len(self.content) - self.pos + 1):
+            next = self.peek(i)
+            if next == "":
+                return line
+            if next == "\n":
+                return line
+            line = line + self.peek(i)
+        return line
+
     def pull(self, expected=None):
         if expected is None:
             self.slurp(1)
@@ -90,33 +102,48 @@ class _Streamer:
             self.pos = self.pos + 1
 
 class _StomlParser:
-    def parse(self, path, content):
-        rules = []
-        streamer = _Streamer(path, content)
-        self.root(streamer, rules)
-        return rules
+    TABLE_MARKER = re.compile(r"^\[(?P<name>.*)]$")
+    ARRAY_OF_TABLES_MARKER = re.compile(r"^\[\[(?P<name>.*)]]$")
 
-    def root(self, streamer, rules):
+    def parse(self, path, content):
+        tree = {}
+        streamer = _Streamer(path, content)
+        self.root(streamer, tree)
+        return tree
+
+    def root(self, streamer, tree):
         while True:
-            while streamer.peek().isspace():
-                streamer.pull()
+            streamer.pullSpaces()
             if streamer.peek() == "":
                 return
-            streamer.pull("[[rule]]")
-            rule = self.rule(streamer)
-            rules.append(rule)
+            next_line = streamer.peek_line()
 
-    def rule(self, streamer):
-        rule = {}
+            is_table = _StomlParser.TABLE_MARKER.match(next_line)
+            is_array_of_tables = _StomlParser.ARRAY_OF_TABLES_MARKER.match(next_line)
+
+            if is_array_of_tables:
+                streamer.pull(next_line)
+                table_name = is_array_of_tables.group("name")
+                if not table_name in tree:
+                    tree[table_name] = []
+                tree[table_name].append(self.parse_table(streamer))
+            elif is_table:
+                streamer.pull(next_line)
+                tree[is_table.group("name")] = self.parse_table(streamer)
+            else:
+                streamer.terminate("Expected table or array of tables.")
+
+    def parse_table(self, streamer):
+        result = {}
         while True:
             while streamer.peek().isspace():
                 streamer.pull()
             if self.valid_identifier_character(streamer.peek()):
-                self.keyvalue(streamer, rule)
+                self.keyvalue(streamer, result)
             else:
-                return rule
+                return result
 
-    def keyvalue(self, streamer, rule):
+    def keyvalue(self, streamer, result):
         key = self.identifier(streamer)
         streamer.pullSpaces()
         streamer.pull("=")
@@ -127,10 +154,12 @@ class _StomlParser:
         elif streamer.peek() == "[":
             # list of strings
             value = self.list(streamer)
+        elif streamer.peek_line() in ["true", "false"]:
+            value = self.boolean(streamer)
         else:
             value = None
-            streamer.terminate("Expected either a string or a list of strings.")
-        rule[key] = value
+            streamer.terminate("Expected either a string or a boolean or a list of strings.")
+        result[key] = value
 
     def valid_identifier_character(self, c):
         return c.isalpha() or c == "_"
@@ -141,6 +170,15 @@ class _StomlParser:
             ident = ident + streamer.peek()
             streamer.pull()
         return ident
+
+    def boolean(self, streamer):
+        val = self.identifier(streamer)
+        if val == "true":
+            return True
+        elif val == "false":
+            return False
+        else:
+            streamer.terminate("Expected either true or false.")
 
     def string(self, streamer):
         streamer.pull("\"")

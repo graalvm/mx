@@ -27,6 +27,7 @@
 
 __all__ = [
     "FileOwners",
+    "stoml_parse_rules",
 ]
 
 import argparse
@@ -36,6 +37,9 @@ import os
 
 from . import mx
 from . import mx_stoml
+
+def stoml_parse_rules(toml_string):
+    return mx_stoml.parse_string(toml_string)
 
 class _TomlParsingException(Exception):
     pass
@@ -67,9 +71,7 @@ def _load_toml_from_fd(fd):
     # No other libraries to try, falling back to our simplified parser
     try:
         tree = mx_stoml.parse_fd(fd)
-        return {
-            'rule': tree,
-        }
+        return tree
     except RuntimeError as e:
         mx.log_error(f"Failed at parsing {fd.name} using the in-house parser. You can try again after installing the 'tomllib' or 'toml' package.")
         raise _TomlParsingException(e)
