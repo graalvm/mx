@@ -16,6 +16,7 @@ import mx_codeowners
 #    finally:
 #        tree.cleanup()
 
+
 class TempFileTree:
     def __init__(self):
         self.dirs_to_remove = []

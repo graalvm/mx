@@ -188,7 +188,7 @@ any = "user1@example.com"
             "A.java",
             "B.java",
         ]
-        """
+        """,
     )
 
 
