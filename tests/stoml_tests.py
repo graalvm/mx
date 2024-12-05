@@ -25,6 +25,59 @@ any = "user1@example.com"
     )
 
     yield (
+        "full-line comments are ignored",
+        {
+            "rule": [
+                {
+                    "files": "*.sh",
+                    "any": "shell@example.com",
+                },
+            ],
+        },
+        """
+        # This is a top-level comment
+        [[rule]]
+        files = "*.sh"
+        # This user really cares about proper shell scripts :-)
+        any = "shell@example.com"
+        """,
+    )
+
+    yield (
+        "comment at line end is ignored",
+        {
+            "rule": [
+                {
+                    "files": "*.scala",
+                    "any": "sc@example.com",
+                },
+            ],
+        },
+        """
+        [[rule]]
+        files = "*.scala" # Mach all Scala sources
+        any = "sc@example.com"
+        """,
+    )
+
+    yield (
+        "string with comment is accepted",
+        {
+            "rule": [
+                {
+                    "files": "*#",
+                    "any": "cleaner@example.com",
+                },
+            ],
+        },
+        """
+        [[rule]]
+        files = "*#" # Hopefully no such files
+        any = "cleaner@example.com"
+        """,
+    )
+
+    yield (
         "windows line endings",
         {
             "rule": [
@@ -118,6 +171,24 @@ any = "user1@example.com"
         tres = "iii"
         cuatro = "iv"
         """,
+    )
+
+    yield (
+        "arrays",
+        {
+            "rule": [
+                {
+                    "files": ["A.java", "B.java"],
+                }
+            ]
+        },
+        """
+        [[rule]]
+        files = [
+            "A.java",
+            "B.java",
+        ]
+        """
     )
 
 

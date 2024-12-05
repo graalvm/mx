@@ -83,8 +83,25 @@ class _Streamer:
         self.slurp(len(expected))
 
     def pullSpaces(self):
-        while self.peek().isspace():
-            self.pull()
+        inside_comment = False
+        while True:
+            next_char = self.peek()
+            if next_char == "":
+                break
+            if inside_comment:
+                if next_char in ["\r", "\n"]:
+                    inside_comment = False
+                self.pull()
+                continue
+            if next_char.isspace():
+                self.pull()
+                continue
+            if next_char == "#":
+                self.pull()
+                inside_comment = True
+                continue
+            # Some other character and we are not inside a comment
+            break
 
     def slurp(self, count):
         for _ in range(0, count):
