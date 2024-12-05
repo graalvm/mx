@@ -5,6 +5,16 @@ import tempfile
 
 import mx_codeowners
 
+# Note for future maintainer: if this is ever converted to pytest,
+# the TempFileTree class would work well as a fixture:
+#
+# @pytest.fixture
+# def temp_file_tree():
+#    tree = TempFileTree()
+#    try:
+#        yield tree
+#    finally:
+#        tree.cleanup()
 
 class TempFileTree:
     def __init__(self):
