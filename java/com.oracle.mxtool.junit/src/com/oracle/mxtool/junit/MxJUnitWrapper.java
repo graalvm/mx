@@ -86,6 +86,11 @@ public class MxJUnitWrapper {
          * This field is ignored and is only retained for backwards compatibility.
          */
         public String jsonResultTags;
+
+        /**
+         * Max time in seconds allowed for a single test.
+         */
+        public Long maxTestTime;
     }
 
     private static class RepeatingRunner extends Runner {
@@ -173,6 +178,8 @@ public class MxJUnitWrapper {
                     config.maxClassFailures = 1;
                 } else if (each.contentEquals("-JUnitEnableTiming")) {
                     config.enableTiming = true;
+                } else if (each.contentEquals("-JUnitMaxTestTime")) {
+                    config.maxTestTime = (long) parseIntArg(system, expandedArgs, each, ++i);
                 } else if (each.contentEquals("-JUnitColor")) {
                     config.color = true;
                 } else if (each.contentEquals("-JUnitEagerStackTrace")) {
@@ -293,8 +300,9 @@ public class MxJUnitWrapper {
         } else {
             textListener = new TextRunListener(system);
         }
-        TimingAndDiskUsageDecorator timings = config.enableTiming ? new TimingAndDiskUsageDecorator(textListener) : null;
-        MxRunListener mxListener = config.enableTiming ? timings : textListener;
+        List<MxJUnitWrapper.Timing<Description>> maxTestTimeExceeded = new ArrayList<>();
+        TimingAndDiskUsageDecorator timings = config.enableTiming || config.maxTestTime != null ? new TimingAndDiskUsageDecorator(textListener, config.maxTestTime, maxTestTimeExceeded) : null;
+        MxRunListener mxListener = timings != null ? timings : textListener;
         ResultCollectorDecorator resultLoggerDecorator = null;
 
         final boolean failingFast;
@@ -352,7 +360,7 @@ public class MxJUnitWrapper {
                                     }
                                 }
                             }
-                            if (failureCount < config.maxClassFailures) {
+                            if (failureCount + maxTestTimeExceeded.size() < config.maxClassFailures) {
                                 childStatement.run();
                             }
                         }
@@ -386,7 +394,23 @@ public class MxJUnitWrapper {
             }
         }));
 
-        return junitCore.run(request);
+        Result result = junitCore.run(request);
+        if (!maxTestTimeExceeded.isEmpty()) {
+            maxTestTimeExceeded.sort(Collections.reverseOrder());
+            // Match output format of org.junit.internal.TextListener.printFooter
+            system.out().println();
+            system.out().println("FAILURES!!!");
+            system.out().printf("Tests exceeded max time of %d seconds (specified by -JUnitMaxTestTime or --max-test-time): %d%n", config.maxTestTime, maxTestTimeExceeded.size());
+            for (MxJUnitWrapper.Timing<Description> timing : maxTestTimeExceeded) {
+                system.out().printf(" %,10d ms    %s%n", timing.value, timing.subject);
+            }
+
+            // Add a failure to the final result so that it reports false for Report.wasSuccessful()
+            RuntimeException ex = new RuntimeException(maxTestTimeExceeded.size() + " tests exceeded max time");
+            Failure failure = new Failure(Description.createTestDescription("<all classes>", "<all methods>"), ex);
+            result.getFailures().add(failure);
+        }
+        return result;
     }
 
     private static Set<String> findTestClasses(Description desc, Set<String> classes) {
@@ -409,7 +433,7 @@ public class MxJUnitWrapper {
         return openFile(system, file);
     }
 
-    private static class Timing<T> implements Comparable<Timing<T>> {
+    public static class Timing<T> implements Comparable<Timing<T>> {
         final T subject;
         final long value;
 
