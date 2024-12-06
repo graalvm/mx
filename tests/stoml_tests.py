@@ -55,7 +55,7 @@ any = "user1@example.com"
         },
         """
         [[rule]]
-        files = "*.scala" # Mach all Scala sources
+        files = "*.scala" # Match all Scala sources
         any = "sc@example.com"
         """,
     )
