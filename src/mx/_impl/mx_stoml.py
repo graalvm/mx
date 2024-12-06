@@ -41,6 +41,8 @@ def parse_string(content, path="<toml-string>"):
     return parser.parse(path, content)
 
 class _Streamer:
+    EOF = ""
+
     def __init__(self, path, content):
         self.path = path
         self.content = content
@@ -62,13 +64,13 @@ class _Streamer:
     def peek(self, ahead=0):
         if self.pos + ahead < len(self.content):
             return self.content[self.pos + ahead]
-        return ""
+        return _Streamer.EOF
 
     def peek_to_whitespace(self):
         token = ""
         for i in range(len(self.content) - self.pos + 1):
             next_char = self.peek(i)
-            if (next_char == "") or next_char.isspace():
+            if (next_char == _Streamer.EOF) or next_char.isspace():
                 break
             token = token + next_char
         return token
@@ -86,7 +88,7 @@ class _Streamer:
         inside_comment = False
         while True:
             next_char = self.peek()
-            if next_char == "":
+            if next_char == _Streamer.EOF:
                 break
             if inside_comment:
                 if next_char in ["\r", "\n"]:
@@ -106,7 +108,7 @@ class _Streamer:
     def slurp(self, count):
         for _ in range(0, count):
             character = self.peek()
-            if character in ("\n", ""):
+            if character in ("\n", _Streamer.EOF):
                 self.lines.append(self.line)
                 self.line = ""
                 self.row = self.row + 1
@@ -129,7 +131,7 @@ class _StomlParser:
     def root(self, streamer, tree):
         while True:
             streamer.pullSpaces()
-            if streamer.peek() == "":
+            if streamer.peek() == _Streamer.EOF:
                 return
             next_token = streamer.peek_to_whitespace()
 
