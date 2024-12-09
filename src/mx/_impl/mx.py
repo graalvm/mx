@@ -14906,15 +14906,6 @@ def _build_with_report(cmd_args, build_report, parser=None):
             with open(_opts.dump_task_stats, 'wa') as f:
                 dump_task_stats(f)
 
-        if len(failed):
-            for t in failed:
-                log_error(f'{t} failed')
-                for l in t._log.lines:
-                    log(l)
-            for daemon in daemons.values():
-                daemon.shutdown()
-            abort(f'{len(failed)} build tasks failed')
-
     else:  # not parallelize
         for t in sortedTasks:
             t.prepare(daemons)

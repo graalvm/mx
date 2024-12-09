@@ -104,6 +104,17 @@ class BuildReport:
             f.write('</html>\n')
         mx.log(f"mx build log written to {filename}")
 
+    def _print_failed(self):
+        failed = 0
+        for t in self.tasks:
+            if t.status == 'failed':
+                failed += 1
+                mx.log_error(f'{t} failed')
+                for l in t._log.lines:
+                    mx.log(l)
+        if failed > 0:
+            mx.abort(f'{failed} build tasks failed')
+
     def __enter__(self):
         self.properties['started'] = time.strftime("%Y-%m-%d %H:%M:%S")
         return self
@@ -120,3 +131,5 @@ class BuildReport:
             reportIdx += 1
             reportFile = os.path.join(reportDir, f'{base_name}_{reportIdx}.html')
         self._write_report(reportFile)
+
+        self._print_failed()
