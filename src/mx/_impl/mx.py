@@ -7808,23 +7808,28 @@ class CompilerDaemon(Daemon):
 
     def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(('127.0.0.1', self.port))
-        logv(f'Compile with {self.name()}: {" ".join(compilerArgs)}')
-        commandLine = u'\x00'.join(compilerArgs)
-        s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
-        f = s.makefile()
-        while True:
-            response = str(f.readline())
-            if response.startswith(CompilerDaemon.response_done):
-                retcode = int(response[len(CompilerDaemon.response_done):])
-                break
-            if response == "":
-                # Compiler server process probably crashed
-                log('[Compiler daemon process appears to have crashed. ]')
-                retcode = -1
-                break
-            log(response)
-        s.close()
+        try:
+            s.connect(('127.0.0.1', self.port))
+            logv(f'Compile with {self.name()}: {" ".join(compilerArgs)}')
+            commandLine = u'\x00'.join(compilerArgs)
+            s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
+            f = s.makefile()
+            while True:
+                response = str(f.readline())
+                if response.startswith(CompilerDaemon.response_done):
+                    retcode = int(response[len(CompilerDaemon.response_done):])
+                    break
+                if response == "":
+                    # Compiler server process probably crashed
+                    log('[Compiler daemon process appears to have crashed. ]')
+                    retcode = -1
+                    break
+                log(response)
+        except ConnectionError as e:
+            log(f'[Exception while communicating with compiler daemon process: {e}]')
+            retcode = -1
+        finally:
+            s.close()
         if retcode:
             detailed_retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))
             if _opts.verbose:
