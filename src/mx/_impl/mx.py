@@ -7808,23 +7808,28 @@ class CompilerDaemon(Daemon):
 
     def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(('127.0.0.1', self.port))
-        logv(f'Compile with {self.name()}: {" ".join(compilerArgs)}')
-        commandLine = u'\x00'.join(compilerArgs)
-        s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
-        f = s.makefile()
-        while True:
-            response = str(f.readline())
-            if response.startswith(CompilerDaemon.response_done):
-                retcode = int(response[len(CompilerDaemon.response_done):])
-                break
-            if response == "":
-                # Compiler server process probably crashed
-                log('[Compiler daemon process appears to have crashed. ]')
-                retcode = -1
-                break
-            log(response)
-        s.close()
+        try:
+            s.connect(('127.0.0.1', self.port))
+            logv(f'Compile with {self.name()}: {" ".join(compilerArgs)}')
+            commandLine = u'\x00'.join(compilerArgs)
+            s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
+            f = s.makefile()
+            while True:
+                response = str(f.readline())
+                if response.startswith(CompilerDaemon.response_done):
+                    retcode = int(response[len(CompilerDaemon.response_done):])
+                    break
+                if response == "":
+                    # Compiler server process probably crashed
+                    log('[Compiler daemon process appears to have crashed. ]')
+                    retcode = -1
+                    break
+                log(response)
+        except ConnectionError as e:
+            log(f'[Exception while communicating with compiler daemon process: {e}]')
+            retcode = -1
+        finally:
+            s.close()
         if retcode:
             detailed_retcode = str(subprocess.CalledProcessError(retcode, f'Compile with {self.name()}: ' + ' '.join(compilerArgs)))
             if _opts.verbose:
@@ -14901,15 +14906,6 @@ def _build_with_report(cmd_args, build_report, parser=None):
             with open(_opts.dump_task_stats, 'wa') as f:
                 dump_task_stats(f)
 
-        if len(failed):
-            for t in failed:
-                log_error(f'{t} failed')
-                for l in t._log.lines:
-                    log(l)
-            for daemon in daemons.values():
-                daemon.shutdown()
-            abort(f'{len(failed)} build tasks failed')
-
     else:  # not parallelize
         for t in sortedTasks:
             t.prepare(daemons)
@@ -18369,7 +18365,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.36.1")  # [GR-53812] Fix crash in `mx benchmark`
+version = VersionSpec("7.36.2")  # [GR-60385] Catch exceptions communicating with compiler daemon.
 
 _mx_start_datetime = datetime.utcnow()
 
