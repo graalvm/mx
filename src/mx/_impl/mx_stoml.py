@@ -26,6 +26,7 @@
 #
 
 from argparse import ArgumentParser
+import re
 
 def parse_fd(fd, path="<fd>"):
     content = fd.read().decode('utf-8')
@@ -40,6 +41,8 @@ def parse_string(content, path="<toml-string>"):
     return parser.parse(path, content)
 
 class _Streamer:
+    EOF = ""
+
     def __init__(self, path, content):
         self.path = path
         self.content = content
@@ -61,7 +64,16 @@ class _Streamer:
     def peek(self, ahead=0):
         if self.pos + ahead < len(self.content):
             return self.content[self.pos + ahead]
-        return ""
+        return _Streamer.EOF
+
+    def peek_to_whitespace(self):
+        token = ""
+        for i in range(len(self.content) - self.pos + 1):
+            next_char = self.peek(i)
+            if (next_char == _Streamer.EOF) or next_char.isspace():
+                break
+            token = token + next_char
+        return token
 
     def pull(self, expected=None):
         if expected is None:
@@ -73,13 +85,30 @@ class _Streamer:
         self.slurp(len(expected))
 
     def pullSpaces(self):
-        while self.peek().isspace():
-            self.pull()
+        inside_comment = False
+        while True:
+            next_char = self.peek()
+            if next_char == _Streamer.EOF:
+                break
+            if inside_comment:
+                if next_char in ["\r", "\n"]:
+                    inside_comment = False
+                self.pull()
+                continue
+            if next_char.isspace():
+                self.pull()
+                continue
+            if next_char == "#":
+                self.pull()
+                inside_comment = True
+                continue
+            # Some other character and we are not inside a comment
+            break
 
     def slurp(self, count):
         for _ in range(0, count):
             character = self.peek()
-            if character in ("\n", ""):
+            if character in ("\n", _Streamer.EOF):
                 self.lines.append(self.line)
                 self.line = ""
                 self.row = self.row + 1
@@ -90,33 +119,47 @@ class _Streamer:
             self.pos = self.pos + 1
 
 class _StomlParser:
+    TABLE_MARKER = re.compile(r"^\[(?P<name>.*)]$")
+    ARRAY_OF_TABLES_MARKER = re.compile(r"^\[\[(?P<name>.*)]]$")
+
     def parse(self, path, content):
-        rules = []
+        tree = {}
         streamer = _Streamer(path, content)
-        self.root(streamer, rules)
-        return rules
+        self.root(streamer, tree)
+        return tree
 
-    def root(self, streamer, rules):
+    def root(self, streamer, tree):
         while True:
-            while streamer.peek().isspace():
-                streamer.pull()
-            if streamer.peek() == "":
+            streamer.pullSpaces()
+            if streamer.peek() == _Streamer.EOF:
                 return
-            streamer.pull("[[rule]]")
-            rule = self.rule(streamer)
-            rules.append(rule)
+            next_token = streamer.peek_to_whitespace()
 
-    def rule(self, streamer):
-        rule = {}
-        while True:
-            while streamer.peek().isspace():
-                streamer.pull()
-            if self.valid_identifier_character(streamer.peek()):
-                self.keyvalue(streamer, rule)
+            is_table = _StomlParser.TABLE_MARKER.match(next_token)
+            is_array_of_tables = _StomlParser.ARRAY_OF_TABLES_MARKER.match(next_token)
+
+            if is_array_of_tables:
+                streamer.pull(next_token)
+                table_name = is_array_of_tables.group("name")
+                if not table_name in tree:
+                    tree[table_name] = []
+                tree[table_name].append(self.parse_table(streamer))
+            elif is_table:
+                streamer.pull(next_token)
+                tree[is_table.group("name")] = self.parse_table(streamer)
             else:
-                return rule
+                streamer.terminate("Expected table or array of tables.")
 
-    def keyvalue(self, streamer, rule):
+    def parse_table(self, streamer):
+        result = {}
+        while True:
+            streamer.pullSpaces()
+            if self.valid_identifier_character(streamer.peek()):
+                self.keyvalue(streamer, result)
+            else:
+                return result
+
+    def keyvalue(self, streamer, result):
         key = self.identifier(streamer)
         streamer.pullSpaces()
         streamer.pull("=")
@@ -127,10 +170,12 @@ class _StomlParser:
         elif streamer.peek() == "[":
             # list of strings
             value = self.list(streamer)
+        elif streamer.peek_to_whitespace() in ["true", "false"]:
+            value = self.boolean(streamer)
         else:
             value = None
-            streamer.terminate("Expected either a string or a list of strings.")
-        rule[key] = value
+            streamer.terminate("Expected either a string or a boolean or a list of strings.")
+        result[key] = value
 
     def valid_identifier_character(self, c):
         return c.isalpha() or c == "_"
@@ -141,6 +186,15 @@ class _StomlParser:
             ident = ident + streamer.peek()
             streamer.pull()
         return ident
+
+    def boolean(self, streamer):
+        val = self.identifier(streamer)
+        if val == "true":
+            return True
+        elif val == "false":
+            return False
+        else:
+            streamer.terminate("Expected either true or false.")
 
     def string(self, streamer):
         streamer.pull("\"")
