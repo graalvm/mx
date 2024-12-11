@@ -208,6 +208,11 @@ def log_deprecation(msg: Optional[str] = None) -> None:
         _print_impl(colorize(str(f"[MX DEPRECATED] {msg}"), color="yellow", stream=sys.stderr), file=sys.stderr)
 
 
+def supports_colors(stream=sys.stdout) -> bool:
+    isUnix = sys.platform.startswith("linux") or sys.platform in ["darwin", "freebsd"]
+    return isUnix and hasattr(stream, "isatty") and stream.isatty()
+
+
 def colorize(msg: Optional[str], color="red", bright=True, stream=sys.stderr) -> Optional[str]:
     """
     Wraps `msg` in ANSI escape sequences to make it print to `stream` with foreground font color
@@ -224,8 +229,7 @@ def colorize(msg: Optional[str], color="red", bright=True, stream=sys.stderr) ->
         code += ";1"
     color_on = "\033[" + code + "m"
     if not msg.startswith(color_on):
-        isUnix = sys.platform.startswith("linux") or sys.platform in ["darwin", "freebsd"]
-        if isUnix and hasattr(stream, "isatty") and stream.isatty():
+        if supports_colors(stream):
             return color_on + msg + "\033[0m"
     return msg
 

@@ -30,6 +30,8 @@ import os
 import time
 
 from .. import mx
+from ..support.logging import supports_colors
+from ..support.system import is_continuous_integration
 
 def write_task_report(f, task):
     f.write('\n<div class="task">\n')
@@ -53,6 +55,14 @@ def write_style(f):
         .log pre { border: 1px inset; padding: 5px; max-height: 350px; overflow: auto; }
     </style>
     ''')
+
+def _to_link(filename):
+    if is_continuous_integration() or not supports_colors():
+        return filename
+
+    url = f'file://{os.path.abspath(filename)}'
+    label = os.path.relpath(filename)
+    return f'\033]8;;{url}\033\\{label}\033]8;;\033\\'
 
 class BuildReport:
     def __init__(self, cmd_args):
@@ -102,7 +112,7 @@ class BuildReport:
             write_style(f)
             f.write('</body>\n')
             f.write('</html>\n')
-        mx.log(f"mx build log written to {filename}")
+        mx.log(f"mx build log written to {_to_link(filename)}")
 
     def _print_failed(self):
         failed = 0
