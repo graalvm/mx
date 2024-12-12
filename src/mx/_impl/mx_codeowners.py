@@ -518,6 +518,9 @@ def codeowners(args):
 
     repro_data['pull_request']['suggestion']['add'] = list(sorted(repro_data['pull_request']['suggestion']['add']))
     repro_data['pull_request']['suggestion']['acquire_approval'] = list(sorted(repro_data['pull_request']['suggestion']['acquire_approval']))
+    repro_data['pull_request']['suggestion']['details']['any'] = list(sorted(repro_data['pull_request']['suggestion']['details']['any']))
+    repro_data['pull_request']['suggestion']['details']['all'] = list(sorted(repro_data['pull_request']['suggestion']['details']['all']))
+    repro_data['pull_request']['suggestion']['details']['at_least_one_mandatory_approver'] = list(sorted(repro_data['pull_request']['suggestion']['details']['at_least_one_mandatory_approver']))
 
     num_files_changed = len(file_owners.keys())
     num_owned_files = len([f for f, o in file_owners.items() if o])
