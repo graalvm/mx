@@ -1,9 +1,12 @@
 import atexit
+import json
 import os
 import shutil
+import sys
 import tempfile
 
 import mx_codeowners
+from mx._impl import mx
 
 # Note for future maintainer: if this is ever converted to pytest,
 # the TempFileTree class would work well as a fixture:
@@ -358,7 +361,185 @@ def test_owners_of():
             assert fo.get_owners_of(os.path.join(base_dir, filename)) == owners
 
 
+def get_mx_binary():
+    self_dir = os.path.dirname(os.path.realpath(__file__))
+    top_mx_dir = os.path.normpath(os.path.join(self_dir, ".."))
+    return os.path.normpath(os.path.join(top_mx_dir, "mx"))
+
+
+def run_in_mx(args, cwd):
+    # Ensure attribute existence for test
+    setattr(mx._opts, "verbose", False)
+    setattr(mx._opts, "warn", True)
+    setattr(mx._opts, "quiet", True)
+    setattr(mx._opts, "exec_log", None)
+    setattr(mx._opts, "ptimeout", 0)
+
+    dev_null = mx.TeeOutputCapture(mx.OutputCapture())
+    mx_bin = get_mx_binary()
+    mx_command = [mx_bin] + args
+
+    # print("[debug] Will run {} in {}".format(mx_command, args))
+    rc = mx.run(
+        mx_command,
+        out=dev_null,
+        cwd=cwd,
+    )
+    assert rc == 0
+
+
+def json_dump_with_header(header, data):
+    print(header)
+    json.dump(data, sys.stdout, indent=4, sort_keys=True)
+    print("")
+
+
+def test_codeowners_json_output_generate_cases():
+    yield (
+        "smoke test",
+        {
+            "OWNERS.toml": """
+                [[rule]]
+                files = "*"
+                any = "user1@example.com"
+                """,
+        },
+        [
+            "README.md",
+        ],
+        {
+            "branch": None,
+            "files": ["README.md"],
+            "mx_version": str(mx.version),
+            "owners": {"README.md": {"any": ["user1@example.com"]}},
+            "pull_request": {
+                "approvals": ["grant@example.com"],
+                "author": "author@example.com",
+                "reviewers": [
+                    "reviewer@example.com",
+                    "grant@example.com",
+                ],
+                "suggestion": {
+                    "acquire_approval": [],
+                    "add": ["user1@example.com"],
+                    "details": {"all": [], "any": ["user1@example.com"], "at_least_one_mandatory_approver": []},
+                },
+            },
+            "version": 1,
+        },
+    )
+
+    yield (
+        "multiple files",
+        {
+            "OWNERS.toml": """
+                [[rule]]
+                files = "*.java"
+                any = ["user1@example.com"]
+
+                [[rule]]
+                files = "*.scala"
+                any = ["user2@example.com"]
+                """,
+        },
+        [
+            "src/Alpha.java",
+            "src/Bravo.scala",
+        ],
+        {
+            "branch": None,
+            "files": [
+                "src/Alpha.java",
+                "src/Bravo.scala",
+            ],
+            "mx_version": str(mx.version),
+            "owners": {
+                "src/Alpha.java": {
+                    "any": [
+                        "user1@example.com",
+                    ]
+                },
+                "src/Bravo.scala": {
+                    "any": [
+                        "user2@example.com",
+                    ]
+                },
+            },
+            "pull_request": {
+                "approvals": ["grant@example.com"],
+                "author": "author@example.com",
+                "reviewers": [
+                    "reviewer@example.com",
+                    "grant@example.com",
+                ],
+                "suggestion": {
+                    "acquire_approval": [],
+                    "add": [
+                        "user1@example.com",
+                        "user2@example.com",
+                    ],
+                    "details": {
+                        "all": [],
+                        "any": [
+                            "user1@example.com",
+                            "user2@example.com",
+                        ],
+                        "at_least_one_mandatory_approver": [],
+                    },
+                },
+            },
+            "version": 1,
+        },
+    )
+
+
+def test_codeowners_json_output():
+    temp_tree = TempFileTree()
+
+    mx_suite_files = {
+        ".mx_vcs_root": "",
+        "unittest": {
+            "mx.unittest": {
+                "suite.py": """suite = { "mxversion": "7.4.0", "name": "unittest", "ignore_suite_commit_info": True}""",
+            },
+        },
+    }
+
+    for test_name, tree_description, modified_files, expected_json in test_codeowners_json_output_generate_cases():
+        print("test_codeowners_json_output('" + test_name + "')")
+        base_dir = temp_tree.make_tree(
+            {
+                **tree_description,
+                **mx_suite_files,
+            }
+        )
+
+        mx_args = [
+            "--primary-suite=unittest",
+            "codeowners",
+            "-j__codeowners.json",
+            "-rreviewer@example.com",
+            "-ggrant@example.com",
+            "-pauthor@example.com",
+            "-s",
+            "--",
+        ] + modified_files
+
+        run_in_mx(mx_args, base_dir)
+
+        with open(os.path.join(base_dir, "__codeowners.json"), "r") as inp:
+            json_output = json.load(inp)
+
+        # FIXME: replace with plain assert once this runs within a reasonable
+        # testing framework (pytest does pretty good diff even on dicts)
+        if json_output != expected_json:
+            json_dump_with_header("-- Expected --", expected_json)
+            json_dump_with_header("-- Actual --", json_output)
+            assert json_output == expected_json
+
+
 def tests():
+    test_codeowners_json_output()
     test_owners_of()
 
 
