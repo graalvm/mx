@@ -494,6 +494,12 @@ def test_codeowners_json_output_generate_cases():
 
 
 def test_codeowners_json_output():
+    # This test needs to launch mx itself.
+    # Doing that on Windows is somewhat more difficult than just running mx.run
+    if os.name == "nt":
+        print("test_codeowners_json_output skipped on Windows")
+        return
+
     temp_tree = TempFileTree()
 
     mx_suite_files = {
