@@ -162,7 +162,7 @@ class FileOwners:
         :param list files: List of OWNERS files to be parsed.
             Should be ordered from the most general one to the most specific one, since when
             parsing an OWNERS file we facilitate inheritance/overwriting of parent's rules.
-        :return: A 4 element tuple: <pattern, owners, type, overwrite>. See `_parse_ownership` doc for more details.
+        :return: A 5 element tuple: <pattern, owners, type, overwrite, originating_owners_toml>. See `_parse_ownership` doc for more details.
         :rtype: tuple
         """
 
@@ -173,8 +173,8 @@ class FileOwners:
                 else:
                     full_path = os.path.join(self.src, fo)
                 with open(full_path, 'rb') as f:
-                    for i in self._parse_ownership(f, full_path):
-                        yield i
+                    for pat, owners, rule_type, overwrite in self._parse_ownership(f, full_path):
+                        yield (pat, owners, rule_type, overwrite, full_path)
             except IOError:
                 pass
 
@@ -194,15 +194,33 @@ class FileOwners:
         owners_files = [i for i in owners_files if os.path.commonprefix([i, self.src]) == self.src]
         result = self._no_owners()
         ownership = self._parse_ownership_from_files(owners_files)
-        for pat, owners, modifiers, overwrite_parent in ownership:
+        owners_trace = []
+        for pat, owners, modifiers, overwrite_parent, owners_toml_path in ownership:
             if overwrite_parent:
                 # Overwrite parents' rules - relies on parsing rules of parents before those of children OWNERS files.
                 result = self._no_owners()
+                owners_trace.clear()
             if fnmatch.fnmatch(filename, pat):
                 for rule_type in _supported_rule_types():
                     if rule_type in modifiers:
                         result[rule_type].update(owners)
+                        if owners_toml_path not in owners_trace:
+                            owners_trace.append(owners_toml_path)
         result = {rule_type: sorted(result[rule_type]) for rule_type in _supported_rule_types() if len(result[rule_type]) > 0}
+
+        # Set trace how the ownership was determined. If we can create relative
+        # paths for all OWNERS.toml, we insert the relative paths only (having
+        # parent directory reference would be confusing).
+        # Under normal circumstances, we should see the relative paths.
+        # We do not add the information when no ownership is found.
+        owners_trace_relative = [os.path.relpath(i, self.src) for i in owners_trace]
+        owners_trace_contains_parent = [i for i in owners_trace_relative if i.startswith("..")]
+        if result:
+            if owners_trace_contains_parent:
+                result['trace'] = owners_trace
+            else:
+                result['trace'] = owners_trace_relative
+
         mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
 

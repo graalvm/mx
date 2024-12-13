@@ -86,7 +86,13 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("README.md", {"any": ["user1@example.com"]}),
+            (
+                "README.md",
+                {
+                    "any": ["user1@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -100,7 +106,13 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("src/Main.java", {"any": ["user1@example.com"]}),
+            (
+                "src/Main.java",
+                {
+                    "any": ["user1@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -123,7 +135,13 @@ def test_owners_of_generate_cases():
             },
         },
         [
-            ("src/Main.java", {"any": ["user1@example.com"]}),
+            (
+                "src/Main.java",
+                {
+                    "any": ["user1@example.com"],
+                    "trace": ["src/OWNERS.toml"],
+                },
+            ),
             ("README.md", {}),
         ],
     )
@@ -154,10 +172,28 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("src/Main.java", {"any": ["toplevel@example.com", "with_top_level@example.com"]}),
-            ("src2/Main.java", {"any": ["only_me@example.com"]}),
+            (
+                "src/Main.java",
+                {
+                    "any": ["toplevel@example.com", "with_top_level@example.com"],
+                    "trace": ["OWNERS.toml", "src/OWNERS.toml"],
+                },
+            ),
+            (
+                "src2/Main.java",
+                {
+                    "any": ["only_me@example.com"],
+                    "trace": ["src2/OWNERS.toml"],
+                },
+            ),
             ("README.md", {}),
-            ("Main.java", {"any": ["toplevel@example.com"]}),
+            (
+                "Main.java",
+                {
+                    "any": ["toplevel@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -189,9 +225,27 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("src/nested/NestedClass.java", {"any": ["overwrite2@example.com"]}),
-            ("src/Class.java", {"any": ["overwrite1@example.com"]}),
-            ("Main.java", {"any": ["toplevel@example.com"]}),
+            (
+                "src/nested/NestedClass.java",
+                {
+                    "any": ["overwrite2@example.com"],
+                    "trace": ["src/nested/OWNERS.toml"],
+                },
+            ),
+            (
+                "src/Class.java",
+                {
+                    "any": ["overwrite1@example.com"],
+                    "trace": ["src/OWNERS.toml"],
+                },
+            ),
+            (
+                "Main.java",
+                {
+                    "any": ["toplevel@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -214,8 +268,20 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("src/Class.java", {"any": ["disabledoverwrite@example.com", "toplevel@example.com"]}),
-            ("Main.java", {"any": ["toplevel@example.com"]}),
+            (
+                "src/Class.java",
+                {
+                    "any": ["disabledoverwrite@example.com", "toplevel@example.com"],
+                    "trace": ["OWNERS.toml", "src/OWNERS.toml"],
+                },
+            ),
+            (
+                "Main.java",
+                {
+                    "any": ["toplevel@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -262,28 +328,76 @@ def test_owners_of_generate_cases():
         },
         [
             ("src/nested_overwritten/Nested.java", {}),
-            ("src/nested_overwritten/OWNERS.toml", {"any": ["toml@example.com"]}),
-            ("src/nested_overwritten/mx_benchmark.py", {"any": ["only_me@example.com"]}),
+            (
+                "src/nested_overwritten/OWNERS.toml",
+                {
+                    "any": ["toml@example.com"],
+                    "trace": ["src/nested_overwritten/OWNERS.toml"],
+                },
+            ),
+            (
+                "src/nested_overwritten/mx_benchmark.py",
+                {
+                    "any": ["only_me@example.com"],
+                    "trace": ["src/nested_overwritten/OWNERS.toml"],
+                },
+            ),
             ("src/nested_overwritten/Overwritten.java", {}),
             (
                 "src/nested_inherited/Inherited.java",
-                {"any": ["one_more_owner@example.com", "toplevel@example.com"], "all": ["team_lead_java@example.com"]},
+                {
+                    "any": ["one_more_owner@example.com", "toplevel@example.com"],
+                    "all": ["team_lead_java@example.com"],
+                    "trace": ["OWNERS.toml", "src/nested_inherited/OWNERS.toml"],
+                },
             ),
             (
                 "src/nested_inherited/mx_benchmark.py",
                 {
                     "any": ["one_more_owner@example.com", "toplevel@example.com"],
                     "all": ["benchmarking@example.com", "team_lead_python@example.com"],
+                    "trace": ["OWNERS.toml", "src/OWNERS.toml", "src/nested_inherited/OWNERS.toml"],
                 },
             ),
-            ("src/Main.java", {"any": ["toplevel@example.com"], "all": ["team_lead_java@example.com"]}),
-            ("src/mx_test.py", {"any": ["toplevel@example.com"], "all": ["team_lead_python@example.com"]}),
+            (
+                "src/Main.java",
+                {
+                    "any": ["toplevel@example.com"],
+                    "all": ["team_lead_java@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "src/mx_test.py",
+                {
+                    "any": ["toplevel@example.com"],
+                    "all": ["team_lead_python@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
             (
                 "src/mx_benchmark.py",
-                {"any": ["toplevel@example.com"], "all": ["benchmarking@example.com", "team_lead_python@example.com"]},
+                {
+                    "any": ["toplevel@example.com"],
+                    "all": ["benchmarking@example.com", "team_lead_python@example.com"],
+                    "trace": ["OWNERS.toml", "src/OWNERS.toml"],
+                },
             ),
-            ("run.py", {"any": ["toplevel@example.com"], "all": ["team_lead_python@example.com"]}),
-            ("README.md", {"any": ["toplevel@example.com"]}),
+            (
+                "run.py",
+                {
+                    "any": ["toplevel@example.com"],
+                    "all": ["team_lead_python@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "README.md",
+                {
+                    "any": ["toplevel@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -300,8 +414,20 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("src/Main.java", {"any": ["all@example.com", "java@example.com"]}),
-            ("README.md", {"any": ["all@example.com"]}),
+            (
+                "src/Main.java",
+                {
+                    "any": ["all@example.com", "java@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "README.md",
+                {
+                    "any": ["all@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -318,8 +444,20 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("src/Main.java", {"any": ["java@example.com", "scala@example.com"]}),
-            ("README.md", {"any": ["doc@example.com"]}),
+            (
+                "src/Main.java",
+                {
+                    "any": ["java@example.com", "scala@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "README.md",
+                {
+                    "any": ["doc@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -339,9 +477,27 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("Main.java", {"any": ["user1@example.com", "user2@example.com"]}),
-            ("README.md", {"all": ["user1@example.com", "user3@example.com"]}),
-            ("script.py", {"at_least_one_mandatory_approver": ["user1@example.com", "user4@example.com"]}),
+            (
+                "Main.java",
+                {
+                    "any": ["user1@example.com", "user2@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "README.md",
+                {
+                    "all": ["user1@example.com", "user3@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "script.py",
+                {
+                    "at_least_one_mandatory_approver": ["user1@example.com", "user4@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -358,10 +514,34 @@ def test_owners_of_generate_cases():
                 """,
         },
         [
-            ("Main.java", {"any": ["user1@example.com", "user2@example.com"]}),
-            ("Main.scala", {"any": ["user1@example.com", "user2@example.com"]}),
-            ("README.md", {"all": ["user1@example.com", "user3@example.com"]}),
-            ("index.txt", {"all": ["user1@example.com", "user3@example.com"]}),
+            (
+                "Main.java",
+                {
+                    "any": ["user1@example.com", "user2@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "Main.scala",
+                {
+                    "any": ["user1@example.com", "user2@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "README.md",
+                {
+                    "all": ["user1@example.com", "user3@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
+            (
+                "index.txt",
+                {
+                    "all": ["user1@example.com", "user3@example.com"],
+                    "trace": ["OWNERS.toml"],
+                },
+            ),
         ],
     )
 
@@ -423,7 +603,12 @@ def test_codeowners_json_output_generate_cases():
             "branch": None,
             "files": ["README.md"],
             "mx_version": str(mx.version),
-            "owners": {"README.md": {"any": ["user1@example.com"]}},
+            "owners": {
+                "README.md": {
+                    "any": ["user1@example.com"],
+                    "trace": ["OWNERS.toml"],
+                }
+            },
             "pull_request": {
                 "approvals": ["grant@example.com"],
                 "author": "author@example.com",
@@ -469,12 +654,14 @@ def test_codeowners_json_output_generate_cases():
                 "src/Alpha.java": {
                     "any": [
                         "user1@example.com",
-                    ]
+                    ],
+                    "trace": ["OWNERS.toml"],
                 },
                 "src/Bravo.scala": {
                     "any": [
                         "user2@example.com",
-                    ]
+                    ],
+                    "trace": ["OWNERS.toml"],
                 },
             },
             "pull_request": {
@@ -539,6 +726,7 @@ def test_codeowners_json_output_generate_cases():
             "owners": {
                 "main.py": {
                     "at_least_one_mandatory_approver": ["boss@example.com"],
+                    "trace": ["OWNERS.toml"],
                 },
                 "src/Charlie.java": {
                     "any": [
@@ -546,12 +734,14 @@ def test_codeowners_json_output_generate_cases():
                         "reviewer@example.com",
                     ],
                     "at_least_one_mandatory_approver": ["boss@example.com"],
+                    "trace": ["OWNERS.toml", "src/OWNERS.toml"],
                 },
                 "src/Delta.scala": {
                     "all": [
                         "scala@example.com",
                     ],
                     "at_least_one_mandatory_approver": ["boss@example.com"],
+                    "trace": ["OWNERS.toml", "src/OWNERS.toml"],
                 },
             },
             "pull_request": {
