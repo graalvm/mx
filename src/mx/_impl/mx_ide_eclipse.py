@@ -39,6 +39,8 @@ __all__ = [
     "IRESOURCE_FILE",
     "IRESOURCE_FOLDER",
     "generate_eclipse_workingsets",
+    "copy_eclipse_settings",
+    "override_suite_eclipse_settings",
 ]
 
 import json, os, re, time, zipfile, tempfile
@@ -151,6 +153,7 @@ def eclipseformat(args):
     parser.add_argument('--patchfile', type=FileType("w"), help='file to which a patch denoting the applied formatting changes is written')
     parser.add_argument('--restore', action='store_true', help='restore original files after the formatting job (does not create a backup).')
     parser.add_argument('--filelist', type=FileType("r"), help='only format the files listed in the given file')
+    parser.add_argument('--distributions', action='store_true', help='scans also for MX distributions that provide the attributes needed to run eclipseformat')
 
     args = parser.parse_args(args)
     if args.restore:
@@ -176,15 +179,23 @@ def eclipseformat(args):
     else:
         projectsToProcess = mx.projects(opt_limit_to_suite=True)
 
+    if args.distributions:
+        projectsToProcess += [d for d in mx.distributions(opt_limit_to_suite=True) if hasattr(d, 'isJavaProject') and hasattr(d, 'dir')]
+
     class Batch:
         def __init__(self, settingsDir):
             self.path = join(settingsDir, 'org.eclipse.jdt.core.prefs')
-            with open(join(settingsDir, 'org.eclipse.jdt.ui.prefs')) as fp:
+            self.cachedHash = None
+            self.removeTrailingWhitespace = False
+
+            jdtUiPrefsPath = join(settingsDir, 'org.eclipse.jdt.ui.prefs')
+            if not os.path.exists(jdtUiPrefsPath):
+                return
+            with open(jdtUiPrefsPath) as fp:
                 jdtUiPrefs = fp.read()
             self.removeTrailingWhitespace = 'sp_cleanup.remove_trailing_whitespaces_all=true' in jdtUiPrefs
             if self.removeTrailingWhitespace:
                 assert 'sp_cleanup.remove_trailing_whitespaces=true' in jdtUiPrefs and 'sp_cleanup.remove_trailing_whitespaces_ignore_empty=false' in jdtUiPrefs
-            self.cachedHash = None
 
         def __hash__(self):
             if not self.cachedHash:
@@ -944,7 +955,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         files.append(projectFile)
 
     # copy a possibly modified file to the project's .settings directory
-    _copy_eclipse_settings(project_loc, p, files)
+    copy_eclipse_settings(project_loc, p, files)
 
     if processors:
         out = mx.XMLDoc()
@@ -1426,9 +1437,7 @@ def _workingset_element(wsdoc, p):
     wsdoc.element('item', {'elementID': '=' + p, 'factoryID': 'org.eclipse.jdt.ui.PersistableJavaElementFactory'})
 
 
-### ~~~~~~~~~~~~~ _private, eclipse
-
-def _copy_eclipse_settings(project_loc, p, files=None):
+def copy_eclipse_settings(project_loc, p, files=None):
     processors = p.annotation_processors()
 
     settingsDir = mx_util.ensure_dir_exists(join(project_loc, ".settings"))
@@ -1450,3 +1459,22 @@ def _copy_eclipse_settings(project_loc, p, files=None):
         mx.update_file(join(settingsDir, name), content)
         if files:
             files.append(join(settingsDir, name))
+
+def override_suite_eclipse_settings(suite, settings_dir):
+    """
+    Gets a dictionary from the name of an Eclipse settings file to
+    the list of files providing its generated content, in overriding order
+    (i.e., settings from files later in the list override settings from
+    files earlier in the list).
+    A new dictionary is created each time this method is called so it's
+    safe for the caller to modify it.
+    """
+    esdict = suite.eclipse_settings_sources()
+
+    # check for overrides
+    projectSettingsDir = join(settings_dir, 'eclipse-settings')
+    if exists(projectSettingsDir):
+        for name in os.listdir(projectSettingsDir):
+            esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+
+    return esdict

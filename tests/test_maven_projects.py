@@ -23,6 +23,7 @@ def mx_monkeypatch(name, value):
 
 
 def test_pom_helper():
+    print("test_maven_projects('test_pom_helper')")
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(os.path.join(tmpdir, "pom.xml"), "w") as f:
             pomtext = """
@@ -70,7 +71,7 @@ def test_pom_helper():
 
 
 def test_maven_project():
-    pomtext = """
+    pomtext_basic = """
     <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.graalvm.testpom</groupId>
@@ -93,25 +94,59 @@ def test_maven_project():
     </project>
     """
 
-    def create_project():
+    pomtext_with_plugin = """
+    <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.graalvm.testpom</groupId>
+    <artifactId>testpom</artifactId>
+    <packaging>jar</packaging>
+    <version>1-SNAPSHOT</version>
+    <name>testpom</name>
+    <dependencies>
+    <dependency>
+    <groupId>junit</groupId>
+    <artifactId>junit</artifactId>
+    <version>128</version>
+    </dependency>    
+    </dependencies>    
+    <build>
+    <plugins>
+    <plugin>
+        <groupId>com.oracle.mx</groupId>
+        <artifactId>junit-tool</artifactId>
+        <version>129</version>
+    </plugin>
+    </plugins>
+    </build>
+    </project>
+    """
+
+    def create_project(pomtext, tmpdir, deps, buildDeps):
         with open(os.path.join(tmpdir, "pom.xml"), "w") as f:
             f.write(pomtext)
         suite = cast(mx.Suite, mx.primary_suite())
         lisense = [l.theLicense for l in suite.libs if l.theLicense is not None][0]
         return mx.MavenProject(
-            suite, os.path.basename(tmpdir), ["JUNIT", "JUNIT_TOOL"], [], False, lisense, subDir=os.path.dirname(tmpdir)
+            suite,
+            os.path.basename(tmpdir),
+            deps,
+            [],
+            False,
+            lisense,
+            subDir=os.path.dirname(tmpdir),
+            buildDependencies=buildDeps,
         )
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        print("test_maven_projects('wrong artifact ID')")
         try:
-            create_project()
+            create_project(pomtext_basic, tmpdir, ["JUNIT", "JUNIT_TOOL"], [])
         except SystemExit:
             pass
         else:
             assert False, "artifactid and project name must match"
-        pomtext = pomtext.replace("testpom", os.path.basename(tmpdir))
-        project = create_project()
 
+    def test_project(project):
         assert project.javaCompliance.highest_specified_value() == 17
 
         assert not os.path.exists(os.path.join(tmpdir, "pom-mx.xml"))
@@ -129,7 +164,7 @@ def test_maven_project():
         except SystemExit:
             pass
         else:
-            assert False, "classpath needs a built artifact"
+            assert False, "expected mx.abort error: classpath needs a built artifact"
         os.makedirs(project.get_output_root(), exist_ok=True)
         defaultjarpath = pathlib.Path(project.get_output_root()) / project.default_filename()
         defaultjarpath.touch()
@@ -169,11 +204,23 @@ def test_maven_project():
             == cast(mx.License, project.theLicense[0]).fullname
         )
 
-        assert len(maven_deployments) == 1, "only JUNIT_TOOL should be deployed"
+        assert len(maven_deployments) == 1, f"only JUNIT_TOOL should be deployed: {maven_deployments}"
         assert "--only=JUNIT_TOOL" in " ".join(maven_deployments[0][0][0])
         assert len(maven_runs) == 2
         assert "package" in " ".join(maven_runs[0][0][0])
         assert "source:jar" in " ".join(maven_runs[1][0][0])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        print("test_maven_projects('basic project')")
+        pomtext = pomtext_basic.replace("testpom", os.path.basename(tmpdir))
+        project = create_project(pomtext, tmpdir, ["JUNIT", "JUNIT_TOOL"], [])
+        test_project(project)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        print("test_maven_projects('project with plugin dependency')")
+        pomtext = pomtext_with_plugin.replace("testpom", os.path.basename(tmpdir))
+        project = create_project(pomtext, tmpdir, ["JUNIT"], [mx.distribution("JUNIT_TOOL", fatalIfMissing=True)])
+        test_project(project)
 
 
 def tests():

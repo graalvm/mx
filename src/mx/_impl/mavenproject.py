@@ -38,6 +38,7 @@ import pathlib
 from typing import cast, Callable, List
 from argparse import ArgumentParser
 
+import mx_ide_eclipse
 from .mx_javacompliance import JavaCompliance
 from . import mx
 from .build.tasks import BuildTask
@@ -172,17 +173,23 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
             )
         super().__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **args)
 
+        # the super class hardcodes buildDependencies to an empty list regardless of what is in args
+        self.buildDependencies = args.pop("buildDependencies", [])
+
         self.maven_directory = os.path.join(suite.dir, args.get("subDir", ""), name)
         self.pom = ETMavenPOM(os.path.join(self.maven_directory, "pom.xml"))
 
-        # prepare distribution maven dictionary from actual pom.xml
-        self.maven = getattr(self, "maven", {})
-        if any(k != "tag" for k in self.maven.keys()):
-            mx.abort("MavenProjects should not repeat properties except tags in suite.py")
-        self.maven["groupId"] = self.pom["groupId"].text
-        self.maven["artifactId"] = self.pom["artifactId"].text
-        if self.maven["artifactId"] != self.name:
-            mx.abort(f"MavenProject {self.name} should match artifactId to project name {self.maven['artifactId']}")
+        # Prepare distribution maven dictionary from actual pom.xml
+        # Allow suite.py to set "maven": "False" meaning that the project should not be deployed at all
+        # Allow defining mx maven deploy tags in suite.py
+        self.maven = getattr(self, "maven", False)
+        if self.maven:
+            if any(k != "tag" for k in self.maven.keys()):
+                mx.abort("MavenProjects should not repeat properties except tags in suite.py")
+            self.maven["groupId"] = self.pom["groupId"].text
+            self.maven["artifactId"] = self.pom["artifactId"].text
+        if self.pom["artifactId"].text != self.name:
+            mx.abort(f"MavenProject {self.name} should match artifactId to project name {self.pom['artifactId'].text}")
 
         # self.javaCompliance must be set since this is a kind of JavaProject
         self.javaCompliance = JavaCompliance(  # pylint: disable=invalid-name
@@ -203,14 +210,36 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
         self.sourcesPath = os.path.join(self.get_output_root(), self.sourcesname)  # pylint: disable=invalid-name
         self.path = self._default_path()
 
+        self.dir = self.maven_directory  # needed for mx checkstyle machinery
+
         # right now we don't let maven projects define annotation processors
         self.definedAnnotationProcessors = []  # pylint: disable=invalid-name
 
+        # some more attributes that are assumed to be available on a java project
+        self.declaredAnnotationProcessors = []
+        self._overlays = []
+        self._mismatched_imports = None
+
+    def annotation_processors(self):
+        """
+        Gets the list of dependencies defining the annotation processors that will be applied
+        when compiling this project.
+        """
+        return self.declaredAnnotationProcessors
+
+    def is_stripped(self):
+        # This method is part of JarDistribution, and we claim we are JarDistribution
+        return False
+
+    def eclipse_settings_sources(self):
+        return mx_ide_eclipse.override_suite_eclipse_settings(self.suite, self.dir)
+
     def get_ide_project_dir(self):
         """
-        We generate the ide pom.xml here, but don't use mx's support for generating
-        ide configs besides that.
+        We generate the ide pom.xml and eclipse format settings here, but don't use mx's support
+        for generating ide configs besides that.
         """
+        mx_ide_eclipse.copy_eclipse_settings(self.maven_directory, self)
         self.getBuildTask([]).create_ide_pom()
 
     def source_dirs(self):
@@ -231,6 +260,22 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
                 mx.abort(f"unbuilt Maven project {self} cannot be on a class path ({jar})")
             return jar
         return None
+
+    def get_checkstyle_config(self):
+        # mx checkstyle scans not only projects, but also distributions that happen to have 'get_checkstyle_config' attribute
+        if not hasattr(self, "checkstyle"):
+            return (None, None, None)
+
+        checkstyleProj = self if self.checkstyle == self.name else mx.project(self.checkstyle, context=self)
+        config = os.path.join(checkstyleProj.dir, ".checkstyle_checks.xml")
+        if not os.path.exists(config):
+            mx.abort("Cannot find checkstyle configuration: " + config)
+
+        checkstyleVersion = getattr(checkstyleProj, "checkstyleVersion")
+        if not checkstyleVersion:
+            checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
+
+        return config, checkstyleVersion, checkstyleProj
 
     def build_pom(self) -> str:
         """
@@ -369,6 +414,12 @@ class MavenProject(mx.Distribution, mx.ClasspathDependency):  # pylint: disable=
         self.deps = [mx.dependency(d) for d in self.deps]
         return _MavenBuildTask(self, args)
 
+    def getArchivableResults(self, use_relpath=True, single=False):
+        yield self.path, self.default_filename()
+        if not single:
+            if self.sourcesPath:
+                yield self.sourcesPath, self.default_filename() + ".src.zip"
+
 
 class _MavenBuildTask(BuildTask):
     def __init__(self, subject: MavenProject, args):
@@ -378,6 +429,9 @@ class _MavenBuildTask(BuildTask):
         if self.args.force:
             return (True, "forced build")
         return self.subject.needsUpdate(newestInput)
+
+    def newestOutput(self):
+        return mx.TimeStampFile.newest([os.path.join(self.subject.get_output_root(), self.subject.default_filename())])
 
     def clean(self, forBuild=False):
         shutil.rmtree(self.subject.get_output_root(), ignore_errors=True)
@@ -417,8 +471,8 @@ class _MavenBuildTask(BuildTask):
     def _deploy_dependencies(self, version: str | None = None):
         path = self._local_dependency_repo()
         shutil.rmtree(path, ignore_errors=True)
-        os.mkdir(path)
-        transitive_deps = set(self.subject.deps)
+        os.makedirs(path, exist_ok=False)
+        transitive_deps = set(self.subject.deps + self.subject.buildDependencies)
         sz = 0
         while True:
             if sz == len(transitive_deps):
@@ -500,33 +554,54 @@ class _MavenBuildTask(BuildTask):
             return dep.maven["groupId"]
 
     def _create_base_dependency_section(self, pom: ETMavenPOM, version: str | None):
-        for d in self.subject.deps:
+        for d in self.subject.deps + self.subject.buildDependencies:
             if not hasattr(d, "maven"):
                 mx.abort(f"Maven projects can only depend on distributions with maven spec, not {d!r}")
             dep_id = self._get_artifact_id(d)
             dep_grp = self._get_group_id(d)
             version = d.maven["version"] if d.isLibrary() else (version or self._maven_version_for_dist(d))
+            all_dependencies = []
             with pom.setdefault("dependencies") as dependencies:
-                for dependency in dependencies.getall("dependency"):
-                    if dep_grp == dependency.get_text("groupId") and dep_id == dependency.get_text("artifactId"):
-                        dependency.setdefault("version").text = version
-                        break
-                else:
-                    mx.abort(
-                        f"Dependency {d} is not listed as {dep_grp}:{dep_id} in {self}'s pom.xml. Please make suite.py and pom.xml consistent."
-                    )
+                all_dependencies += list(dependencies.getall("dependency"))
+
+            with pom.setdefault("build").setdefault("plugins") as plugins:
+                all_dependencies += list(plugins.getall("plugin"))
+
+            for dependency in all_dependencies:
+                if dep_grp == dependency.get_text("groupId") and dep_id == dependency.get_text("artifactId"):
+                    dependency.setdefault("version").text = version
+                    # Possible future improvement - we can pull dependencies for the build directly from mxbuild
+                    # and skip the lengthy maven deploy to the internal local repo, but:
+                    # - the deployment pom (see print_deploy_pom) must use Maven central coordinates again
+                    # - using "system" scope in Maven is discouraged, so maybe there are some more caveats
+                    #
+                    # dependency.setdefault("scope").text = "system"
+                    # path = os.path.join("${project.basedir}", os.path.relpath(d.path, self.subject.get_output_root()))
+                    # dependency.setdefault("systemPath").text = path
+                    break
+            else:
+                mx.abort(
+                    f"Dependency {d} is not listed as {dep_grp}:{dep_id} in {self}'s pom.xml. Please make suite.py and pom.xml consistent."
+                )
 
     def _create_base_repository_section(self, pom: ETMavenPOM):
         if self.subject.deps:
+
+            def fill_repo(repository):
+                repository.add("id").text = self._local_repo_id()
+                repository.add("url").text = pathlib.Path(self._local_dependency_repo()).as_uri()
+                with repository.add("releases") as releases:
+                    releases.add("enabled").text = "true"
+                with repository.add("snapshots") as releases:
+                    releases.add("enabled").text = "true"
+                    releases.add("updatePolicy").text = "always"
+
             with pom.setdefault("repositories") as repositories:
                 with repositories.add("repository") as repository:
-                    repository.add("id").text = self._local_repo_id()
-                    repository.add("url").text = pathlib.Path(self._local_dependency_repo()).as_uri()
-                    with repository.add("releases") as releases:
-                        releases.add("enabled").text = "true"
-                    with repository.add("snapshots") as releases:
-                        releases.add("enabled").text = "true"
-                        releases.add("updatePolicy").text = "always"
+                    fill_repo(repository)
+            with pom.setdefault("pluginRepositories") as pluginRepositories:
+                with pluginRepositories.add("pluginRepository") as repository:
+                    fill_repo(repository)
 
     def _create_base_meta_information(self, pom: ETMavenPOM):
         suite = self.subject.suite
