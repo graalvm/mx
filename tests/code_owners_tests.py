@@ -492,6 +492,86 @@ def test_codeowners_json_output_generate_cases():
         },
     )
 
+    yield (
+        "with mandatory approver",
+        {
+            "OWNERS.toml": """
+                [[rule]]
+                files = "*"
+                at_least_one_mandatory_approver = "boss@example.com"
+                """,
+            "src": {
+                "OWNERS.toml": """
+                    [[rule]]
+                    files = "*.java"
+                    any = "java@example.com reviewer@example.com"
+                    [[rule]]
+                    files = "*.scala"
+                    all = "scala@example.com"
+                    """
+            },
+        },
+        [
+            "src/Charlie.java",
+            "src/Delta.scala",
+            "main.py",
+        ],
+        {
+            "branch": None,
+            "files": [
+                "src/Charlie.java",
+                "src/Delta.scala",
+                "main.py",
+            ],
+            "mx_version": str(mx.version),
+            "owners": {
+                "main.py": {
+                    "at_least_one_mandatory_approver": ["boss@example.com"],
+                },
+                "src/Charlie.java": {
+                    "any": [
+                        "java@example.com",
+                        "reviewer@example.com",
+                    ],
+                    "at_least_one_mandatory_approver": ["boss@example.com"],
+                },
+                "src/Delta.scala": {
+                    "all": [
+                        "scala@example.com",
+                    ],
+                    "at_least_one_mandatory_approver": ["boss@example.com"],
+                },
+            },
+            "pull_request": {
+                "approvals": ["grant@example.com"],
+                "author": "author@example.com",
+                "reviewers": [
+                    "reviewer@example.com",
+                    "grant@example.com",
+                ],
+                "suggestion": {
+                    "acquire_approval": [
+                        "boss@example.com",
+                    ],
+                    "add": [
+                        "boss@example.com",
+                        "scala@example.com",
+                    ],
+                    "details": {
+                        "all": [
+                            "scala@example.com",
+                        ],
+                        "any": [],
+                        "at_least_one_mandatory_approver": [
+                            "boss@example.com",
+                        ],
+                    },
+                },
+            },
+            "version": 1,
+        },
+    )
+
 
 def test_codeowners_json_output():
     # This test needs to launch mx itself.
