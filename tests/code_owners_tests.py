@@ -53,6 +53,19 @@ class TempFileTree:
         return td
 
 
+def json_dump_with_header(header, data):
+    print(header)
+    json.dump(data, sys.stdout, indent=4, sort_keys=True)
+    print("")
+
+def dicts_are_same_verbose(actual, expected):
+    if actual == expected:
+        return True
+
+    json_dump_with_header("-- Expected --", expected)
+    json_dump_with_header("-- Actual --", actual)
+    return False
+
 # ----------------
 # Here starts the actual tests
 # ----------------
@@ -357,8 +370,9 @@ def test_owners_of():
         base_dir = temp_tree.make_tree(tree_description)
 
         fo = mx_codeowners.FileOwners(base_dir)
-        for filename, owners in owner_checks:
-            assert fo.get_owners_of(os.path.join(base_dir, filename)) == owners
+        for filename, expected_owners in owner_checks:
+            actual_owners = fo.get_owners_of(os.path.join(base_dir, filename))
+            assert dicts_are_same_verbose(actual_owners, expected_owners)
 
 
 def get_mx_binary():
@@ -386,12 +400,6 @@ def run_in_mx(args, cwd):
         cwd=cwd,
     )
     assert rc == 0
-
-
-def json_dump_with_header(header, data):
-    print(header)
-    json.dump(data, sys.stdout, indent=4, sort_keys=True)
-    print("")
 
 
 def test_codeowners_json_output_generate_cases():
@@ -618,15 +626,13 @@ def test_codeowners_json_output():
 
         # FIXME: replace with plain assert once this runs within a reasonable
         # testing framework (pytest does pretty good diff even on dicts)
-        if json_output != expected_json:
-            json_dump_with_header("-- Expected --", expected_json)
-            json_dump_with_header("-- Actual --", json_output)
-            assert json_output == expected_json
+        assert dicts_are_same_verbose(json_output, expected_json)
 
 
 def tests():
-    test_codeowners_json_output()
     test_owners_of()
+    test_codeowners_json_output()
+
 
 
 if __name__ == "__main__":
