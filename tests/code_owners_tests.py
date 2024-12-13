@@ -58,13 +58,17 @@ def json_dump_with_header(header, data):
     json.dump(data, sys.stdout, indent=4, sort_keys=True)
     print("")
 
-def dicts_are_same_verbose(actual, expected):
+
+def dicts_are_same_verbose(actual, expected, note=None):
     if actual == expected:
         return True
 
-    json_dump_with_header("-- Expected --", expected)
+    note_fmt = "" if note is None else " ({})".format(note)
+
+    json_dump_with_header("-- Expected{} --".format(note_fmt), expected)
     json_dump_with_header("-- Actual --", actual)
     return False
+
 
 # ----------------
 # Here starts the actual tests
@@ -372,7 +376,7 @@ def test_owners_of():
         fo = mx_codeowners.FileOwners(base_dir)
         for filename, expected_owners in owner_checks:
             actual_owners = fo.get_owners_of(os.path.join(base_dir, filename))
-            assert dicts_are_same_verbose(actual_owners, expected_owners)
+            assert dicts_are_same_verbose(actual_owners, expected_owners, filename)
 
 
 def get_mx_binary():
@@ -632,7 +636,6 @@ def test_codeowners_json_output():
 def tests():
     test_owners_of()
     test_codeowners_json_output()
-
 
 
 if __name__ == "__main__":
