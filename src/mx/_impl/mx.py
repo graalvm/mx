@@ -3868,6 +3868,8 @@ def _get_real_arch():
         return 'sparcv9'
     if machine in ['riscv64']:
         return 'riscv64'
+    if machine in ['loongarch64']:
+        return 'loongarch64'
     if machine == 'i386' and is_darwin():
         try:
             # Support for Snow Leopard and earlier version of MacOSX
