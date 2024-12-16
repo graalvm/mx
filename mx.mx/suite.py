@@ -1045,6 +1045,9 @@ suite = {
           },
           "riscv64" : {
             "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=riscv64", "-std=gnu99"],
+          },
+          "loongarch64" : {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=loongarch64", "-std=gnu99"],
           }
         },
         "darwin": {
