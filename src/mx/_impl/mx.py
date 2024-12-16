@@ -18367,7 +18367,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.36.3")  # [GR-47807] Basic tests for codeowners.
+version = VersionSpec("7.36.4")  # 60580 - Support the Loongarch architecture
 
 _mx_start_datetime = datetime.utcnow()
 
