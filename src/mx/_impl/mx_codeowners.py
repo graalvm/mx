@@ -92,6 +92,13 @@ def _is_some_item_in_set(items, the_set):
 def _supported_rule_types():
     return ['any', 'all', 'at_least_one_mandatory_approver']
 
+
+def _make_canonical_path(path):
+    if os.name != "nt":
+        return path
+    # On Windows, convert to forward slashes
+    return path.replace("\\", "/")
+
 class FileOwners:
     def __init__(self, src_root):
         self.src = os.path.abspath(src_root)
@@ -181,6 +188,7 @@ class FileOwners:
     def _no_owners(self):
         return {rule_type: set() for rule_type in _supported_rule_types()}
 
+
     def get_owners_of(self, filepath):
         # Subsequences of the filepath, from the least precise (/) to the most precise (/full/path/to/file.py)
         components = ([] if os.path.isabs(filepath) else ['.']) + list(self._get_path_components(filepath))
@@ -213,13 +221,13 @@ class FileOwners:
         # parent directory reference would be confusing).
         # Under normal circumstances, we should see the relative paths.
         # We do not add the information when no ownership is found.
+        # We keep the trace in Unix-style format, i.e. directories are
+        # separated by forward slashes.
         owners_trace_relative = [os.path.relpath(i, self.src) for i in owners_trace]
         owners_trace_contains_parent = [i for i in owners_trace_relative if i.startswith("..")]
         if result:
-            if owners_trace_contains_parent:
-                result['trace'] = owners_trace
-            else:
-                result['trace'] = owners_trace_relative
+            used_trace = owners_trace if owners_trace_contains_parent else owners_trace_relative
+            result['trace'] = [_make_canonical_path(i) for i in used_trace]
 
         mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
