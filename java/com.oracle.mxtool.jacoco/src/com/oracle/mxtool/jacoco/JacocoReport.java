@@ -278,9 +278,13 @@ public class JacocoReport {
 
         @Override
         public void analyzeClass(byte[] buffer, String location) throws IOException {
-            final ClassReader reader = new ClassReader(buffer);
-            if (!isClassExcluded(reader.getClassName())) {
-                super.analyzeClass(buffer, location);
+            try {
+                final ClassReader reader = new ClassReader(buffer);
+                if (!isClassExcluded(reader.getClassName())) {
+                    super.analyzeClass(buffer, location);
+                }
+            } catch (Throwable e) {
+                throw new RuntimeException("Error processing " + location, e);
             }
         }
     }
