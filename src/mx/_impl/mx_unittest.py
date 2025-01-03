@@ -656,6 +656,7 @@ def unittest(args, test_report_tags=None):
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--max-class-failures', help='stop after N test classes that have a failure (default is no limit)', type=is_strictly_positive, metavar='<N>', dest='JUnitMaxClassFailures', action=MxJUnitWrapperArg)
     parser.add_argument('--fail-fast', help='alias for --max-class-failures=1', dest='JUnitFailFast', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--max-test-time', help='max time in seconds allowed for a test (default is no limit)', type=is_strictly_positive, metavar='<N>', dest='JUnitMaxTestTime', action=MxJUnitWrapperArg)
     parser.add_argument('--enable-timing', help='enable JUnit test timing (always on - option retained for compatibility)', dest='JUnitEnableTiming', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
     parser.add_argument('--color', help='enable color output', dest='JUnitColor', action=MxJUnitWrapperBoolArg)

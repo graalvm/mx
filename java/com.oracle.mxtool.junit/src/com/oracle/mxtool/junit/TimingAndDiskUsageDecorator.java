@@ -28,10 +28,12 @@ import java.io.IOException;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.runner.Description;
+import org.junit.runner.notification.Failure;
 
 /**
  * Timing and disk usage support for JUnit test runs.
@@ -41,18 +43,45 @@ class TimingAndDiskUsageDecorator extends MxRunListenerDecorator {
     private long startTime;
     private long classStartTime;
     private Description currentTest;
+
+    /**
+     * Time in milliseconds per test class.
+     */
     final Map<Class<?>, Long> classTimes;
+
+    /**
+     * Time in milliseconds per test.
+     */
     final Map<Description, Long> testTimes;
+
+    /**
+     * Time taken by the last test in milliseconds.
+     */
+    private Long testTimeMS;
+
+    /**
+     * Max time in seconds for a passing test before it is added to {@link #maxTestTimeExceeded}. If
+     * null, then no max time has been set.
+     */
+    private final Long maxTestTime;
+
+    /**
+     * Collects the tests that pass but run longer than {@link #maxTestTime}.
+     */
+    private final List<MxJUnitWrapper.Timing<Description>> maxTestTimeExceeded;
+
     private final FileStore fileStore;
     private final String totalDiskSpace;
 
-    TimingAndDiskUsageDecorator(MxRunListener l) {
+    TimingAndDiskUsageDecorator(TextRunListener l, Long maxTestTime, List<MxJUnitWrapper.Timing<Description>> maxTestTimeExceeded) {
         super(l);
         this.classTimes = new ConcurrentHashMap<>();
         this.testTimes = new ConcurrentHashMap<>();
         FileStore fs = initFileStore();
         this.fileStore = fs;
         this.totalDiskSpace = fs == null ? null : initTotalDiskSpace(fs);
+        this.maxTestTime = maxTestTime;
+        this.maxTestTimeExceeded = maxTestTimeExceeded;
     }
 
     @Override
@@ -79,14 +108,37 @@ class TimingAndDiskUsageDecorator extends MxRunListenerDecorator {
     }
 
     @Override
+    public void testFailed(Failure failure) {
+        stopTestTiming(failure.getDescription());
+        super.testFailed(failure);
+    }
+
+    @Override
+    public void testSucceeded(Description description) {
+        long timeMS = stopTestTiming(description);
+        if (maxTestTime != null) {
+            long maxTestTimeMS = maxTestTime * 1000;
+            if (timeMS > maxTestTimeMS) {
+                maxTestTimeExceeded.add(new MxJUnitWrapper.Timing<>(description, timeMS));
+            }
+        }
+        super.testSucceeded(description);
+    }
+
+    private long stopTestTiming(Description description) {
+        testTimeMS = (System.nanoTime() - startTime) / 1_000_000;
+        testTimes.put(description, testTimeMS);
+        return testTimeMS;
+    }
+
+    @Override
     public void testFinished(Description description) {
-        long totalTime = System.nanoTime() - startTime;
         super.testFinished(description);
         if (beVerbose()) {
-            getWriter().print(" " + valueToString(totalTime));
+            getWriter().print(" " + testTimeMS + " ms");
         }
         currentTest = null;
-        testTimes.put(description, totalTime / 1_000_000);
+        testTimeMS = null;
     }
 
     static String valueToString(long valueNS) {
