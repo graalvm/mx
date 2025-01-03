@@ -7765,7 +7765,7 @@ class CompilerDaemon(Daemon):
 
         # wait 30 seconds for the Java process to launch and report the port number
         retries = 0
-        myself = f"{self.name}[{p.pid}]"
+        myself = f"{self.name()}[{p.pid}]"
         while self.port is None:
             retries = retries + 1
             returncode = p.poll()
@@ -18367,7 +18367,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.37.0")  # GR-60266 Implement time limit for mx unit tests
+version = VersionSpec("7.37.1")  # GR-60813 CompilerDaemon logging uses wrong name
 
 _mx_start_datetime = datetime.utcnow()
 
