@@ -127,7 +127,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict, abc
-from typing import Callable, Sequence, Iterable, NoReturn, Optional, Dict, Any, List, Collection
+from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection
 
 from .support.logging import log_deprecation
 
@@ -635,6 +635,15 @@ class BenchmarkSuite(object):
 
         Arguments: see `run`.
         """
+
+    def on_fail(self) -> None:
+        """Called exactly once if the benchmark failed for any reason.
+
+        Useful for preserving temporary data in case of failure.
+
+        Is called before :meth:`after`.
+        """
+        pass
 
     def after(self, bmSuiteArgs):
         """Called exactly once after all benchmark invocations are done.
@@ -1450,9 +1459,6 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
         return datapoints
 
-    def on_fail(self, message) -> NoReturn:
-        raise BenchmarkFailureError(message)
-
     def validateStdoutWithDimensions(
         self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
         """Validate out against the parse rules and create data points.
@@ -1486,15 +1492,15 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 flaky = True
         if not flaky:
             if retcode is not None and not self.validateReturnCode(retcode):
-                self.on_fail(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
+                raise BenchmarkFailureError(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
             for pat in self.failurePatterns():
                 m = compiled(pat).search(out)
                 if m:
-                    self.on_fail(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
+                    raise BenchmarkFailureError(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
 
             success_patterns = self.successPatterns()
             if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
-                self.on_fail(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
+                raise BenchmarkFailureError(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         datapoints: List[DataPoint] = []
         rules = self.rules(out, benchmarks, bmSuiteArgs)
@@ -1874,13 +1880,13 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
             shutil.rmtree(self.workdir)
         super().after(bmSuiteArgs)
 
-    def on_fail(self, message):
+    def on_fail(self):
         if self.workdir:
             # keep old workdir for investigation, create a new one for further benchmarking
             mx.warn(f"Keeping scratch directory after failed benchmark: {self.workdir}")
             self.scratchDirectories.append(os.path.abspath(self.workdir))
             self._create_tmp_workdir()
-        super().on_fail(message)
+        super().on_fail()
 
     def parserNames(self):
         return super(TemporaryWorkdirMixin, self).parserNames() + ["temporary_workdir_parser"]
@@ -3800,6 +3806,9 @@ class BenchmarkExecutor(object):
                                 mx.log(traceback.format_exc())
                                 if mxBenchmarkArgs.fail_fast:
                                     mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
+                            except BaseException:
+                                failures_seen = True
+                                raise
                 nl_tab = '\n\t'
                 if ignored_benchmarks:
                     mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
@@ -3807,6 +3816,8 @@ class BenchmarkExecutor(object):
                     mx.log(f"[FORKS] Benchmarks skipped since they have no entry in the fork counts file:{nl_tab}{nl_tab.join(skipped_benchmark_forks)}")
             finally:
                 try:
+                    if failures_seen:
+                        suite.on_fail()
                     suite.after(bmSuiteArgs)
                 except RuntimeError:
                     failures_seen = True
@@ -3819,7 +3830,7 @@ class BenchmarkExecutor(object):
 
             exit_code = 0
             if failures_seen:
-                mx.log_error(f"Failures happened during benchmark(s) execution !"
+                mx.log_error(f"Failures happened during benchmark(s) execution! "
                              f"The following benchmarks failed:{nl_tab}{nl_tab.join(failed_benchmarks)}")
                 exit_code = 1
 
