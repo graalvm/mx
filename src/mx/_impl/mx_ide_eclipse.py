@@ -66,7 +66,7 @@ def eclipseinit_and_format_files(eclipse_exe, config, files):
         _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, config, files)
 
 
-def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
+def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files, jdk=None):
     """Formats a list of files with the given Eclipse instance
 
     :param eclipse_exe the eclipse executable to use for formatting
@@ -74,10 +74,11 @@ def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
     :param eclipse_ini the eclipse ini configuration file to use
     :param config the JavaCodeFormatter config to use
     :param files a list of file paths to format
+    :param jdk the JDK used to run the formatter
     """
 
     capture = mx.OutputCapture()
-    jdk = mx.get_jdk()
+    jdk = jdk or mx.get_jdk()
     rc = mx.run([eclipse_exe,
                  '--launcher.ini', eclipse_ini,
                  '-nosplash',
@@ -198,8 +199,12 @@ def eclipseformat(args):
 
     modified = list()
     batches = dict()  # all sources with the same formatting settings are formatted together
+    jdk = mx.get_tools_jdk(purpose='eclipseformat')
     for p in projectsToProcess:
         if not p.isJavaProject():
+            continue
+        if jdk and p.javaCompliance.value > jdk.javaCompliance.value:
+            mx.log(f"project {p} has higher Java compliance ({p.javaCompliance}) than the JDK used for running eclipseformat ({jdk.javaCompliance}) and is therefore ignored")
             continue
         sourceDirs = p.source_dirs()
 
@@ -232,7 +237,7 @@ def eclipseformat(args):
 
         with _TempEclipseIni(eclipse_exe) as tmp_eclipseini:
             for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-                _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk])
+                _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk], jdk=jdk)
                 for fi in chunk:
                     if fi.update(batch.removeTrailingWhitespace, args.restore):
                         modified.append(fi)
