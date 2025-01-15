@@ -18367,7 +18367,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.38.0")  # eclipseformat TOOLS_JAVA_HOME
+version = VersionSpec("7.38.1")  # GR-61387 - Also check `$CI` in `is_continuous_integration()`.
 
 _mx_start_datetime = datetime.utcnow()
 
