@@ -213,7 +213,7 @@ def eclipseformat(args):
         if not p.isJavaProject():
             continue
         if not _is_enabled_for_project(p):
-            mx.log(f'[not formatting {p.name} because "{_eclipseformat_attribute_name}" is False in suite.py]')
+            mx.logv(f'[not formatting {p.name} because "{_eclipseformat_attribute_name}" is False in suite.py]')
             continue
         sourceDirs = p.source_dirs()
 
