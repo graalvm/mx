@@ -66,7 +66,7 @@ def eclipseinit_and_format_files(eclipse_exe, config, files):
         _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, config, files)
 
 
-def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files, jdk=None):
+def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
     """Formats a list of files with the given Eclipse instance
 
     :param eclipse_exe the eclipse executable to use for formatting
@@ -78,7 +78,7 @@ def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files, jdk=None):
     """
 
     capture = mx.OutputCapture()
-    jdk = jdk or mx.get_jdk()
+    jdk = mx.get_tools_jdk(purpose='eclipseformat')
     rc = mx.run([eclipse_exe,
                  '--launcher.ini', eclipse_ini,
                  '-nosplash',
@@ -125,6 +125,16 @@ class _TempEclipseIni:
 
     def __exit__(self, *args):
         self.tmp_eclipseini.__exit__(*args)
+
+
+_eclipseformat_attribute_name = 'eclipseformat'
+
+
+def _is_enabled_for_project(p):
+    eclipseformat_attribute_value = getattr(p, _eclipseformat_attribute_name, True)
+    if not isinstance(eclipseformat_attribute_value, bool):
+        mx.abort(f'The {_eclipseformat_attribute_name} attribute must be a boolean value (True or False)', context=p)
+    return eclipseformat_attribute_value
 
 
 @mx.command('mx', 'eclipseformat')
@@ -199,12 +209,11 @@ def eclipseformat(args):
 
     modified = list()
     batches = dict()  # all sources with the same formatting settings are formatted together
-    jdk = mx.get_tools_jdk(purpose='eclipseformat')
     for p in projectsToProcess:
         if not p.isJavaProject():
             continue
-        if jdk and p.javaCompliance.value > jdk.javaCompliance.value:
-            mx.log(f"project {p} has higher Java compliance ({p.javaCompliance}) than the JDK used for running eclipseformat ({jdk.javaCompliance}) and is therefore ignored")
+        if not _is_enabled_for_project(p):
+            mx.log(f'[not formatting {p.name} because "{_eclipseformat_attribute_name}" is False in suite.py]')
             continue
         sourceDirs = p.source_dirs()
 
@@ -237,7 +246,7 @@ def eclipseformat(args):
 
         with _TempEclipseIni(eclipse_exe) as tmp_eclipseini:
             for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-                _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk], jdk=jdk)
+                _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk])
                 for fi in chunk:
                     if fi.update(batch.removeTrailingWhitespace, args.restore):
                         modified.append(fi)
