@@ -74,10 +74,11 @@ def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
     :param eclipse_ini the eclipse ini configuration file to use
     :param config the JavaCodeFormatter config to use
     :param files a list of file paths to format
+    :param jdk the JDK used to run the formatter
     """
 
     capture = mx.OutputCapture()
-    jdk = mx.get_jdk()
+    jdk = mx.get_tools_jdk(purpose='eclipseformat')
     rc = mx.run([eclipse_exe,
                  '--launcher.ini', eclipse_ini,
                  '-nosplash',
@@ -124,6 +125,16 @@ class _TempEclipseIni:
 
     def __exit__(self, *args):
         self.tmp_eclipseini.__exit__(*args)
+
+
+_eclipseformat_attribute_name = 'eclipseformat'
+
+
+def _is_enabled_for_project(p):
+    eclipseformat_attribute_value = getattr(p, _eclipseformat_attribute_name, True)
+    if not isinstance(eclipseformat_attribute_value, bool):
+        mx.abort(f'The {_eclipseformat_attribute_name} attribute must be a boolean value (True or False)', context=p)
+    return eclipseformat_attribute_value
 
 
 @mx.command('mx', 'eclipseformat')
@@ -200,6 +211,9 @@ def eclipseformat(args):
     batches = dict()  # all sources with the same formatting settings are formatted together
     for p in projectsToProcess:
         if not p.isJavaProject():
+            continue
+        if not _is_enabled_for_project(p):
+            mx.logv(f'[not formatting {p.name} because "{_eclipseformat_attribute_name}" is False in suite.py]')
             continue
         sourceDirs = p.source_dirs()
 
