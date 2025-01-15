@@ -44,7 +44,7 @@ from .logging import abort, logv
 
 
 def is_continuous_integration() -> bool:
-    return env_var_to_bool("CONTINUOUS_INTEGRATION")
+    return env_var_to_bool("CI") or env_var_to_bool("CONTINUOUS_INTEGRATION")
 
 
 def is_darwin() -> bool:
