@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2020, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -523,11 +523,16 @@ def vscodeinit(args):
     if _EclipseJRESystemLibraries:
         rts = workspace["settings"]["java.configuration.runtimes"] = []
         for idx, name in enumerate(_EclipseJRESystemLibraries):
-            rts.append({
-                "name": name,
-                "path": mx.get_jdk(re.sub("[^0-9]+", "", name)).home,
-                "default": idx == 0
-            })
+            def abortWithException(*args):
+                raise FileNotFoundError
+            try:
+                rts.append({
+                    "name": name,
+                    "path": mx.get_jdk(re.sub("[^0-9]+", "", name), abortCallback=abortWithException).home,
+                    "default": idx == 0
+                })
+            except FileNotFoundError:
+                continue
 
     workspace_dir = dirname(abspath(mx.primary_suite().vc_dir))
     workspace_file = join(workspace_dir, mx.primary_suite().name + ".code-workspace")
