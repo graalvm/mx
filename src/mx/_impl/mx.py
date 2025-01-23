@@ -18367,7 +18367,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.38.2")  # GR-61461 - mx vscodeinit fails with Could not find a JDK 22
+version = VersionSpec("7.39.0")  # GR-61581 - Build dependencies for java projects.
 
 _mx_start_datetime = datetime.utcnow()
 
