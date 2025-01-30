@@ -7880,6 +7880,9 @@ class ECJCompiler(JavacLikeCompiler):
     def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         jdtArgs = javacArgs
 
+        if warningsAsErrors:
+            jdtArgs += ['-failOnWarning']
+
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
         jdtPropertiesSources = project.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
         if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources):
@@ -7894,8 +7897,6 @@ class ECJCompiler(JavacLikeCompiler):
                 if [ap for ap in project.declaredAnnotationProcessors if ap.isLibrary()]:
                     # unfortunately, the command line compiler doesn't let us ignore warnings for generated files only
                     content = content.replace('=warning', '=ignore')
-                elif warningsAsErrors:
-                    content = content.replace('=warning', '=error')
                 if not showTasks:
                     content = content + '\norg.eclipse.jdt.core.compiler.problem.tasks=ignore'
                 if disableApiRestrictions:
@@ -18367,7 +18368,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.39.0")  # GR-61581 - Build dependencies for java projects.
+version = VersionSpec("7.40.0")  # [GR-61769] Fix `mx build --jdt builtin --warning-as-error` to error on any warning
 
 _mx_start_datetime = datetime.utcnow()
 
