@@ -18368,7 +18368,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.40.0")  # [GR-61769] Fix `mx build --jdt builtin --warning-as-error` to error on any warning
+version = VersionSpec("7.40.1")  # [GR-60424] Improve traceability in code owners
 
 _mx_start_datetime = datetime.utcnow()
 
