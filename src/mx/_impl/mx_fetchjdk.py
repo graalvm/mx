@@ -351,6 +351,7 @@ def _parse_args(args):
     jdk_id_group = parser.add_mutually_exclusive_group()
     jdk_id_group.add_argument('jdk_id_pos', action='store', metavar='<jdk-id>', nargs='?', help='see --jdk-id')
     jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
+    parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
     _add_shared_args(parser)
     alias_group = parser.add_mutually_exclusive_group()
     alias_group.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
@@ -405,7 +406,6 @@ def _parse_args(args):
 
 
 def _add_shared_args(parser):
-    parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
     parser.add_argument('--configuration', action='store', metavar='<path>',
                         help=f'location of JSON file containing JDK definitions (default: {common_json_location()})')
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>',
