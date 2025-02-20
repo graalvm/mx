@@ -3331,6 +3331,83 @@ class RssPercentilesAndMaxTracker(Tracker):
     def get_rules(self, bmSuiteArgs):
         return self.rss_max_tracker.get_rules(bmSuiteArgs) + self.rss_percentiles_tracker.get_rules(bmSuiteArgs)
 
+class EnergyConsumptionTracker(Tracker):
+    """
+    Measures the energy consumption of a benchmark using 'powerstat' by wrapping the benchmark command with an energy polling script
+    """
+    def __init__(self, bmSuite):
+        super().__init__(bmSuite)
+        self.delay = 0.5
+        self.baseline_duration = 60
+
+    def map_command(self, cmd):
+        """
+        Wraps the 'cmd' with our energy poller script after checking that the os is Linux and 'powerstat' is installed
+
+        Args:
+            cmd (list): the benchmark command
+
+        Returns:
+            list: the modified command containing the energy polling
+        """
+        if mx.get_os() != "linux":
+            mx.abort(f"Aborting: `powerstat` is only available on Linux.")
+
+        if shutil.which("powerstat") is None:
+            mx.abort(f"Aborting: please install 'powerstat'")
+
+        from pathlib import Path
+        energy_poller_script_path = Path(__file__).resolve().parent / "energy_poller.py"
+
+        return [
+            sys.executable,
+            str(energy_poller_script_path),
+            "--delay", str(self.delay), "--baseline-duration", str(self.baseline_duration)] + cmd
+
+    def get_rules(self, bmSuiteArgs):
+        """
+        Defines the rules for parsing energy consumption metrics from the output.
+
+        Returns:
+            list of StdOutRule instances for energy metrics
+        """
+        rules = []
+
+        energy_patterns = {
+            "total-machine-energy": r"Total system energy consumption (including idle): (?P<total_machine_energy>[0-9]*\.?[0-9]+) Joules",
+            "total-compute-energy": r"Total energy used by the benchmark (excluding idle): (?P<total_compute_energy>[0-9]*\.?[0-9]+) Joules",
+            "avg-machine-power": r"Average system power (including idle): (?P<avg_machine_power>[0-9]*\.?[0-9]+) Watts",
+            "avg-compute-power": r"Average power used by benchmark: (?P<avg_compute_power>[0-9]*\.?[0-9]+) Watts"
+        }
+        for metric_name, pattern in energy_patterns.items():
+            rule_dict = {
+                "benchmark": self.bmSuite.currently_running_benchmark(),
+                "metric.name": metric_name,
+                "metric.value": ("<" + metric_name.replace("-", "_") + ">", float),
+                "metric.unit": "J" if "energy" in metric_name else "W",
+                "metric.type": "numeric",
+                "metric.better": "lower",
+                "metric.iteration": 0  # default for non-sample metrics
+            }
+            rules.append(StdOutRule(pattern, rule_dict))
+
+        sample_patterns = {
+            "compute-power-sample": r"Iteration (?P<metric_iteration>\d+): Sample compute power: (?P<compute_power_sample>[0-9]*\.?[0-9]+) Watts",
+            "compute-energy-sample": r"Iteration (?P<metric_iteration>\d+): Sample compute energy: (?P<compute_energy_sample>[0-9]*\.?[0-9]+) Joules"
+        }
+        for metric_name, pattern in sample_patterns.items():
+            sample_rule_dict = {
+                "benchmark": self.bmSuite.currently_running_benchmark(),
+                "metric.name": metric_name,
+                "metric.value": ("<" + metric_name.replace("-", "_") + ">", float),
+                "metric.unit": "J" if "energy" in metric_name else "W",
+                "metric.type": "numeric",
+                "metric.better": "lower",
+                "metric.iteration": ("<metric_iteration>", int) # capturing iteration from output
+            }
+            rules.append(StdOutRule(pattern, sample_rule_dict))
+
+        return rules
 
 _available_trackers = {
     "rss": RssTracker,
@@ -3338,6 +3415,7 @@ _available_trackers = {
     "psrecord+maxrss": PsrecordMaxrssTracker,
     "rsspercentiles": RssPercentilesTracker,
     "rsspercentiles+maxrss": RssPercentilesAndMaxTracker,
+    "energy": EnergyConsumptionTracker
 }
 
 
