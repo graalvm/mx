@@ -13020,7 +13020,7 @@ def is_quiet():
     return _opts.quiet
 
 
-JAVA_HOME_LOOKUP_PREFIX="lookup:"
+JAVA_HOME_LOOKUP_PREFIX = "lookup:"
 
 def _expand_java_home(home):
     if isabs(home):
