@@ -65,6 +65,7 @@ from os.path import join, exists, basename, abspath, dirname, isabs
 from argparse import ArgumentParser
 from collections import OrderedDict
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 from . import mx
 from . import mx_util
@@ -888,7 +889,9 @@ def _jacoco_excludes_includes():
     See https://www.eclemma.org/jacoco/trunk/doc/agent.html for details on the "includes" and "excludes" agent options.
     """
     includes = list(_jacoco_includes)
-    baseExcludes = list(_jacoco_excludes)
+    baseExcludes = set(_jacoco_excludes)
+    excludes = []
+    excluded_projects = set()
     aps = mx.annotation_processors()
     for p in mx.projects():
         if p.isJavaProject():
@@ -896,34 +899,30 @@ def _jacoco_excludes_includes():
             assert isinstance(projsetting, str), f'jacoco must be a string, not a {type(projsetting)}'
             if not _jacoco_is_package_whitelisted(p.name):
                 pass
-            elif projsetting == 'exclude':
-                baseExcludes.append(p.name)
-            elif p in aps:
-                # Exclude all annotation processors from JaCoco analysis
-                baseExcludes.append(p.name)
+            elif projsetting == 'exclude' or p.name in baseExcludes or p in aps:
+                excluded_projects.add(p.name)
+                excludes.extend((package + '.*' for package in p.defined_java_packages()))
             elif projsetting == 'include':
-                includes.append(p.name + '.*')
+                includes.extend((package + '.*' for package in p.defined_java_packages()))
             packagelist = getattr(p, 'jacocoExcludePackages', [])
             assert isinstance(packagelist, list), f'jacocoExcludePackages must be a list, not a {type(packagelist)}'
             for packagename in packagelist:
-                baseExcludes.append(packagename)
+                excludes.append(packagename + ".*")
     if _jacoco_whitelisted_packages:
         includes.extend((x + '.*' for x in _jacoco_whitelisted_packages))
 
     def _filter(l):
-        # filter out specific classes which are already covered by a baseExclude package
+        # filter out specific classes which are already covered by a baseExclude
         return [clazz for clazz in l if not any([clazz.startswith(package) for package in baseExcludes])]
 
-    excludes = []
     for p in mx.projects():
-        if p.isJavaProject() and p.name not in baseExcludes and _jacoco_is_package_whitelisted(p.name):
+        if p.isJavaProject() and p.name not in excluded_projects and _jacoco_is_package_whitelisted(p.name):
             excludes += _filter(
                 p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True,
                                                 includeGenSrc=True).keys())
             excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line,
                                                                          includeInnerClasses=True,
                                                                          includeGenSrc=True).keys())
-    excludes += [package + '.*' for package in baseExcludes]
     return excludes, includes
 
 def get_jacoco_dest_file():
@@ -959,13 +958,19 @@ def get_jacoco_agent_args(jacoco=None, agent_option_prefix=''):
 
         agent_path = get_jacoco_agent_path(True)
         agent_args = f'{agent_option_prefix}-javaagent:{agent_path}={agent_options}'
-        # Use java arg file to handle long command lines
-        with tempfile.NamedTemporaryFile(prefix="jacoco_agent", mode="w", delete=False) as args_file:
-            # Make sure to remove temporary file when program exits
-            atexit.register(os.remove, args_file.name)
-            args_file.write(agent_args)
-            args_file.flush()
-            return [f'@{args_file.name}']
+
+        # Use java args file to handle long command lines
+        mxbuild_dir = Path("mxbuild")
+        argsfile_dir = mxbuild_dir.joinpath("jacoco") if mxbuild_dir.exists() else Path.cwd()
+        now = datetime.now().isoformat().replace(':', '_')
+        argsfile_dir.mkdir(exist_ok=True)
+        argsfile = argsfile_dir.joinpath(f"agent-{now}.argsfile").absolute()
+        mx.log(f"JaCoCo agent config: '{argsfile}'")
+        if not mxbuild_dir.exists() and not mx.get_opts().verbose:
+            # Remove argsfile at exit if not in a mxbuild dir and not verbose
+            atexit.register(os.remove, str(argsfile))
+        argsfile.write_text(agent_args)
+        return [f'@{argsfile}']
     return None
 
 def jacocoreport(args, exec_files=None):
