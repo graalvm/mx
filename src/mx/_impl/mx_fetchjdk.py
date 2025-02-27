@@ -489,7 +489,10 @@ def get_jdk_path(args):
     for jdk_id in parsed_args.jdk_ids:
         if jdk_id in jdk_binaries:
             return jdk_binaries[jdk_id].get_final_path(to)
-    mx.abort(f"None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) were found in common.json. Available ids are\n  {'\n  '.join(jdk_binaries.keys())}")
+    msg = f"None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) were found in common.json. Available ids are"
+    msg += "\n"
+    msg += "\n  ".join(jdk_binaries.keys())
+    mx.abort(msg)
 
 
 def _get_jdk_binary_or_abort(jdk_binaries, jdk_id, selector):
