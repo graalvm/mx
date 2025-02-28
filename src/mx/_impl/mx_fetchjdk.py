@@ -241,29 +241,6 @@ def _parse_args(args):
     """
     settings = {}
     settings["keep-archive"] = False
-    settings["jdks-dir"] = join(mx.dot_mx_dir(), 'jdks')
-
-    # Order in which to look for common.json:
-    # 1. Primary suite path (i.e. -p mx option)
-    # 2. Current working directory
-    # 4. $MX_HOME/common.json
-    path_list = PathList()
-    if mx._primary_suite_path:
-        path_list.add(_find_file(mx._primary_suite_path, 'common.json'))
-    path_list.add(_find_file(os.getcwd(), 'common.json'))
-    path_list.add(join(_mx_home, 'common.json'))
-    default_jdk_defs_location = path_list.paths[0]
-
-    # Order in which to look for jdk-binaries.json:
-    # 1. Primary suite path (i.e. -p mx option)
-    # 2. Current working directory
-    # 4. $MX_HOME/jdk-binaries.json
-    path_list = PathList()
-    if mx._primary_suite_path:
-        path_list.add(_find_file(mx._primary_suite_path, 'jdk-binaries.json'))
-    path_list.add(_find_file(os.getcwd(), 'jdk-binaries.json'))
-    path_list.add(join(_mx_home, 'jdk-binaries.json'))
-    default_jdk_binaries_location = str(path_list)
 
     parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options] [<jdk-id> [<selector>]]' + r"""
         Download and install JDKs.
@@ -375,13 +352,10 @@ def _parse_args(args):
     jdk_id_group.add_argument('jdk_id_pos', action='store', metavar='<jdk-id>', nargs='?', help='see --jdk-id')
     jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
-    parser.add_argument('--configuration', action='store', metavar='<path>', help=f'location of JSON file containing JDK definitions (default: {default_jdk_defs_location})')
-    parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {default_jdk_binaries_location})')
-    parser.add_argument('--to', action='store', metavar='<dir>', help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {settings['jdks-dir']})")
+    _add_shared_args(parser)
     alias_group = parser.add_mutually_exclusive_group()
     alias_group.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
     alias_group.add_argument('--auto-alias', '-A', action='store_const', dest='alias', const='-', help='make the extracted JDK available via its name (e.g. via a symlink). The path will be resolved against the value of the --to option.')
-    parser.add_argument('--arch', action='store', metavar='<name>', help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
@@ -391,22 +365,13 @@ def _parse_args(args):
         ''')
     args = parser.parse_args(args)
 
-    if args.to is not None:
-        if args.to == '<system>':
-            args.to = _default_system_jdks_dir()
-        settings["jdks-dir"] = args.to
-    elif args.arch != mx.get_arch():
-        settings["jdks-dir"] = join(settings["jdks-dir"], args.arch)
+    settings["jdks-dir"] = get_jdk_dir(args.to, args.arch)
 
     if not _check_write_access(settings["jdks-dir"]):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
                  "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
-    jdk_defs_location = _check_exists_or_None(args.configuration) or default_jdk_defs_location
-    jdk_binaries_locations = (args.jdk_binaries or default_jdk_binaries_location).split(os.pathsep)
-
-    jdk_defs = _parse_jdk_defs(jdk_defs_location)
-    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, args.arch)
+    jdk_binaries, jdk_defs = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
 
     settings["list"] = args.list
 
@@ -438,6 +403,96 @@ def _parse_args(args):
     settings["digest-check"] = args.digest_check
 
     return settings
+
+
+def _add_shared_args(parser):
+    parser.add_argument('--configuration', action='store', metavar='<path>',
+                        help=f'location of JSON file containing JDK definitions (default: {common_json_location()})')
+    parser.add_argument('--jdk-binaries', action='store', metavar='<path>',
+                        help=f'{os.pathsep} separated JSON files specifying location of JDK binaries (default: {_default_jdk_binaries_location()})')
+    parser.add_argument('--to', action='store', metavar='<dir>',
+                        help=f"location where JDK will be installed. Specify <system> to use the system default location. (default: {default_jdks_dir()})")
+    parser.add_argument('--arch', action='store', metavar='<name>',
+                        help=f'arch of binary to be retrieved (default: {mx.get_arch()})', default=mx.get_arch())
+
+
+def common_json_location():
+    """Gets the location of the `common.json` file:
+
+    Order in which to look for common.json:
+    1. Primary suite path (i.e. -p mx option)
+    2. Current working directory
+    4. $MX_HOME/common.json
+    """
+    path_list = PathList()
+    if mx._primary_suite_path:
+        path_list.add(_find_file(mx._primary_suite_path, 'common.json'))
+    path_list.add(_find_file(os.getcwd(), 'common.json'))
+    path_list.add(join(_mx_home, 'common.json'))
+    default_jdk_defs_location = path_list.paths[0]
+    return default_jdk_defs_location
+
+
+def _default_jdk_binaries_location():
+    """Returns a list of jdk-binaries.json files as an `os.pathsep` separated string.
+
+    Order in which to look for jdk-binaries.json:
+    1. Primary suite path (i.e. -p mx option)
+    2. Current working directory
+    4. $MX_HOME/jdk-binaries.json
+    """
+    path_list = PathList()
+    if mx._primary_suite_path:
+        path_list.add(_find_file(mx._primary_suite_path, 'jdk-binaries.json'))
+    path_list.add(_find_file(os.getcwd(), 'jdk-binaries.json'))
+    path_list.add(join(_mx_home, 'jdk-binaries.json'))
+    default_jdk_binaries_location = str(path_list)
+    return default_jdk_binaries_location
+
+
+def _get_jdk_binaries(arch, binaries, configuration):
+    jdk_defs_location = _check_exists_or_None(configuration) or common_json_location()
+    jdk_binaries_locations = (binaries or _default_jdk_binaries_location()).split(os.pathsep)
+    jdk_defs = _parse_jdk_defs(jdk_defs_location)
+    jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, arch)
+    return jdk_binaries, jdk_defs
+
+
+def default_jdks_dir():
+    return join(mx.dot_mx_dir(), 'jdks')
+
+
+def get_jdk_dir(to, arch):
+    jdks_dir = default_jdks_dir()
+    if to is not None:
+        if to == '<system>':
+            to = _default_system_jdks_dir()
+        jdks_dir = to
+    elif arch != mx.get_arch():
+        jdks_dir = join(jdks_dir, arch)
+    return jdks_dir
+
+
+@command('mx', 'get-jdk-path', '[options]')
+@suite_context_free
+def get_jdk_path_cli(args):
+    print(get_jdk_path(args))
+
+
+def get_jdk_path(args):
+    parser = ArgumentParser(prog='mx get-jdk-path', description='Returns the path to the local path to the first existing <jdk-id>')
+    parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+', help='JDK ids to lookup. The first existing is chosen.')
+    _add_shared_args(parser)
+    parsed_args = parser.parse_args(args)
+    jdk_binaries, _ = _get_jdk_binaries(parsed_args.arch, parsed_args.jdk_binaries, parsed_args.configuration)
+    to = get_jdk_dir(parsed_args.to, parsed_args.arch)
+    for jdk_id in parsed_args.jdk_ids:
+        if jdk_id in jdk_binaries:
+            return jdk_binaries[jdk_id].get_final_path(to)
+    msg = f"None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) were found in common.json. Available ids are"
+    msg += "\n"
+    msg += "\n  ".join(jdk_binaries.keys())
+    mx.abort(msg)
 
 
 def _get_jdk_binary_or_abort(jdk_binaries, jdk_id, selector):

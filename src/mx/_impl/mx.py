@@ -13019,11 +13019,18 @@ _probed_JDKs = {}
 def is_quiet():
     return _opts.quiet
 
+
+JAVA_HOME_LOOKUP_PREFIX = "lookup:"
+
 def _expand_java_home(home):
     if isabs(home):
         return home
+    elif home.startswith(JAVA_HOME_LOOKUP_PREFIX):
+        lookup_args = home[len(JAVA_HOME_LOOKUP_PREFIX):].split(",")
+        logv(f'Looking up JDK using `mx get-jdk-path {" ".join(lookup_args)}`')
+        return mx_fetchjdk.get_jdk_path(lookup_args)
     elif not isdir(home):
-        jdks_dir = join(dot_mx_dir(), 'jdks')
+        jdks_dir = mx_fetchjdk.default_jdks_dir()
         jdks_dir_home = join(jdks_dir, home)
         if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
             jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
@@ -18368,7 +18375,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.40.2")  # [GR-62639] jacaco exclusion does not work correctly
+version = VersionSpec("7.41.0")  # JAVA_HOME support for lookup
 
 _mx_start_datetime = datetime.utcnow()
 
