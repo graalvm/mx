@@ -18368,7 +18368,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.40.1")  # [GR-60424] Improve traceability in code owners
+version = VersionSpec("7.40.2")  # [GR-62639] jacaco exclusion does not work correctly
 
 _mx_start_datetime = datetime.utcnow()
 
