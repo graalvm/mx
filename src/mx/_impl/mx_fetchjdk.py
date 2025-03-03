@@ -480,7 +480,7 @@ def get_jdk_path_cli(args):
 
 
 def get_jdk_path(args):
-    parser = ArgumentParser(prog='mx get-jdk-path', description='Returns the path to the local path to the first existing <jdk-id>')
+    parser = ArgumentParser(prog='mx get-jdk-path', description='Returns the local path to the first existing <jdk-id>')
     parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+', help='JDK ids to lookup. The first existing is chosen.')
     _add_shared_args(parser)
     parsed_args = parser.parse_args(args)
