@@ -13028,12 +13028,19 @@ def _expand_java_home(home):
     elif home.startswith(JAVA_HOME_LOOKUP_PREFIX):
         lookup_args = home[len(JAVA_HOME_LOOKUP_PREFIX):].split(",")
         logv(f'Looking up JDK using `mx get-jdk-path {" ".join(lookup_args)}`')
-        return mx_fetchjdk.get_jdk_path(lookup_args)
+        jdks_dir_home = mx_fetchjdk.get_jdk_path(lookup_args)
+        if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
+            mac_jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
+            if exists(mac_jdks_dir_home):
+                return mac_jdks_dir_home
+        return jdks_dir_home
     elif not isdir(home):
         jdks_dir = mx_fetchjdk.default_jdks_dir()
         jdks_dir_home = join(jdks_dir, home)
         if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
-            jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
+            mac_jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
+            if exists(mac_jdks_dir_home):
+                jdks_dir_home = mac_jdks_dir_home
         logv(f'JDK "{home}" not found in the current directory')
         logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
         if isdir(jdks_dir_home):
@@ -18375,7 +18382,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.41.0")  # JAVA_HOME support for lookup
+version = VersionSpec("7.41.1")  # fix JAVA_HOME support for lookup on Mac
 
 _mx_start_datetime = datetime.utcnow()
 
