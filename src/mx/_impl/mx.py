@@ -5444,7 +5444,7 @@ class LayoutDistribution(AbstractDistribution):
         :param hashEntry: if specified, a layout entry with given path will be added in the distribution. The entry will contain hash code of layout entries
         """
         super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
-        self.buildDependencies += LayoutDistribution._extract_deps(layout, suite, name)
+        self.buildDependencies += LayoutDistribution._extract_deps(layout, self, name)
         self.output = join(self.get_output_base(), name)  # initialized here rather than passed above since `get_output_base` is not ready before the super constructor
         self.layout = layout
         self.path_substitutions = path_substitutions or mx_subst.path_substitutions
@@ -5497,11 +5497,13 @@ class LayoutDistribution(AbstractDistribution):
         return LayoutDistribution._linky.match(path)
 
     @staticmethod
-    def _extract_deps(layout, suite, distribution_name):
+    def _extract_deps(layout, context, distribution_name):
         deps = set()
-        for _, source in LayoutDistribution._walk_static_layout(layout, distribution_name, context=suite):
+        for _, source in LayoutDistribution._walk_static_layout(layout, distribution_name, context=context):
             if 'dependency' in source:
                 deps.add(source['dependency'])
+            if 'dependencies' in source:
+                deps.update(source['dependencies'])
         return sorted(deps)
 
     @staticmethod
@@ -5526,6 +5528,8 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict["path"] = source_spec
             elif source_type == 'string':
                 source_dict["value"] = source_spec
+            elif source_type == 'classpath-dependencies':
+                source_dict["dependencies"] = source_spec.split(',')
             else:
                 abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=context)
         else:
@@ -5547,6 +5551,8 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = "link:" + source_dict['path']
             elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
+            elif source_type == 'classpath-dependencies':
+                source_dict['_str_'] = "classpath-dependencies:" + ','.join(source_dict["dependencies"])
             else:
                 raise abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=context)
         if 'exclude' in source_dict:
@@ -5579,8 +5585,16 @@ class LayoutDistribution(AbstractDistribution):
     def _walk_layout(self):
         for (destination, source_dict) in LayoutDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
             dep = source_dict.get("dependency")
-            if dep not in self._removed_deps:
-                yield (destination, source_dict)
+            if dep in self._removed_deps:
+                continue
+            deps = source_dict.get("dependencies")
+            if deps:
+                deps = [d for d in deps if d not in self._removed_deps]
+                if not deps:
+                    continue
+                source_dict = source_dict.copy()
+                source_dict["dependencies"] = deps
+            yield (destination, source_dict)
 
     def _install_source(self, source, output, destination, archiver):
         clean_destination = destination
@@ -5878,6 +5892,16 @@ Common causes:
             archiver.add_str(s, clean_destination, provenance)
         elif source_type == 'skip':
             pass
+        elif source_type == 'classpath-dependencies':
+            entries = set(classpath_entries(source['dependencies']))
+            for entry in entries:
+                archive = not isinstance(entry, JARDistribution) or not _use_exploded_build()
+                try:
+                    _install_source_files([next(entry.getArchivableResults(single=True))], archive=archive)
+                except ValueError as e:
+                    assert e.args[0] == 'single not supported'
+                    msg = f"Should not reach'{entry.name}' of type {entry.__class__.__name__} from classpath-dependencies for {d}."
+                    abort(msg)
         else:
             abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=self)
 
@@ -5971,10 +5995,10 @@ Common causes:
                 pass  # this is handled by _persist_layout
             elif source_type == 'string':
                 pass  # this is handled by _persist_layout
-            elif source_type in ('dependency', 'extracted-dependency', 'skip'):
+            elif source_type in ('dependency', 'extracted-dependency', 'skip', 'classpath-dependencies'):
                 pass  # this is handled by a build task dependency
             else:
-                abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=suite)
+                abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=self)
         if not self._check_persisted_layout():
             return "layout definition has changed"
         if not self._check_linky_state():
@@ -18382,7 +18406,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.41.1")  # fix JAVA_HOME support for lookup on Mac
+version = VersionSpec("7.42.0")  # classpath-dependencies
 
 _mx_start_datetime = datetime.utcnow()
 
