@@ -352,7 +352,7 @@ import threading
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
+from argparse import ArgumentParser, PARSER, REMAINDER, ONE_OR_MORE, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO, StringIO, open as io_open
@@ -18128,6 +18128,26 @@ def print_simple_help():
     print('\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command')
 
 
+def classpath_cli(args):
+    """prints the classpath for a dependency
+
+    Multiple dependencies can be specified as roots.
+    """
+    parser = ArgumentParser(prog='mx classpath')
+    parser.add_argument('--lines', action='store_true', help=f'Print one dependency per line (default is a {os.pathsep}-separated string).')
+    parser.add_argument('--for-build', action='store_true', help='Produces a build-time classpath (default is a run-time classpath).')
+    parser.add_argument('--resolve', action='store_true', help='Download libraries if they are not yet downloaded.')
+    parser.add_argument('dependencies', nargs=ONE_OR_MORE, help='root distributions to include on the classpath')
+    parsed = parser.parse_args(args)
+    cpEntries = classpath_entries(names=parsed.dependencies, forBuild=parsed.for_build)
+    cp = _entries_to_classpath(cpEntries=cpEntries, unique=True, resolve=parsed.resolve)
+    if parsed.lines:
+        for e in cp.split(os.pathsep):
+            print(e)
+    else:
+        print(cp)
+
+
 def list_commands(l):
     return _mx_commands.list_commands(l)
 
@@ -18152,6 +18172,7 @@ update_commands("mx", {
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
+    'classpath': [classpath_cli, '[dependency...]'],
     'clean': [clean, ''],
     'deploy-artifacts': [deploy_artifacts, ''],
     'deploy-binary' : [deploy_binary, ''],
