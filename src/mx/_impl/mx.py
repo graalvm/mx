@@ -5662,7 +5662,7 @@ class LayoutDistribution(AbstractDistribution):
                     shutil.copy(src, absolute_destination)
 
         def _install_source_files(files, include=None, excludes=None, optional=False, archive=True):
-            excludes = excludes or []
+            excludes = [mx_subst.path_substitutions.substitute(e) for e in (excludes or [])]
             if destination.endswith('/'):
                 ensure_dir_exists(absolute_destination)
             first_file = True
@@ -18406,7 +18406,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.42.0")  # classpath-dependencies
+version = VersionSpec("7.42.1")  # GR-63202
 
 _mx_start_datetime = datetime.utcnow()
 
