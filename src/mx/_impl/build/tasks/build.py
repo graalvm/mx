@@ -103,10 +103,10 @@ class BuildTask(Buildable, Task):
         if path.exists(self._saved_deps_path):
             with open(self._saved_deps_path) as f:
                 last_deps = f.read().splitlines()
-                curr_deps = [d.subject.name for d in self.deps]
-                if last_deps != curr_deps:
-                    return True
-        return False
+        else:
+            last_deps = []
+        curr_deps = [d.subject.name for d in self.deps]
+        return last_deps != curr_deps
 
     def execute(self):
         """
