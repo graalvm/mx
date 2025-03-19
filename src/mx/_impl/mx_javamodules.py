@@ -672,6 +672,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         def _process_exports(export_specs, available_packages, project_scope=None):
             unqualified_exports = []
             for export in export_specs:
+                # Normalize export spec by replacing all whitespace sequences
+                # with a single space character
+                export = re.sub(r"\s+", " ", export)
                 if ' to ' in export:
                     splitpackage = export.split(' to ')
                     packages_spec = splitpackage[0].strip()
