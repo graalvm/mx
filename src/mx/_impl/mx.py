@@ -4699,6 +4699,8 @@ def _get_dependency_path(dname, resolve=True, collectDeps=None, **kwargs):
         path = d.path
     elif d.isTARDistribution() and hasattr(d, "output"):
         path = d.output
+    elif d.isLayoutDistribution():
+        path = d.output
     elif d.isLibrary() or d.isResourceLibrary():
         path = d.get_path(resolve=resolve)
     elif d.isProject():
@@ -18406,7 +18408,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.42.2")  # GR-63217
+version = VersionSpec("7.42.3")  # GR-63320
 
 _mx_start_datetime = datetime.utcnow()
 
