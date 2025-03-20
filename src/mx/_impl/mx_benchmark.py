@@ -705,10 +705,21 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
-    def dump_results_file(self, file_path, data_points):
+    def dump_results_file(self, file_path, append_results, data_points):
         if not data_points:
             data_points = []
-        dump = json.dumps({"queries": data_points}, sort_keys=True, indent=2)
+
+        if append_results and os.path.exists(file_path):
+            with open(file_path, "r") as txtfile:
+                existing_data_points = json.load(txtfile)["queries"]
+            existing_file_size_kb = int(os.path.getsize(file_path) / 1024)
+            mx.log(f"Found an existing file at {file_path} ({existing_file_size_kb} KB) "
+                   f"with {len(existing_data_points)} data points. Appending results to this file.")
+            all_data_points = existing_data_points + data_points
+        else:
+            all_data_points = data_points
+
+        dump = json.dumps({"queries": all_data_points}, sort_keys=True, indent=2)
         with open(file_path, "w") as txtfile:
             txtfile.write(dump)
         file_size_kb = int(os.path.getsize(file_path) / 1024)
@@ -3649,6 +3660,9 @@ class BenchmarkExecutor(object):
             default="bench-results.json",
             help="Path to JSON output file with benchmark results.")
         parser.add_argument(
+            "--append-results", action="store_true", default=False,
+            help="If a benchmark results file already exists, append results to the file (instead of overwriting it).")
+        parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
             "--tracker", default='rsspercentiles', help="Enable extra trackers like 'rsspercentiles', 'rss' or 'psrecord'. If not set, 'rsspercentiles' is used.")
@@ -3824,7 +3838,7 @@ class BenchmarkExecutor(object):
                     mx.log(traceback.format_exc())
 
             if not returnSuiteAndResults:
-                suite.dump_results_file(mxBenchmarkArgs.results_file, results)
+                suite.dump_results_file(mxBenchmarkArgs.results_file, mxBenchmarkArgs.append_results, results)
             else:
                 mx.log("Skipping benchmark results dumping since they're programmatically returned")
 
