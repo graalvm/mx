@@ -244,19 +244,30 @@ class JavaModuleDescriptor(mx.Comparable):
                     by the module-info.java format
         """
         out = StringIO()
-        print('module ' + self.name + ' {', file=out)
+        print(f'module {self.name} {{', file=out)
         for dependency, modifiers in sorted(self.requires.items()):
             modifiers_string = (' '.join(sorted(modifiers)) + ' ') if len(modifiers) != 0 else ''
-            print('    requires ' + modifiers_string + dependency + ';', file=out)
+            print(f'    requires {modifiers_string}{dependency};', file=out)
         for source, targets in sorted(self.exports.items()):
-            targets_string = (' to ' + ', '.join(sorted(targets))) if len(targets) != 0 else ''
-            print('    exports ' + source + targets_string + ';', file=out)
+            if len(targets) == 0:
+                targets_string = ""
+            elif len(targets) == 1:
+                targets_string = f" to {targets.pop()}"
+            else:
+                sep = f"{os.linesep}        "
+                targets_string = f" to{sep}" + ("," + sep).join(sorted(targets))
+            print(f'    exports {source}{targets_string};', file=out)
         for use in sorted(self.uses):
             print('    uses ' + use + ';', file=out)
         for opens in sorted(self.opens):
             print('    opens ' + opens + ';', file=out)
         for service, providers in sorted(self.provides.items()):
-            print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
+            if len(providers) == 1:
+                providers_string = f" with {providers.pop()}"
+            else:
+                sep = f"{os.linesep}        "
+                providers_string = f" with{sep}" + ("," + sep).join(sorted(providers))
+            print(f'    provides {service}{providers_string};', file=out)
         if extras_as_comments:
             for pkg in sorted(self.conceals):
                 print('    // conceals: ' + pkg, file=out)
@@ -672,6 +683,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
         def _process_exports(export_specs, available_packages, project_scope=None):
             unqualified_exports = []
             for export in export_specs:
+                # Normalize export spec by replacing all whitespace sequences
+                # with a single space character
+                export = re.sub(r"\s+", " ", export)
                 if ' to ' in export:
                     splitpackage = export.split(' to ')
                     packages_spec = splitpackage[0].strip()
