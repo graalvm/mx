@@ -309,7 +309,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
         apSourceOutRef = ""
     mx_util.ensure_dir_exists(p.output_dir())
 
-    mx_ide_eclipse._copy_eclipse_settings(nb_dir, p)
+    mx_ide_eclipse.copy_eclipse_settings(nb_dir, p)
 
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """

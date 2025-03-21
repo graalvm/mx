@@ -11,10 +11,11 @@ A MavenProject is both a Java project as well as a Jar distribution from the poi
 As such, it can be built with `mx build` and be deployed with `mx maven-deploy`.
 It needs to be in the `distributions` section of the `suite.py`, since it can be deployed directly.
 
-MavenProjects can have `dependencies` on other mx distributions or libraries.
+MavenProjects can have `dependencies` and `buildDependencies` on other mx distributions or libraries.
 Both library and distribution dependencies must have maven specifications - so libraries should be referring to existing maven artifacts, and other mx distributions should have a `maven` property.
-All dependencies specified in the `suite.py` must also be in the default `pom.xml` of the maven project.
-There is no consideration for mx "buildDependencies" or the "exclude" attribute that other distributions support - these kinds of features should be specified only in the `pom.xml` of the project.
+All dependencies specified in the `suite.py` must also be in the default `pom.xml` of the maven project as either regular dependencies
+or as Maven plugin dependencies if the dependency is a Maven plugin.
+There is no consideration for the "exclude" attribute that other distributions support - these kinds of features should be specified only in the `pom.xml` of the project.
 You should use the maven properties for dependencies, such as `<scope>test</scope>` or `<optional>true</optional>` and similar as appropriate.
 
 When a `MavenProject` is built, mx builds and deploys all dependencies into a local repository under the `mxbuild` directory.

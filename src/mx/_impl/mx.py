@@ -6679,13 +6679,7 @@ class JavaProject(Project, ClasspathDependency):
         A new dictionary is created each time this method is called so it's
         safe for the caller to modify it.
         """
-        esdict = self.suite.eclipse_settings_sources()
-
-        # check for project overrides
-        projectSettingsDir = join(self.dir, 'eclipse-settings')
-        if exists(projectSettingsDir):
-            for name in os.listdir(projectSettingsDir):
-                esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+        esdict = mx_ide_eclipse.override_suite_eclipse_settings(self.suite, self.dir)
 
         if not self.annotation_processors():
             esdict.pop("org.eclipse.jdt.apt.core.prefs", None)
@@ -15814,6 +15808,7 @@ def checkstyle(args):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     parser.add_argument('--filelist', type=FileType("r"), help='only check the files listed in the given file')
     parser.add_argument('--fix-unused-imports', action='store_true', help='automatically fix unused imports')
+    parser.add_argument('--distributions', action='store_true', help='scans also for MX distributions that provide the attributes needed to run checkstyle')
     args = parser.parse_args(args)
 
     filelist = None
@@ -15833,7 +15828,10 @@ def checkstyle(args):
             self.projects = []
 
     batches = {}
-    for p in projects(opt_limit_to_suite=True):
+    to_check = list(projects(opt_limit_to_suite=True))
+    if args.distributions:
+        to_check += [d for d in distributions(opt_limit_to_suite=True) if hasattr(d, 'isJavaProject') and hasattr(d, 'get_checkstyle_config')]
+    for p in to_check:
         if not p.isJavaProject():
             continue
         if args.primary and not p.suite.primary:
@@ -18408,7 +18406,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.42.4")  # GR-63261 - make module-info.java generation deterministic
+version = VersionSpec("7.43.0")  # GR-63321, MavenProject: support MX build deps, and Maven plugin deps
 
 _mx_start_datetime = datetime.utcnow()
 
