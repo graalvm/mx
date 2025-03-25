@@ -48,7 +48,7 @@ See mx restore-pd-layouts and --multi-platform-layout-directories.""")
     if ext not in ('zip', 'jar', 'tar', 'tgz', 'tar.gz'):
         raise mx.abort("Unsupported archive extension. Supported: .zip, .jar, .tar, .tgz, .tar.gz")
 
-    pd_layout_dirs = [d for d in mx.distributions(True) if isinstance(d, mx.LayoutDirDistribution) and d.platformDependent]
+    pd_layout_dirs = [d for d in mx.distributions(True) if isinstance(d, mx.LayoutDirDistribution) and d.platformDependent and not d.local_platform_only]
     with mx.Archiver(archive_path, kind=ext) as arc:
         local_os_arch = _local_os_arch()
         arc.add_str(local_os_arch, "os-arch", None)

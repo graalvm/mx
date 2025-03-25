@@ -4802,7 +4802,12 @@ class Distribution(Dependency):
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
-        self.platforms = platforms or [None]
+        if platforms == 'local':
+            self.platforms = [None]
+            self.local_platform_only = True
+        else:
+            self.platforms = platforms or [None]
+            self.local_platform_only = False
         self.buildDependencies = []
         if testDistribution is None:
             self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
@@ -6255,7 +6260,7 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
                 archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
                 contents[archive_path] = file_path
                 yield file_path, archive_path
-        if _opts.multi_platform_layout_directories and self.platformDependent:
+        if _opts.multi_platform_layout_directories and self.platformDependent and not self.local_platform_only:
             if _opts.multi_platform_layout_directories == 'all':
                 requested_platforms = None
             else:
@@ -6281,7 +6286,7 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
                         archive_path = relpath(file_path, foreign_output) if use_relpath else basename(file_path)
                         if archive_path in contents:
                             if _hash(file_path) != _hash(contents[archive_path]):
-                                raise abort(f"""File from alternative platfrom is located in the same path but has different contents:
+                                raise abort(f"""File from alternative platform is located in the same path but has different contents:
 - {contents[archive_path]}
 - {file_path}""")
                         else:
@@ -14428,7 +14433,7 @@ def register_special_build_target(name, target_enumerator, with_argument=False):
 
 def _platform_dependent_layout_dir_distributions():
     for d in distributions(True):
-        if isinstance(d, LayoutDirDistribution) and d.platformDependent:
+        if isinstance(d, LayoutDirDistribution) and d.platformDependent and not d.local_platform_only:
             yield d
 
 
@@ -18406,7 +18411,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.44.0")  # GR-63349
+version = VersionSpec("7.45.0")  # local platforms
 
 _mx_start_datetime = datetime.utcnow()
 
