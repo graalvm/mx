@@ -14593,7 +14593,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
         _resolve_ecj_jar(None, None, None, args.jdt)
 
     onlyDeps = None
-    removed = []
+    removed_non_default = set()
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
@@ -14629,14 +14629,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
                 log(f'{len(_removedDeps)} unsatisfied dependencies were removed from build (use -v to list them)')
 
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
-        if removed:
-            build_report.add_info("non-default dependencies were removed from build", removed)
-            if _opts.verbose:
-                log('Non-default dependencies removed from build (use mx build --all to build them):')
-                for d in removed:
-                    log(f' {d}')
-            else:
-                log(f'{len(removed)} non-default dependencies were removed from build (use -v to list them, mx build --all to build them)')
+        removed_non_default.update(removed)
 
         # Omit all libraries so that only the ones required to build other dependencies are downloaded
         roots = [d for d in deps if not d.isBaseLibrary()]
@@ -14667,8 +14660,10 @@ def _build_with_report(cmd_args, build_report, parser=None):
             return
         taskMap[dep] = task
         if onlyDeps is None or task.subject.name in onlyDeps:
-            if dep in removed:
-                warn(f"Adding non-default dependency {dep} as it is needed by {edge.kind} {edge.src}")
+            if dep in removed_non_default:
+                if primary_suite() == dep.suite:
+                    warn(f"Adding non-default dependency {dep} as it is needed by {edge.kind} {edge.src}")
+                removed_non_default.remove(dep)
             sortedTasks.append(task)
         lst = depsMap.setdefault(task.subject, [])
         for d in lst:
@@ -14680,6 +14675,16 @@ def _build_with_report(cmd_args, build_report, parser=None):
         edges.append((src, dst, edge.kind))
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
+
+    if removed_non_default:
+        removed = sorted(removed_non_default)
+        build_report.add_info("non-default dependencies were removed from build", removed)
+        if _opts.verbose:
+            log('Non-default dependencies removed from build (use mx build --all to build them):')
+            for d in removed:
+                log(f' {d}')
+        else:
+            log(f'{len(removed)} non-default dependencies were removed from build (use -v to list them, mx build --all to build them)')
 
     build_report.set_tasks(sortedTasks)
 
