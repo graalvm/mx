@@ -15607,6 +15607,7 @@ class FileListArchiver:
             self.filelist[archive_name] = perms
         if self.sha256:
             self._file_hash(filename)
+            self.sha256.update(archive_name.encode('utf-8'))
         self.delegate.add(filename, archive_name, provenance)
 
     def add_str(self, data, archive_name, provenance):
@@ -15616,6 +15617,7 @@ class FileListArchiver:
             self.filelist[archive_name] = perms
         if self.sha256:
             self.sha256.update(data.encode('utf-8'))
+            self.sha256.update(archive_name.encode('utf-8'))
         self.delegate.add_str(data, archive_name, provenance)
 
     def add_link(self, target, archive_name, provenance):
@@ -15625,6 +15627,7 @@ class FileListArchiver:
             self.filelist[archive_name] = perms
         if self.sha256:
             self.sha256.update(target.encode('utf-8'))
+            self.sha256.update(archive_name.encode('utf-8'))
         self.delegate.add_link(target, archive_name, provenance)
 
     def _add_entry(self, entry, data):
