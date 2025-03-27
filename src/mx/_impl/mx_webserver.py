@@ -26,6 +26,7 @@
 #
 from . import mx
 from argparse import ArgumentParser
+from os.path import join
 
 @mx.command(suite_name="mx",
             command_name='webserver',
@@ -47,15 +48,10 @@ def webserver(args):
 
     args = parser.parse_args(args)
 
-    project = 'com.oracle.mxtool.webserver'
-    mainClass = project + '.WebServer'
-    mx.build(['--no-daemon', '--dependencies', project])
-    coreCp = mx.classpath([project])
-
+    mainClass = join(mx._mx_suite.dir, 'java/com.oracle.mxtool.webserver/src/com/oracle/mxtool/webserver/WebServer.java')
     jdk = mx.get_jdk(tag='default')
 
-    java_args = mx.get_runtime_jvm_args(project, coreCp, jdk=jdk)
-    java_args += [mainClass]
+    java_args = [mainClass]
     if args.archive:
         java_args.append('--archive=' + args.archive)
     if args.port:
