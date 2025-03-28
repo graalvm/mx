@@ -18411,7 +18411,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.45.0")  # local platforms
+version = VersionSpec("7.45.1")  # GR-63389 mx webserver fix and argument passing
 
 _mx_start_datetime = datetime.utcnow()
 

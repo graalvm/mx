@@ -26,6 +26,7 @@
 #
 from . import mx
 from argparse import ArgumentParser
+from os.path import join
 
 @mx.command(suite_name="mx",
             command_name='webserver',
@@ -43,19 +44,18 @@ def webserver(args):
                         'for the site and open a browser at its root.', metavar='<path>')
     parser.add_argument('-p', '--port', help='local port on which the server should listen', metavar='<num>')
     parser.add_argument('--no-browse', help='do not open default web browser on the served site', action='store_true')
+    parser.add_argument('-J', dest='java_args', help='Java VM arguments (e.g. "-J-Xmx64G")', metavar='<arg>')
     parser.add_argument('root', metavar='root')
 
     args = parser.parse_args(args)
 
-    project = 'com.oracle.mxtool.webserver'
-    mainClass = project + '.WebServer'
-    mx.build(['--no-daemon', '--dependencies', project])
-    coreCp = mx.classpath([project])
-
+    mainClass = join(mx._mx_suite.dir, 'java/com.oracle.mxtool.webserver/src/com/oracle/mxtool/webserver/WebServer.java')
     jdk = mx.get_jdk(tag='default')
 
-    java_args = mx.get_runtime_jvm_args(project, coreCp, jdk=jdk)
-    java_args += [mainClass]
+    java_args = []
+    if args.java_args:
+        java_args.append(args.java_args)
+    java_args.append(mainClass)
     if args.archive:
         java_args.append('--archive=' + args.archive)
     if args.port:
