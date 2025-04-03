@@ -14378,12 +14378,14 @@ def _resolve_ecj_jar(jdk, java_project_compliance, java_project_preview_needed, 
         elif jdk.javaCompliance <= '17':
             min_jdt_version = VersionSpec('3.27')
 
-    if java_project_compliance and java_project_compliance >= '22':
-        # GR-51699
+    if java_project_compliance and java_project_compliance >= '25':
+        # GR-63814
         abort(f'ECJ for java project compliance version "{java_project_compliance}" not configured.')
     elif java_project_preview_needed and java_project_preview_needed >= '21':
         # ECJ does not have sufficient support for preview features
         return None
+    elif java_project_compliance and java_project_compliance >= '24':
+        min_jdt_version = VersionSpec('3.41')
     elif java_project_compliance and java_project_compliance >= '21':
         min_jdt_version = VersionSpec('3.36')
     elif java_project_compliance and java_project_compliance >= '17':
@@ -18416,7 +18418,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.45.2")  # non-default
+version = VersionSpec("7.45.3")  # GR-63813 Add ECJ ver 3.41
 
 _mx_start_datetime = datetime.utcnow()
 
