@@ -5587,7 +5587,9 @@ class LayoutDistribution(AbstractDistribution):
                 if source_type == 'extracted-dependency':
                     if 'dereference' in source_dict and source_dict["dereference"] not in ("root", "never", "always"):
                         raise abort(f"Unsupported dereference mode: '{source_dict['dereference']}' in '{destination}'", context=context)
-                if source_dict['path']:
+                if 'path' not in source_dict:
+                    source_dict['path'] = None
+                elif source_dict['path']:
                     source_dict['_str_'] += f"/{source_dict['path']}"
                 if 'optional' not in source_dict:
                     source_dict["optional"] = False
