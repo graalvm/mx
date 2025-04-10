@@ -4553,7 +4553,7 @@ def _remove_unsatisfied_deps():
                     note_removal(dep, f'optional library {dep} was removed as it is not available')
             for depDep in list(dep.deps):
                 if depDep in removedDeps:
-                    note_removal(dep, f'removed {dep} because {depDep} was removed')
+                    note_removal(dep, f'removed {dep} because {depDep} was removed', details=[depDep.name])
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
@@ -4564,7 +4564,7 @@ def _remove_unsatisfied_deps():
             else:
                 for depDep in list(dep.deps):
                     if depDep in removedDeps:
-                        note_removal(dep, f'removed {dep} because {depDep} was removed')
+                        note_removal(dep, f'removed {dep} because {depDep} was removed', details=[depDep.name])
                     elif depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
                         if not lib.is_provided_by(depJdk):
@@ -4602,7 +4602,7 @@ def _remove_unsatisfied_deps():
         if hasattr(dep, 'buildDependencies'):
             for buildDep in list(dep.buildDependencies):
                 if buildDep in removedDeps:
-                    note_removal(dep, f'removed {dep} because {buildDep} was removed')
+                    note_removal(dep, f'removed {dep} because {buildDep} was removed', details=[buildDep.name])
 
     def prune(dist, discard=lambda d: not (d.deps or d.buildDependencies)):
         assert dist.isDistribution()
