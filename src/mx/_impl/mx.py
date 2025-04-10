@@ -4566,6 +4566,10 @@ def _remove_unsatisfied_deps():
                                 note_removal(dep, f'project {dep} was removed as dependency {lib} is missing')
                             else:
                                 abort(f"{'JDK' if lib.isJdkLibrary() else 'JRE'} library {lib} required by {dep} not provided by {depJdk}", context=dep)
+
+        elif dep.isLayoutDistribution():
+            if dep.canPrune(removedDeps):
+                prune(dep, discard=LayoutDistribution.canDiscard)
         elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
             prune(dep, discard=lambda d: not any(dd.isProject()
                                                  or (dd.isBaseLibrary()
@@ -4574,10 +4578,7 @@ def _remove_unsatisfied_deps():
                                                      and dd not in d.excludedLibs)
                                                  for dd in d.deps))
         elif dep.isTARDistribution() or dep.isZIPDistribution():
-            if dep.isLayoutDistribution():
-                prune(dep, discard=LayoutDistribution.canDiscard)
-            else:
-                prune(dep)
+            prune(dep)
 
         if hasattr(dep, 'ignore'):
             reasonAttr = getattr(dep, 'ignore')
@@ -5437,7 +5438,18 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, defaultDereference=None, fileListEntry=None, hashEntry=None, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense,
+                 excludedLibs=None,
+                 path_substitutions=None,
+                 string_substitutions=None,
+                 archive_factory=None,
+                 compress=False,
+                 fileListPurpose=None,
+                 defaultDereference=None,
+                 fileListEntry=None,
+                 hashEntry=None,
+                 pruning_mode='all',
+                 **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -5449,6 +5461,8 @@ class LayoutDistribution(AbstractDistribution):
         :param fileListEntry: if specified, a layout entry with given path will be added in the distribution. The entry will contain a list of all the files from this distribution
         :type hashEntry: str
         :param hashEntry: if specified, a layout entry with given path will be added in the distribution. The entry will contain hash code of layout entries
+        :type pruning_mode: str
+        :param pruning_mode: Controls how "unsatisfied" dependencies are handled: 'all' allows any dependency to be pruned, 'optional' only allows option depdnencies to be pruned, 'none' dones't allow any pruning.
         """
         super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
         self.buildDependencies += LayoutDistribution._extract_deps(layout, self, name)
@@ -5463,6 +5477,9 @@ class LayoutDistribution(AbstractDistribution):
         self.fileListPurpose = fileListPurpose
         self.fileListEntry = fileListEntry
         self.hashEntry = hashEntry
+        if pruning_mode not in ('all', 'none', 'optional'):
+            raise self.abort('pruning_mode must be one of: [all, none, optional]')
+        self.pruning_mode = pruning_mode
         if defaultDereference is None:
             self.defaultDereference = "root"
         elif defaultDereference not in ("root", "never", "always"):
@@ -5483,9 +5500,30 @@ class LayoutDistribution(AbstractDistribution):
         """Returns true if all dependencies have been removed and the layout does not specify any fixed sources (string:, file:)."""
         return not (self.deps or self.buildDependencies or any(
             # if there is any other source type (e.g., 'file' or 'string') we cannot remove it
-            source_dict['source_type'] not in ['dependency', 'extracted-dependency', 'skip']
+            source_dict['source_type'] not in ['dependency', 'extracted-dependency', 'skip', 'classpath-dependencies']
             for _, source_dict in self._walk_layout()
         ))
+
+    def canPrune(self, removedDeps):
+        if self.pruning_mode == 'all':
+            return True
+        elif self.pruning_mode == 'none':
+            return False
+        else:
+            assert self.pruning_mode == 'optional'
+            removed_deps_strings = {d.qualifiedName() for d in removedDeps}
+            removed_deps_strings.update(d.name for d in removedDeps if d.suite == self.suite)
+            for _, source_dict in self._walk_layout():
+                # always accept pruning for 'skip'
+                if source_dict['source_type'] in ['dependency', 'extracted-dependency']:
+                    if source_dict['dependency'] in removed_deps_strings:
+                        if not source_dict["optional"]:
+                            return False
+                elif source_dict['source_type'] == 'classpath-dependencies':
+                    if any(d in removed_deps_strings for d in source_dict['dependencies']):
+                        if not source_dict["optional"]:
+                            return False
+            return True
 
     @staticmethod
     def _is_linky(path=None):
@@ -5537,6 +5575,7 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict["value"] = source_spec
             elif source_type == 'classpath-dependencies':
                 source_dict["dependencies"] = source_spec.split(',')
+                source_dict["optional"] = False
             else:
                 abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=context)
         else:
@@ -5560,6 +5599,8 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = "string:" + source_dict['value']
             elif source_type == 'classpath-dependencies':
                 source_dict['_str_'] = "classpath-dependencies:" + ','.join(source_dict["dependencies"])
+                if 'optional' not in source_dict:
+                    source_dict["optional"] = False
             else:
                 raise abort(f"Unsupported source type: '{source_type}' in '{destination}'", context=context)
         if 'exclude' in source_dict:
@@ -6190,12 +6231,12 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
     # unless `classpath_entries` is called with `preferProjects=True`.
     # We use a dummy sentinel file as the "archive" such that the LayoutDistribution machinery including
     # rebuild detection works as expected
-    def __init__(self, *args, **kw_args):
+    def __init__(self, *args, pruning_mode='none', **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
         # than breaking compatibility with the mis-behaving suites
         kw_args['archive_factory'] = NullArchiver
-        super(LayoutDirDistribution, self).__init__(*args, **kw_args)
+        super(LayoutDirDistribution, self).__init__(*args, pruning_mode=pruning_mode, **kw_args)
         if getattr(self, 'maven', False):
             self.abort("LayoutDirDistribution must not be a maven distribution.")
 
@@ -18418,7 +18459,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.45.3")  # GR-63813 Add ECJ ver 3.41
+version = VersionSpec("7.46.0")  # GR-64149 pruning_mode
 
 _mx_start_datetime = datetime.utcnow()
 
