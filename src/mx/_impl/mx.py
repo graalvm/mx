@@ -5438,7 +5438,18 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, fileListPurpose=None, defaultDereference=None, fileListEntry=None, hashEntry=None, pruning_mode='all', **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense,
+                 excludedLibs=None,
+                 path_substitutions=None,
+                 string_substitutions=None,
+                 archive_factory=None,
+                 compress=False,
+                 fileListPurpose=None,
+                 defaultDereference=None,
+                 fileListEntry=None,
+                 hashEntry=None,
+                 pruning_mode='all',
+                 **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
