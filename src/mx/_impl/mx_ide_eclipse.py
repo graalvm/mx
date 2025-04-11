@@ -594,8 +594,9 @@ def eclipseinit_cli(args):
     mx.log('       Projects needed for development can be opened conveniently using the generated Suite working sets from the context menu.')
     mx.log(' 5) Update the type filters (Preferences -> Java -> Appearance -> Type Filters) so that `jdk.*` and `org.graalvm.*` are not filtered.')
     mx.log('    Without this, code completion will not work for JVMCI and Graal code.')
-    mx.log('')
-    mx.log('Note that setting MX_BUILD_EXPLODED=true can improve Eclipse build times. See "Exploded builds" in the mx README.md.')
+    if mx.get_env('MX_BUILD_EXPLODED', None) != 'true':
+        mx.log('')
+        mx.log('Note that setting MX_BUILD_EXPLODED=true can improve Eclipse build times. See "Exploded builds" in the mx README.md.')
     mx.log('----------------------------------------------')
 
     if _EclipseJRESystemLibraries:
