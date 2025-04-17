@@ -7970,7 +7970,10 @@ class ECJCompiler(JavacLikeCompiler):
                     content = content + '\norg.eclipse.jdt.core.compiler.problem.discouragedReference=ignore'
 
                 if forceDeprecationAsWarning:
-                    content = content.replace('org.eclipse.jdt.core.compiler.problem.deprecation=error', 'org.eclipse.jdt.core.compiler.problem.deprecation=warning')
+                    if warningsAsErrors:
+                        content = re.sub(r'org\.eclipse\.jdt\.core\.compiler\.problem\.deprecation=.*', 'org.eclipse.jdt.core.compiler.problem.deprecation=ignore', content)
+                    else:
+                        content = content.replace('org.eclipse.jdt.core.compiler.problem.deprecation=error', 'org.eclipse.jdt.core.compiler.problem.deprecation=warning')
 
             if origContent != content:
                 jdtPropertiesTmp = jdtProperties + '.tmp'
@@ -18459,7 +18462,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.46.0")  # GR-64149 pruning_mode
+version = VersionSpec("7.47.0")  # GR-64331 Ignore deprecation inspections on ECJ if --warning-as-error and --force-deprecation-as-warning
 
 _mx_start_datetime = datetime.utcnow()
 
