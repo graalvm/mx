@@ -17503,7 +17503,21 @@ def _thirdpartydeps(args):
         if hasattr(lib, "maven") and isinstance(lib.maven, dict) and 'groupId' in lib.maven and 'artifactId' in lib.maven and 'version' in lib.maven:
             print("\tMaven: " + lib.maven['groupId'] + ":" + lib.maven['artifactId'] + ":" + lib.maven['version'])
         elif hasattr(lib, "urls") and len(lib.urls) > 0:
-            print("\tURL: " + lib.urls[0].split('/')[-1])
+            url = lib.urls[0]
+            if hasattr(lib, "urlbase"):
+                url = url.replace("{urlbase}", lib.urlbase)
+            print("\tURL: " + url)
+        elif hasattr(lib, "_orig_attrs"):
+            systems = lib._orig_attrs['os_arch']
+            for opsys in systems:
+                for architecture in lib._orig_attrs['os_arch'][opsys]:
+                    if 'urls' in lib._orig_attrs['os_arch'][opsys][architecture]:
+                        url = lib._orig_attrs['os_arch'][opsys][architecture]['urls'][0]
+                        if hasattr(lib, "urlbase"):
+                            url = url.replace("{urlbase}", lib.urlbase)
+                        print("\tURL for " + opsys + " running on " + architecture + ": " + url)
+        else:
+            print("\tNo URL?!")
 
         # License
         if hasattr(lib, "theLicense") and lib.theLicense:
