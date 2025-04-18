@@ -6876,11 +6876,13 @@ class JavaProject(Project, ClasspathDependency):
                     javaSources = [name for name in files if name.endswith('.java') and name != 'module-info.java']
                     if len(javaSources) != 0:
                         path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                        if path_package not in depPackages:
-                            packages.add(path_package)
-                        else:
-                            # A project extends a package already defined by one of its dependencies
-                            extendedPackages.add(path_package)
+                        if path_package: # ignore the unnamed package
+                            if path_package not in depPackages:
+                                assert path_package, sourceDir
+                                packages.add(path_package)
+                            else:
+                                # A project extends a package already defined by one of its dependencies
+                                extendedPackages.add(path_package)
 
             self._defined_java_packages = frozenset(packages)
             self._extended_java_packages = frozenset(extendedPackages)
