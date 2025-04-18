@@ -18584,7 +18584,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.52.0")  # GR-63253: classpath_and_modulepath_args
+version = VersionSpec("7.53.0")  # GR-64447 Print urlbase and multiple URLs in thirdpartydeps.
 
 _mx_start_datetime = datetime.utcnow()
 
