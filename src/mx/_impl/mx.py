@@ -13564,14 +13564,20 @@ def run(
         else:
             start_new_session, creationflags = (False, 0)
 
+        def decode_line(line):
+            try:
+                return line.decode()
+            except UnicodeDecodeError as e:
+                abort(f"Error decoding {line}: {e}")
+
         def redirect(pid, stream, f, logTask):
             setLogTask(logTask)  # inherit log task from parent thread
             if isinstance(f, PrefixCapture):
                 for line in iter(stream.readline, b''):
-                    f(pid, line.decode())
+                    f(pid, decode_line(line))
             else:
                 for line in iter(stream.readline, b''):
-                    f(line.decode())
+                    f(decode_line(line))
             stream.close()
 
         t = getLogTask()
