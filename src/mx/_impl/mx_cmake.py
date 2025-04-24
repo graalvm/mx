@@ -30,6 +30,7 @@ __all__ = [
 
 import os
 import shutil
+import errno
 
 from . import mx, mx_util
 from . import mx_native
@@ -273,3 +274,14 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
 
     def guard_file(self):
         return self._cmake_config_file
+
+    def clean(self, forBuild=False):
+        super().clean(forBuild=forBuild)
+        if not forBuild:
+            src_link = os.path.join(self.subject.out_dir, 'src')
+            if os.path.lexists(src_link):
+                try:
+                    os.unlink(src_link)
+                except OSError as e:
+                    if e.errno != errno.ENOENT:
+                        raise
