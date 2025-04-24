@@ -5586,7 +5586,10 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
                 if source_type == 'extracted-dependency':
                     if 'dereference' in source_dict and source_dict["dereference"] not in ("root", "never", "always"):
-                        raise abort(f"Unsupported dereference mode: '{source_dict['dereference']}' in '{destination}'", context=context)
+                        raise abort(f"Unsupported dereference mode for extracted-dependency: '{source_dict['dereference']}' in '{destination}'", context=context)
+                elif source_type == 'dependency':
+                    if 'dereference' in source_dict and source_dict["dereference"] not in ("root", "never"):
+                        raise abort(f"Unsupported dereference mode for dereference: '{source_dict['dereference']}' in '{destination}'", context=context)
                 if 'path' not in source_dict:
                     source_dict['path'] = None
                 elif source_dict['path']:
@@ -5711,7 +5714,8 @@ class LayoutDistribution(AbstractDistribution):
                 else:
                     shutil.copy(src, absolute_destination)
 
-        def _install_source_files(files, include=None, excludes=None, optional=False, archive=True):
+        def _install_source_files(files, include=None, excludes=None, optional=False, archive=True, dereference=None):
+            dereference = dereference or 'root'
             excludes = [mx_subst.path_substitutions.substitute(e) for e in (excludes or [])]
             if destination.endswith('/'):
                 ensure_dir_exists(absolute_destination)
@@ -5722,7 +5726,7 @@ class LayoutDistribution(AbstractDistribution):
                     matched = glob_match(include, _arcname)
                     if matched is None:
                         continue
-                if islink(_source_file):
+                if islink(_source_file) and dereference == 'root':
                     _source_file = join(dirname(_source_file), os.readlink(_source_file))
                 if destination.endswith('/'):
                     strip_prefix = dirname(matched)
@@ -5749,9 +5753,15 @@ class LayoutDistribution(AbstractDistribution):
                     abort(f"Could not understand `if_stripped` value '{if_stripped}'. Valid values are 'include' and 'exclude'", context=self)
                 if (if_stripped == 'exclude' and d.is_stripped()) or (if_stripped == 'include' and not d.is_stripped()):
                     return
+            dereference = source.get("dereference", None)
+            if dereference is None:
+                if self.defaultDereference == 'always':
+                    dereference = 'root'
+                else:
+                    dereference = self.defaultDereference
             if source.get('path') is None:
                 try:
-                    _install_source_files([next(d.getArchivableResults(single=True))], archive=archive)
+                    _install_source_files([next(d.getArchivableResults(single=True))], archive=archive, dereference=dereference)
                 except ValueError as e:
                     assert e.args[0] == 'single not supported'
                     msg = f"Can not use '{d.name}' of type {d.__class__.__name__} without a path."
@@ -5763,7 +5773,7 @@ class LayoutDistribution(AbstractDistribution):
             else:
                 _install_source_files((
                     results[:2] for results in d.getArchivableResults()
-                ), include=source['path'], excludes=source.get('exclude'), optional=source['optional'], archive=archive)
+                ), include=source['path'], excludes=source.get('exclude'), optional=source['optional'], archive=archive, dereference=dereference)
         elif source_type == 'extracted-dependency':
             path = source['path']
             exclude = source.get('exclude', [])
