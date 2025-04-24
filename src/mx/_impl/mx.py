@@ -5999,6 +5999,7 @@ Common causes:
     def make_archive(self):
         self._verify_layout()
         output = realpath(self.get_output())
+        ensure_dir_exists(output)
         if exists(self.path + ".filelist"):
             os.unlink(self.path + ".filelist")
         archiver = self.archive_factory(self.path,
