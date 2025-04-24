@@ -546,6 +546,16 @@ class MultitargetProject(mx.AbstractNativeProject, MultitargetNativeDependency):
                     def newestOutput(self):
                         return mx.TimeStampFile.newest(t.newestOutput().path for t in self.subtasks)
 
+                    def cleanForbidden(self):
+                        return False
+
+                    def logClean(self) -> None:
+                        self.log(f'Cleaning {self.name}...')
+
+                    def clean(self, forBuild=False):
+                        for t in self.subtasks:
+                            t.clean(forBuild=forBuild)
+
                 return MultitargetBuildTask(self, args)
         else:
             # subclass that doesn't support multitarget, mimic old behavior
