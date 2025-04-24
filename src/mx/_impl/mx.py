@@ -18474,7 +18474,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.47.0")  # GR-64331 Ignore deprecation inspections on ECJ if --warning-as-error and --force-deprecation-as-warning
+version = VersionSpec("7.48.0")  # dereference for dependency in layouts
 
 _mx_start_datetime = datetime.utcnow()
 
