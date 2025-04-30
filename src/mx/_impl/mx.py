@@ -12397,7 +12397,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
-def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False):
+def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False, include_system_properties=True):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
@@ -12447,18 +12447,19 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
                 if module_name:
                     vm_args += ['--add-modules', module_name]
 
-    def add_props(d):
-        if hasattr(d, "getJavaProperties"):
-            for key, value in sorted(d.getJavaProperties().items()):
-                vm_args.append("-D" + key + "=" + value)
+    if include_system_properties:
+        def add_props(d):
+            if hasattr(d, "getJavaProperties"):
+                for key, value in sorted(d.getJavaProperties().items()):
+                    vm_args.append("-D" + key + "=" + value)
 
-    for dep in entries:
-        add_props(dep)
+        for dep in entries:
+            add_props(dep)
 
-        # also look through the individual projects inside all distributions on the classpath
-        if dep.isDistribution():
-            for project in dep.archived_deps():
-                add_props(project)
+            # also look through the individual projects inside all distributions on the classpath
+            if dep.isDistribution():
+                for project in dep.archived_deps():
+                    add_props(project)
 
     return vm_args
 
@@ -18474,7 +18475,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.48.0")  # dereference for dependency in layouts
+version = VersionSpec("7.49.0")  # GR-63253: get_runtime_jvm_args include_system_properties
 
 _mx_start_datetime = datetime.utcnow()
 
