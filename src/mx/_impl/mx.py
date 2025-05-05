@@ -194,6 +194,7 @@ __all__ = [
     "library",
     "classpath_entries",
     "classpath",
+    "classpath_and_modulepath_args",
     "get_runtime_jvm_args",
     "classpath_walk",
     "read_annotation_processors",
@@ -12406,11 +12407,11 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
-def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False, include_system_properties=True):
+def classpath_and_modulepath_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False):
     """
-    Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
+    Get the classpath and modulepath arguments for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
-    can be used to transitively exclude dependencies from the final classpath result.
+    can be used to transitively exclude dependencies from the final result.
     """
     entries = classpath_entries(names=names)
     if exclude_names:
@@ -12456,6 +12457,23 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
                 if module_name:
                     vm_args += ['--add-modules', module_name]
 
+    return vm_args
+
+
+def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None, force_cp=False, include_system_properties=True):
+    """
+    Get the VM arguments (classpath, modulepath and system properties) for a list of named projects and
+    distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
+    can be used to transitively exclude dependencies from the final result.
+    """
+    entries = classpath_entries(names=names)
+    if exclude_names:
+        for excludeEntry in classpath_entries(names=exclude_names):
+            if excludeEntry in entries:
+                entries.remove(excludeEntry)
+
+    vm_args = classpath_and_modulepath_args(names=names, cp_prefix=cp_prefix, cp_suffix=cp_suffix, jdk=jdk, exclude_names=exclude_names, force_cp=force_cp)
+
     if include_system_properties:
         def add_props(d):
             if hasattr(d, "getJavaProperties"):
@@ -12471,6 +12489,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
                     add_props(project)
 
     return vm_args
+
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
@@ -18543,7 +18562,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.51.2")  # GR-65043: Make codeowners context free
+version = VersionSpec("7.52.0")  # GR-63253: classpath_and_modulepath_args
 
 _mx_start_datetime = datetime.utcnow()
 
