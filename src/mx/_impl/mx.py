@@ -13847,6 +13847,7 @@ def enable_command_mapper_hooks():
     _use_command_mapper_hooks = True
 
 class JDKConfig(Comparable):
+    version_number_re = re.compile(r'[0-9.]+')
     """
     A JDKConfig object encapsulates info about an installed or deployed JDK.
     """
@@ -13885,39 +13886,73 @@ class JDKConfig(Comparable):
         self.java_args_pfx = sum(map(shlex.split, _opts.java_args_pfx), [])
         self.java_args_sfx = sum(map(shlex.split, _opts.java_args_sfx), [])
 
-        try:
-            output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            raise JDKConfigException(f'{e.returncode}: {e.output}')
+        release_file_path = join(self.home, 'release')
+        if os.path.isfile(release_file_path):
+            self.release_dict = JDKConfig.parse_release_file(join(self.home, 'release'))
+        else:
+            self.release_dict = None
 
-        def _checkOutput(out):
-            return 'java version' in out and 'warning' not in out
-
-        self._is_openjdk = 'openjdk' in output.lower()
-
-        # hotspot can print a warning, e.g. if there's a .hotspot_compiler file in the cwd
-        output = output.split('\n')
         version = None
-        for o in output:
-            if _checkOutput(o):
-                assert version is None, version
-                version = o
+        if self.release_dict and 'IMPLEMENTOR' in self.release_dict and ('JAVA_VERSION' in self.release_dict or 'JAVA_RUNTIME_VERSION' in self.release_dict):
+            self._is_openjdk = "Oracle" not in self.release_dict['IMPLEMENTOR']
+            if 'JAVA_VERSION' in self.release_dict:
+                version = self.release_dict['JAVA_VERSION']
+            else:
+                m = JDKConfig.version_number_re.match(self.release_dict['JAVA_RUNTIME_VERSION'])
+                if m:
+                    version = m.group(0)
+        if version is None:
+            try:
+                output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                raise JDKConfigException(f'{e.returncode}: {e.output}')
 
-        def _checkOutput0(out):
-            return 'version' in out and 'warning' not in out
+            def _checkOutput(out):
+                return 'java version' in out and 'warning' not in out
 
-        # fall back: check for 'version' if there is no 'java version' string
-        if not version:
+            self._is_openjdk = 'openjdk' in output.lower()
+
+            # hotspot can print a warning, e.g. if there's a .hotspot_compiler file in the cwd
+            output = output.split('\n')
+            version = None
             for o in output:
-                if _checkOutput0(o):
+                if _checkOutput(o):
                     assert version is None, version
                     version = o
 
-        self.version = VersionSpec(version.split()[2].strip('"'))
+            def _checkOutput0(out):
+                return 'version' in out and 'warning' not in out
+
+            # fall back: check for 'version' if there is no 'java version' string
+            if not version:
+                for o in output:
+                    if _checkOutput0(o):
+                        assert version is None, version
+                        version = o
+            version = version.split()[2].strip('"')
+
+        self.version = VersionSpec(version)
         ver = self.version.parts[1] if self.version.parts[0] == 1 else self.version.parts[0]
         self.javaCompliance = JavaCompliance(ver)
 
         self.debug_args = java_debug_args()
+
+    @staticmethod
+    def parse_release_file(release_file_path):
+        if not os.path.isfile(release_file_path):
+            raise abort("Missing expected release file: " + release_file_path)
+        release_dict = OrderedDict()
+        with open(release_file_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                assert line.count('=') > 0, "The release file of '{}' contains a line without the '=' sign: '{}'".format(release_file_path, line)
+                k, v = line.strip().split('=', 1)
+                if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
+                    v = v[1:-1]
+                release_dict[k] = v
+        return release_dict
 
     def is_openjdk_based(self):
         return self._is_openjdk
@@ -18477,7 +18512,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.49.1")  # GR-64966: LINKY_LAYOUTS
+version = VersionSpec("7.50.0")  # JDKConfig release file
 
 _mx_start_datetime = datetime.utcnow()
 
