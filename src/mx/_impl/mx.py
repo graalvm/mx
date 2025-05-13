@@ -5693,7 +5693,9 @@ class LayoutDistribution(AbstractDistribution):
                 link_target = os.readlink(src)
                 src_target = join(dirname(src), os.readlink(src))
                 if LayoutDistribution._is_linky(absolute_destination) and not isabs(link_target) and normpath(relpath(src_target, output)).startswith('..'):
-                    add_symlink(src, normpath(relpath(src_target, dirname(absolute_destination))), absolute_destination, dst, archive=archive)
+                    # Since this will point outside the archive by design, we don't want to use add_symlink
+                    ensure_dir_exists(dirname(absolute_destination))
+                    os.symlink(normpath(relpath(src_target, dirname(absolute_destination))), absolute_destination)
                 else:
                     if archive and isabs(link_target):
                         abort(f"Cannot add absolute links into archive: '{src}' points to '{link_target}'", context=self)
