@@ -18516,7 +18516,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.50.1")  # GR-64998: Fix Java class file version supported by ECJ 3.41
+version = VersionSpec("7.50.2")  # GR-65016: Misc. mx build & clean issues
 
 _mx_start_datetime = datetime.utcnow()
 
