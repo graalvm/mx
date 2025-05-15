@@ -5999,6 +5999,7 @@ Common causes:
     def make_archive(self):
         self._verify_layout()
         output = realpath(self.get_output())
+        ensure_dir_exists(output)
         if exists(self.path + ".filelist"):
             os.unlink(self.path + ".filelist")
         archiver = self.archive_factory(self.path,
@@ -15607,6 +15608,7 @@ class FileListArchiver:
             self.filelist[archive_name] = perms
         if self.sha256:
             self._file_hash(filename)
+            self.sha256.update(archive_name.encode('utf-8'))
         self.delegate.add(filename, archive_name, provenance)
 
     def add_str(self, data, archive_name, provenance):
@@ -15616,6 +15618,7 @@ class FileListArchiver:
             self.filelist[archive_name] = perms
         if self.sha256:
             self.sha256.update(data.encode('utf-8'))
+            self.sha256.update(archive_name.encode('utf-8'))
         self.delegate.add_str(data, archive_name, provenance)
 
     def add_link(self, target, archive_name, provenance):
@@ -15625,6 +15628,7 @@ class FileListArchiver:
             self.filelist[archive_name] = perms
         if self.sha256:
             self.sha256.update(target.encode('utf-8'))
+            self.sha256.update(archive_name.encode('utf-8'))
         self.delegate.add_link(target, archive_name, provenance)
 
     def _add_entry(self, entry, data):
@@ -18512,7 +18516,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.50.1")  # GR-64998: Fix Java class file version supported by ECJ 3.41
+version = VersionSpec("7.50.2")  # GR-65016: Misc. mx build & clean issues
 
 _mx_start_datetime = datetime.utcnow()
 
