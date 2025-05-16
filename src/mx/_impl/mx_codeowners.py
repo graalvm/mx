@@ -356,6 +356,7 @@ When no rule matches, the tool searches in parent directories too
 """
 
 @mx.command('mx', 'codeowners')
+@mx.suite_context_free
 def codeowners(args):
     """Find code owners from OWNERS.toml files."""
     parser = argparse.ArgumentParser(prog='mx codeowners', formatter_class=argparse.RawTextHelpFormatter, description=_MX_CODEOWNERS_HELP, epilog=_MX_CODEOWNERS_HELP2)
