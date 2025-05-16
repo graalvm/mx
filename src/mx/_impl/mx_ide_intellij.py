@@ -182,9 +182,11 @@ def intellij_read_sdks():
         # Examples:
         #   java version "21"
         #   GraalVM version 21 (vendor name may change)
+        #   Oracle OpenJDK 21.0.2
         intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|'
                                            r'^(?:.+ )?version\s+(.+)$|'
-                                           r'^([\d._]+)$'),
+                                           r'^([\d._]+)$|'
+                                           r'^Oracle OpenJDK ([\d._]+)$'),
         intellij_python_sdk_type: re.compile(r'^Python\s+(.+)$'),
 
         # Examples:
@@ -618,13 +620,14 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
             compilerXml.close('option')
             compilerXml.close('component')
 
-    if config.python_projects:
+    if config.python_projects and s.mxDir:
 
         def _python_module(suite):
             """
             Gets a tuple describing the IntelliJ module for the python sources of `suite`. The tuple
             consists of the module name, module directory and the name of the .iml in the module directory.
             """
+            assert suite.mxDir, suite
             name = basename(suite.mxDir)
             module_dir = suite.mxDir
             return name, mx_util.ensure_dir_exists(module_dir), name + '.iml'
@@ -655,6 +658,8 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
         def _with_suite(suite, suite_name):
+            if not suite.mxDir:
+                return
             dep_module_name, _, _ = _python_module(suite)
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep_module_name})
             _add_declared_module(suite)
