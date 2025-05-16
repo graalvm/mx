@@ -352,7 +352,7 @@ import threading
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
+from argparse import ArgumentParser, PARSER, REMAINDER, ONE_OR_MORE, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO, StringIO, open as io_open
@@ -1827,8 +1827,11 @@ class Suite(object):
         with open(suiteFile, "r") as f:
             suiteContents = f.read()
         try:
-            result = re.match(".*?suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
-            part = result.group(1)
+            # This code tries to keep text on the same line and column as much as possible so that in case of json parse
+            # errors, the location matches the one in the python file
+            result = re.match("(.*?)suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
+            pre = result.group(1)
+            part = result.group(2)
             stack = 0
             endIdx = 0
             for c in part:
@@ -1840,6 +1843,9 @@ class Suite(object):
                 if stack == 0:
                     break
             part = part[:endIdx]
+            if pre:
+                # add empty lines to ensure the location of errors matches up
+                part = ('\n' * len(pre.splitlines())) + part
 
             # convert python boolean constants to json boolean constants
             part = re.sub("True", "true", part)
@@ -1850,8 +1856,8 @@ class Suite(object):
             def python_to_json_string(m):
                 return "\"" + m.group(1).replace("\n", "\\n") + "\""
 
-            # remove all spaces between a comma and ']' or '{'
-            part = re.sub(",\\s*(\\]|\\})", "\\1", part)
+            # remove trailing commas before ']' or '}'
+            part = re.sub(",(\\s*(\\]|\\}))", " \\1", part)
 
             # convert python multiline strings to json strings with embedded newlines
             part = re.sub("\"\"\"(.*?)\"\"\"", python_to_json_string, part, flags=re.DOTALL)
@@ -4547,7 +4553,7 @@ def _remove_unsatisfied_deps():
                     note_removal(dep, f'optional library {dep} was removed as it is not available')
             for depDep in list(dep.deps):
                 if depDep in removedDeps:
-                    note_removal(dep, f'removed {dep} because {depDep} was removed')
+                    note_removal(dep, f'removed {dep} because {depDep} was removed', details=[depDep.name])
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
@@ -4558,7 +4564,7 @@ def _remove_unsatisfied_deps():
             else:
                 for depDep in list(dep.deps):
                     if depDep in removedDeps:
-                        note_removal(dep, f'removed {dep} because {depDep} was removed')
+                        note_removal(dep, f'removed {dep} because {depDep} was removed', details=[depDep.name])
                     elif depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
                         if not lib.is_provided_by(depJdk):
@@ -4596,7 +4602,7 @@ def _remove_unsatisfied_deps():
         if hasattr(dep, 'buildDependencies'):
             for buildDep in list(dep.buildDependencies):
                 if buildDep in removedDeps:
-                    note_removal(dep, f'removed {dep} because {buildDep} was removed')
+                    note_removal(dep, f'removed {dep} because {buildDep} was removed', details=[buildDep.name])
 
     def prune(dist, discard=lambda d: not (d.deps or d.buildDependencies)):
         assert dist.isDistribution()
@@ -18122,6 +18128,26 @@ def print_simple_help():
     print('\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command')
 
 
+def classpath_cli(args):
+    """prints the classpath for a dependency
+
+    Multiple dependencies can be specified as roots.
+    """
+    parser = ArgumentParser(prog='mx classpath')
+    parser.add_argument('--lines', action='store_true', help=f'Print one dependency per line (default is a {os.pathsep}-separated string).')
+    parser.add_argument('--for-build', action='store_true', help='Produces a build-time classpath (default is a run-time classpath).')
+    parser.add_argument('--resolve', action='store_true', help='Download libraries if they are not yet downloaded.')
+    parser.add_argument('dependencies', nargs=ONE_OR_MORE, help='root distributions to include on the classpath')
+    parsed = parser.parse_args(args)
+    cpEntries = classpath_entries(names=parsed.dependencies, forBuild=parsed.for_build)
+    cp = _entries_to_classpath(cpEntries=cpEntries, unique=True, resolve=parsed.resolve)
+    if parsed.lines:
+        for e in cp.split(os.pathsep):
+            print(e)
+    else:
+        print(cp)
+
+
 def list_commands(l):
     return _mx_commands.list_commands(l)
 
@@ -18146,6 +18172,7 @@ update_commands("mx", {
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
+    'classpath': [classpath_cli, '[dependency...]'],
     'clean': [clean, ''],
     'deploy-artifacts': [deploy_artifacts, ''],
     'deploy-binary' : [deploy_binary, ''],
@@ -18516,7 +18543,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.50.2")  # GR-65016: Misc. mx build & clean issues
+version = VersionSpec("7.51.0")  # GR-65023: Add mx classpath
 
 _mx_start_datetime = datetime.utcnow()
 

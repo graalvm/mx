@@ -80,7 +80,7 @@ class SuiteConstituent(Comparable, metaclass=ABCMeta):
         if loc:
             path, lineNo = loc
             return f'  File "{path}", line {lineNo} in definition of {self.name}'
-        return f'  {self.name}'
+        return f'  {self.suite.name}:{self.name}'
 
     def _comparison_key(self) -> tuple[str, Suite]:
         return self.name, self.suite
