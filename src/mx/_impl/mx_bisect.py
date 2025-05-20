@@ -675,7 +675,7 @@ class BisectBayesianSearch(BisectStrategy):
         if failed_tests == 0:
             return 0
         failure_rate = 1.0 * failed_tests / (failed_tests + passed_tests)
-        return int(math.log(confident_probability, 1 - failure_rate) + 1)
+        return int(math.log(confident_probability, 1 - failure_rate) + 1) #pylint: disable=c-extension-no-member
 
     def _print_list_with_probabilities(self, start, end, print_log):
         for i in range(start, end + 1):
@@ -702,13 +702,13 @@ class BisectBayesianSearch(BisectStrategy):
         mx.log(f'Failure rate: {failure_rate:.2f}')
         mx.log(f"Total Passed: {total_passed}, Failed: {total_failed}")
         mx.log("Probability    Hash         Message")
-        prob = 1 - math.pow(1 - failure_rate, passed)
+        prob = 1 - math.pow(1 - failure_rate, passed) #pylint: disable=c-extension-no-member
 
         print_commit(prob,
                      self.commits_list[position].commit.hash,
                      self.commits_list[position].commit.msg)
         for i in range(position + 1, end + 1):
-            prob = math.pow(1 - failure_rate, passed) * failure_rate
+            prob = math.pow(1 - failure_rate, passed) * failure_rate #pylint: disable=c-extension-no-member
             print_commit(prob,
                          self.commits_list[i].commit.hash,
                          self.commits_list[i].commit.msg)
