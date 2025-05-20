@@ -900,7 +900,7 @@ class PerfEvent:
         return self.symbol
 
 
-class PerfMethod(NamedTuple):
+class PerfMethod(NamedTuple): #pylint: disable=inherit-non-class
     """Aggregated perf samples for a single method."""
     symbol: str
     dso: str

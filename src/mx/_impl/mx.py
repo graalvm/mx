@@ -6876,11 +6876,13 @@ class JavaProject(Project, ClasspathDependency):
                     javaSources = [name for name in files if name.endswith('.java') and name != 'module-info.java']
                     if len(javaSources) != 0:
                         path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                        if path_package not in depPackages:
-                            packages.add(path_package)
-                        else:
-                            # A project extends a package already defined by one of its dependencies
-                            extendedPackages.add(path_package)
+                        if path_package: # ignore the unnamed package
+                            if path_package not in depPackages:
+                                assert path_package, sourceDir
+                                packages.add(path_package)
+                            else:
+                                # A project extends a package already defined by one of its dependencies
+                                extendedPackages.add(path_package)
 
             self._defined_java_packages = frozenset(packages)
             self._extended_java_packages = frozenset(extendedPackages)
@@ -13562,14 +13564,20 @@ def run(
         else:
             start_new_session, creationflags = (False, 0)
 
+        def decode_line(line):
+            try:
+                return line.decode()
+            except UnicodeDecodeError as e:
+                abort(f"Error decoding {line}: {e}")
+
         def redirect(pid, stream, f, logTask):
             setLogTask(logTask)  # inherit log task from parent thread
             if isinstance(f, PrefixCapture):
                 for line in iter(stream.readline, b''):
-                    f(pid, line.decode())
+                    f(pid, decode_line(line))
             else:
                 for line in iter(stream.readline, b''):
-                    f(line.decode())
+                    f(decode_line(line))
             stream.close()
 
         t = getLogTask()
@@ -17495,7 +17503,21 @@ def _thirdpartydeps(args):
         if hasattr(lib, "maven") and isinstance(lib.maven, dict) and 'groupId' in lib.maven and 'artifactId' in lib.maven and 'version' in lib.maven:
             print("\tMaven: " + lib.maven['groupId'] + ":" + lib.maven['artifactId'] + ":" + lib.maven['version'])
         elif hasattr(lib, "urls") and len(lib.urls) > 0:
-            print("\tURL: " + lib.urls[0].split('/')[-1])
+            url = lib.urls[0]
+            if hasattr(lib, "urlbase"):
+                url = url.replace("{urlbase}", lib.urlbase)
+            print("\tURL: " + url)
+        elif hasattr(lib, "_orig_attrs"):
+            systems = lib._orig_attrs['os_arch']
+            for opsys in systems:
+                for architecture in lib._orig_attrs['os_arch'][opsys]:
+                    if 'urls' in lib._orig_attrs['os_arch'][opsys][architecture]:
+                        url = lib._orig_attrs['os_arch'][opsys][architecture]['urls'][0]
+                        if hasattr(lib, "urlbase"):
+                            url = url.replace("{urlbase}", lib.urlbase)
+                        print("\tURL for " + opsys + " running on " + architecture + ": " + url)
+        else:
+            print("\tNo URL?!")
 
         # License
         if hasattr(lib, "theLicense") and lib.theLicense:
@@ -18562,7 +18584,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.52.0")  # GR-63253: classpath_and_modulepath_args
+version = VersionSpec("7.53.0")  # GR-64447 Print urlbase and multiple URLs in thirdpartydeps.
 
 _mx_start_datetime = datetime.utcnow()
 

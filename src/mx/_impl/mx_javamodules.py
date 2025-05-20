@@ -703,6 +703,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
         def _process_opens(open_specs, available_packages):
             for open_spec in open_specs:
+                # Normalize open spec by replacing all whitespace sequences
+                # with a single space character
+                open_spec = re.sub(r"\s+", " ", open_spec)
                 if ' to ' in open_spec:
                     splitpackage = open_spec.split(' to ')
                     packages_spec = splitpackage[0].strip()
