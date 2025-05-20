@@ -14788,6 +14788,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
     parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
     parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored.\nIf the extension is ps, pdf, svg, png, git, or jpg, it will be rendered.', metavar='<path>', default=None)
+    parser.add_argument('--dry-run', action='store_true', help='only print the build plan but don\'t build anything')
 
     def get_default_build_logs():
         ret = get_env('MX_BUILD_LOGS')
@@ -14976,7 +14977,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
             with open(args.graph_file, 'wb') as f:
                 run(['dot', '-T' + ext, dot_file], out=f)
 
-    if _opts.very_verbose:
+    if _opts.very_verbose or args.dry_run:
         log("++ Serialized build plan ++")
         for task in sortedTasks:
             if task.deps:
@@ -14984,6 +14985,9 @@ def _build_with_report(cmd_args, build_report, parser=None):
             else:
                 log(str(task))
         log("-- Serialized build plan --")
+
+    if args.dry_run:
+        return
 
     if not args.force_daemon and len(sortedTasks) == 1:
         # Spinning up a daemon for a single task doesn't make sense
