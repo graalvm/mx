@@ -850,8 +850,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     if missing_requires:
                         for required_module, reads in missing_requires.items():
                             requires.setdefault(required_module.name, set())
-
-                            mx.warn(f"Module {moduleName} ({dist.qualifiedName()}) requires {required_module.name} ({required_module.dist.qualifiedName()}) in order to read " +
+                            required_dist_qname = ' (' + required_module.dist.qualifiedName() + ')' if required_module.dist else ''
+                            mx.warn(f"Module {moduleName} ({dist.qualifiedName()}) requires {required_module.name}{required_dist_qname} in order to read " +
                                     (", and ".join((f'{vis} package(s): {", ".join(pkgs)}' for vis, pkgs in reads.items()))))
 
                         mx.warn('Module {moduleName} ({dist}): automatically included the following missing "requires": [{requires}]. '
