@@ -3269,13 +3269,16 @@ class RssPercentilesTracker(Tracker):
         return [sys.executable, ps_poller_script_path, "-f", text_output, "-i", str(RssPercentilesTracker.poll_interval)] + cmd
 
     def get_rules(self, bmSuiteArgs):
+        rules = [
+            RssPercentilesTracker.RssPercentilesRule(self, bmSuiteArgs),
+            RssPercentilesTracker.RssDistributionCopyRule(self, bmSuiteArgs)
+        ]
         if self.copy_into_max_rss:
-            return [RssPercentilesTracker.RssPercentilesRule(self, bmSuiteArgs), RssPercentilesTracker.MaxRssCopyRule(self, bmSuiteArgs)]
-        else:
-            return [RssPercentilesTracker.RssPercentilesRule(self, bmSuiteArgs)]
+            rules.append(RssPercentilesTracker.MaxRssCopyRule(self, bmSuiteArgs))
+        return rules
 
     class RssPercentilesRule(CSVBaseRule):
-        def __init__(self, tracker, bmSuiteArgs, **kwargs):
+        def __init__(self, tracker: RssPercentilesTracker, bmSuiteArgs, **kwargs):
             replacement = {
                 "benchmark": tracker.bmSuite.currently_running_benchmark(),
                 "bench-suite": tracker.bmSuite.benchSuiteName(bmSuiteArgs) if mx_benchmark_compatibility().bench_suite_needs_suite_args() else tracker.bmSuite.benchSuiteName(),
@@ -3290,13 +3293,15 @@ class RssPercentilesTracker(Tracker):
                 "metric.iteration": 0
             }
             super().__init__(["rss_kb"], replacement, delimiter=' ', skipinitialspace=True, **kwargs)
-            self.tracker = tracker
+            self.tracker: RssPercentilesTracker = tracker
 
         def getCSVFiles(self, text):
             file = self.tracker.most_recent_text_output
             return [file] if file else []
 
         def parseResults(self, text):
+            # Reset the list here to ensure depending rules don't produce duplicates
+            self.tracker.percentile_data_points = []
             if self.tracker.most_recent_text_output is None:
                 mx.log("\tRSS percentile data points have already been parsed.")
                 return []
@@ -3351,11 +3356,32 @@ class RssPercentilesTracker(Tracker):
                 mx.log(f"\t{rss_percentile['metric_percentile']}th RSS percentile (MB): {rss_percentile['metric_value']}")
             return self.tracker.percentile_data_points
 
+    class RssDistributionCopyRule(BaseRule):
+        def __init__(self, tracker: RssPercentilesTracker, bmSuiteArgs: List[str]):
+            rss_distribution_dp_template = {
+                "benchmark": tracker.bmSuite.currently_running_benchmark(),
+                "bench-suite": tracker.bmSuite.benchSuiteName(bmSuiteArgs) if mx_benchmark_compatibility().bench_suite_needs_suite_args() else tracker.bmSuite.benchSuiteName(),
+                "config.vm-flags": ' '.join(tracker.bmSuite.vmArgs(bmSuiteArgs)),
+                "metric.name": "rss-distribution",
+                "metric.value": ("<metric_value>", int),
+                "metric.unit": "MB",
+                "metric.type": "numeric",
+                "metric.score-function": "id",
+                "metric.better": "lower",
+                "metric.percentile": ("<metric_percentile>", int),
+                "metric.iteration": 0
+            }
+            super().__init__(rss_distribution_dp_template)
+            self.tracker = tracker
+
+        def parseResults(self, text: str) -> Sequence[dict]:
+            return self.tracker.percentile_data_points
+
     class MaxRssCopyRule(BaseRule):
         percentile_to_copy_into_max_rss = 99
 
-        def __init__(self, tracker, bmSuiteArgs):
-            replacement = {
+        def __init__(self, tracker: RssPercentilesTracker, bmSuiteArgs):
+            max_rss_dp_template = {
                 "benchmark": tracker.bmSuite.currently_running_benchmark(),
                 "bench-suite": tracker.bmSuite.benchSuiteName(bmSuiteArgs) if mx_benchmark_compatibility().bench_suite_needs_suite_args() else tracker.bmSuite.benchSuiteName(),
                 "config.vm-flags": ' '.join(tracker.bmSuite.vmArgs(bmSuiteArgs)),
@@ -3367,18 +3393,13 @@ class RssPercentilesTracker(Tracker):
                 "metric.better": "lower",
                 "metric.iteration": 0
             }
-            super().__init__(replacement)
-            self.tracker = tracker
+            super().__init__(max_rss_dp_template)
+            self.tracker: RssPercentilesTracker = tracker
 
         def parseResults(self, text):
             if not self.tracker.percentile_data_points:
-                mx.log("\tmax-rss data point has already been parsed.")
                 return []
-
-            data_points = self.tracker.percentile_data_points
-            self.tracker.percentile_data_points = []
-
-            for rss_dp in data_points:
+            for rss_dp in self.tracker.percentile_data_points:
                 if rss_dp['metric_percentile'] == str(RssPercentilesTracker.MaxRssCopyRule.percentile_to_copy_into_max_rss):
                     mx.log(f"\n\tmax-rss copied from {rss_dp['metric_percentile']}th RSS percentile (MB): {rss_dp['metric_value']}")
                     return [{"metric_value": rss_dp['metric_value']}]
