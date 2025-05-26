@@ -611,19 +611,19 @@ class BenchmarkSuite(object):
         pass
 
     def vmArgs(self, bmSuiteArgs):
-        """Extracts the VM flags from the list of arguments passed to the suite.
+        """Extracts the VM flags from the arguments passed on the command line.
 
-        :param list[str] bmSuiteArgs: List of string arguments to the suite.
-        :return: A list of string flags that are VM flags.
+        :param list[str] bmSuiteArgs: Raw arguments mixing vm and run args passed to the suite.
+        :return: The vmArgs, the arguments for the VM.
         :rtype: list[str]
         """
         raise NotImplementedError()
 
     def runArgs(self, bmSuiteArgs):
-        """Extracts the run flags from the list of arguments passed to the suite.
+        """Extracts the run flags from the arguments passed on the command line.
 
-        :param list[str] bmSuiteArgs: List of string arguments to the suite.
-        :return: A list of string flags that are arguments for the suite.
+        :param list[str] bmSuiteArgs: Raw arguments mixing vm and run args passed to the suite.
+        :return: The runArgs, the arguments for the benchmark(s).
         :rtype: list[str]
         """
         raise NotImplementedError()
