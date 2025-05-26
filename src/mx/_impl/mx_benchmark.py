@@ -320,7 +320,7 @@ class VmRegistry(object):
         self._known_host_registries = known_host_registries or []
         add_parser(self.get_parser_name(), ParserEntry(
             ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-            f"\n\n{self.vm_type_name} selection flags, specified in the benchmark suite arguments:\n"
+            f"Flags for {self.vm_type_name}:"
         ))
         get_parser(self.get_parser_name()).add_argument("--profiler", default=None, help="The profiler to use")
         get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}", default=None, help=f"{self.vm_type_name} to run the benchmark with.")
@@ -1913,7 +1913,7 @@ def _create_temporary_workdir_parser():
 
 parsers["temporary_workdir_parser"] = ParserEntry(
     _create_temporary_workdir_parser(),
-    "\n\nFlags for benchmark suites with temporary working directories:\n"
+    "Flags for temporary working directories:"
 )
 
 
@@ -2776,7 +2776,7 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
 
 _jmh_dist_args_parser = ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-    "\n\nOptions for JMH dist benchmark suites:\n"
+    "Flags for JMH dist benchmark suites:"
 )
 _jmh_dist_args_parser.parser.add_argument("--jmh-run-individually", action='store_true')
 _jmh_dist_args_parser.parser.add_argument("--jmh-individual-part", default="1/1")
@@ -2884,7 +2884,7 @@ class JMHJarBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
 
 _jmh_args_parser = ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-    "\n\nVM selection flags for JMH benchmark suites:\n"
+    "Flags for JMH benchmark suites:"
 )
 _jmh_args_parser.parser.add_argument("--jmh-jar", default=None)
 _jmh_args_parser.parser.add_argument("--jmh-name", default=None)
@@ -3724,7 +3724,7 @@ class BenchmarkExecutor(object):
             prog="mx benchmark",
             add_help=False,
             description=benchmark.__doc__,
-            epilog="Note: parsers used by different suites have additional vmArgs, shown below.",
+            epilog="Some benchmark suites have additional vmArgs, shown below.",
             usage="mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [runArgs]",
             formatter_class=RawTextHelpFormatter)
         parser.add_argument(
@@ -3837,8 +3837,9 @@ class BenchmarkExecutor(object):
                 parser.print_help()
                 for key, entry in parsers.items():
                     if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
-                        print(entry.description)
-                        entry.parser.print_help()
+                        print('\n' + entry.description.strip())
+                        only_options_help = re.sub('.+options:\n', '', entry.parser.format_help(), flags=re.DOTALL).rstrip()
+                        print(only_options_help)
                 for vmreg in vm_registries():
                     print(f"\n{vmreg.get_available_vm_configs_help()}")
                 return 0 if mxBenchmarkArgs.help else 1
