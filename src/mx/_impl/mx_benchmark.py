@@ -3724,8 +3724,8 @@ class BenchmarkExecutor(object):
             prog="mx benchmark",
             add_help=False,
             description=benchmark.__doc__,
-            epilog="Note: parsers used by different suites have additional arguments, shown below.",
-            usage="mx benchmark <options> -- <benchmark-suite-args> -- <benchmark-args>",
+            epilog="Note: parsers used by different suites have additional vmArgs, shown below.",
+            usage="mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [runArgs]",
             formatter_class=RawTextHelpFormatter)
         parser.add_argument(
             "benchmark", nargs="?", default=None,
@@ -3987,7 +3987,7 @@ def benchmark(args, returnSuiteAndResults=False):
 
     :Example:
 
-        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [bmSuiteArgs]
+        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [runArgs]
         mx benchmark --help
 
     :param list args:
@@ -4006,14 +4006,12 @@ def benchmark(args, returnSuiteAndResults=False):
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
             --results-file: Target path where the results will be stored (default: bench-results.json).
-            --machine-name: Abstract name of a machine with specific capabilities
-                            (e.g. `x52`).
+            --machine-name: Abstract name of a machine with specific capabilities (e.g. `x52`).
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
-    Arguments after the first `--` are used to configure the underlying VM, so they can be JVM
-    options for instance. The last set of parameters are parameters that are passed
-    directly to the benchmark suite.
+    Arguments after the first `--` are used to configure the underlying VM, so they can be JVM options for instance.
+    The last set of arguments are arguments that are passed directly to the benchmarks.
 
     Examples:
         mx benchmark dacapo:fop
