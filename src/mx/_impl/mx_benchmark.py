@@ -320,7 +320,7 @@ class VmRegistry(object):
         self._known_host_registries = known_host_registries or []
         add_parser(self.get_parser_name(), ParserEntry(
             ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-            f"\n\n{self.vm_type_name} selection flags, specified in the benchmark suite arguments:\n"
+            f"Flags for {self.vm_type_name}:"
         ))
         get_parser(self.get_parser_name()).add_argument("--profiler", default=None, help="The profiler to use")
         get_parser(self.get_parser_name()).add_argument(f"--{self.short_vm_type_name}", default=None, help=f"{self.vm_type_name} to run the benchmark with.")
@@ -611,19 +611,19 @@ class BenchmarkSuite(object):
         pass
 
     def vmArgs(self, bmSuiteArgs):
-        """Extracts the VM flags from the list of arguments passed to the suite.
+        """Extracts the VM flags from the arguments passed on the command line.
 
-        :param list[str] bmSuiteArgs: List of string arguments to the suite.
-        :return: A list of string flags that are VM flags.
+        :param list[str] bmSuiteArgs: Raw arguments mixing vm and run args passed to the suite.
+        :return: The vmArgs, the arguments for the VM.
         :rtype: list[str]
         """
         raise NotImplementedError()
 
     def runArgs(self, bmSuiteArgs):
-        """Extracts the run flags from the list of arguments passed to the suite.
+        """Extracts the run flags from the arguments passed on the command line.
 
-        :param list[str] bmSuiteArgs: List of string arguments to the suite.
-        :return: A list of string flags that are arguments for the suite.
+        :param list[str] bmSuiteArgs: Raw arguments mixing vm and run args passed to the suite.
+        :return: The runArgs, the arguments for the benchmark(s).
         :rtype: list[str]
         """
         raise NotImplementedError()
@@ -1913,7 +1913,7 @@ def _create_temporary_workdir_parser():
 
 parsers["temporary_workdir_parser"] = ParserEntry(
     _create_temporary_workdir_parser(),
-    "\n\nFlags for benchmark suites with temporary working directories:\n"
+    "Flags for temporary working directories:"
 )
 
 
@@ -2776,7 +2776,7 @@ class JMHDistBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
 
 _jmh_dist_args_parser = ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-    "\n\nOptions for JMH dist benchmark suites:\n"
+    "Flags for JMH dist benchmark suites:"
 )
 _jmh_dist_args_parser.parser.add_argument("--jmh-run-individually", action='store_true')
 _jmh_dist_args_parser.parser.add_argument("--jmh-individual-part", default="1/1")
@@ -2884,7 +2884,7 @@ class JMHJarBenchmarkSuite(JMHJarBasedBenchmarkSuiteBase):
 
 _jmh_args_parser = ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-    "\n\nVM selection flags for JMH benchmark suites:\n"
+    "Flags for JMH benchmark suites:"
 )
 _jmh_args_parser.parser.add_argument("--jmh-jar", default=None)
 _jmh_args_parser.parser.add_argument("--jmh-name", default=None)
@@ -3724,8 +3724,8 @@ class BenchmarkExecutor(object):
             prog="mx benchmark",
             add_help=False,
             description=benchmark.__doc__,
-            epilog="Note: parsers used by different suites have additional arguments, shown below.",
-            usage="mx benchmark <options> -- <benchmark-suite-args> -- <benchmark-args>",
+            epilog="Some benchmark suites have additional vmArgs, shown below.",
+            usage="mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [runArgs]",
             formatter_class=RawTextHelpFormatter)
         parser.add_argument(
             "benchmark", nargs="?", default=None,
@@ -3743,7 +3743,7 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
-            "--tracker", default='rsspercentiles', help="Enable extra trackers like 'rsspercentiles', 'rss' or 'psrecord'. If not set, 'rsspercentiles' is used.")
+            "--tracker", default='rsspercentiles', help="Enable extra trackers like 'rsspercentiles' (default), 'rss' or 'psrecord'.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -3752,7 +3752,7 @@ class BenchmarkExecutor(object):
             "--machine-ip", default=None, help="Machine ip the benchmark is executed on.")
         parser.add_argument(
             "--triggering-suite", default=None,
-            help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
+            help="Name of the suite that triggered this benchmark, used to extract commit info.")
         parser.add_argument(
             "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
@@ -3763,10 +3763,10 @@ class BenchmarkExecutor(object):
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "--fork-count-file", default=None,
-            help="Path to the file that lists the number of re-executions for the targeted benchmarks, using the JSON format: { (<name>: <count>,)* }")
+            help="Path to the file that lists the number of re-executions for the targeted benchmarks,\nusing the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
             "--default-fork-count", default=1, type=int,
-            help="Number of times each benchmark must be executed if no fork count file is specified or no value is found for a given benchmark in the file. Default: 1"
+            help="Number of times each benchmark must be executed if no fork count file is specified\nor no value is found for a given benchmark in the file. Default: 1"
         )
         parser.add_argument(
             "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
@@ -3837,8 +3837,9 @@ class BenchmarkExecutor(object):
                 parser.print_help()
                 for key, entry in parsers.items():
                     if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
-                        print(entry.description)
-                        entry.parser.print_help()
+                        print('\n' + entry.description.strip())
+                        only_options_help = re.sub('.+options:\n', '', entry.parser.format_help(), flags=re.DOTALL).rstrip()
+                        print(only_options_help)
                 for vmreg in vm_registries():
                     print(f"\n{vmreg.get_available_vm_configs_help()}")
                 return 0 if mxBenchmarkArgs.help else 1
@@ -3987,7 +3988,7 @@ def benchmark(args, returnSuiteAndResults=False):
 
     :Example:
 
-        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [bmSuiteArgs]
+        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [runArgs]
         mx benchmark --help
 
     :param list args:
@@ -4006,14 +4007,12 @@ def benchmark(args, returnSuiteAndResults=False):
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
             --results-file: Target path where the results will be stored (default: bench-results.json).
-            --machine-name: Abstract name of a machine with specific capabilities
-                            (e.g. `x52`).
+            --machine-name: Abstract name of a machine with specific capabilities (e.g. `x52`).
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
-    Arguments after the first `--` are used to configure the underlying VM, so they can be JVM
-    options for instance. The last set of parameters are parameters that are passed
-    directly to the benchmark suite.
+    Arguments after the first `--` are used to configure the underlying VM, so they can be JVM options for instance.
+    The last set of arguments are arguments that are passed directly to the benchmarks.
 
     Examples:
         mx benchmark dacapo:fop
