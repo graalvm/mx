@@ -3743,7 +3743,7 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
-            "--tracker", default='rsspercentiles', help="Enable extra trackers like 'rsspercentiles', 'rss' or 'psrecord'. If not set, 'rsspercentiles' is used.")
+            "--tracker", default='rsspercentiles', help="Enable extra trackers like 'rsspercentiles' (default), 'rss' or 'psrecord'.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -3752,7 +3752,7 @@ class BenchmarkExecutor(object):
             "--machine-ip", default=None, help="Machine ip the benchmark is executed on.")
         parser.add_argument(
             "--triggering-suite", default=None,
-            help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
+            help="Name of the suite that triggered this benchmark, used to extract commit info.")
         parser.add_argument(
             "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
@@ -3763,10 +3763,10 @@ class BenchmarkExecutor(object):
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "--fork-count-file", default=None,
-            help="Path to the file that lists the number of re-executions for the targeted benchmarks, using the JSON format: { (<name>: <count>,)* }")
+            help="Path to the file that lists the number of re-executions for the targeted benchmarks,\nusing the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
             "--default-fork-count", default=1, type=int,
-            help="Number of times each benchmark must be executed if no fork count file is specified or no value is found for a given benchmark in the file. Default: 1"
+            help="Number of times each benchmark must be executed if no fork count file is specified\nor no value is found for a given benchmark in the file. Default: 1"
         )
         parser.add_argument(
             "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
