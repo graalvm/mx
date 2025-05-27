@@ -18584,7 +18584,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.2")  # GR-65332 improve mx benchmark docs
+version = VersionSpec("7.54.3")  # GR-64081: Supporting bench suite context classes for new 'graalos' benchmark suite
 
 _mx_start_datetime = datetime.utcnow()
 

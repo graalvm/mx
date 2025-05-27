@@ -37,6 +37,7 @@ __all__ = [
     "add_parser",
     "get_parser",
     "VmRegistry",
+    "SingleBenchmarkExecutionContext",
     "BenchmarkSuite",
     "add_bm_suite",
     "bm_suite_valid_keys",
@@ -128,6 +129,7 @@ from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict, abc
 from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection
+from dataclasses import dataclass
 
 from .support.logging import log_deprecation
 
@@ -448,6 +450,58 @@ class VmRegistry(object):
         return list(self._vms.values())
 
 
+@dataclass(frozen = True)
+class BenchmarkExecutionContext():
+    """
+    Container class for the runtime context of a benchmark suite.
+    * suite: The benchmark suite to which the currently running benchmarks belong to.
+    * vm: The virtual machine on which the currently running benchmarks are executing on.
+    * benchmarks: The names of the currently running benchmarks.
+    * bmSuiteArgs: The arguments passed to the benchmark suite for the current benchmark run.
+    """
+    suite: BenchmarkSuite
+    virtual_machine: Vm
+    benchmarks: List[str]
+    bmSuiteArgs: List[str]
+
+    def __enter__(self):
+        self.suite.push_execution_context(self)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.suite.pop_execution_context()
+
+@dataclass(frozen = True)
+class SingleBenchmarkExecutionContext(BenchmarkExecutionContext):
+    """
+    Container class for the runtime context of a benchmark suite that can only run a single benchmark.
+    * benchmark: The name of the currently running benchmark.
+    """
+    benchmark: str
+
+    def __init__(self, suite: BenchmarkSuite, vm: Vm, benchmarks: List[str], bmSuiteArgs: List[str]):
+        super().__init__(suite, vm, benchmarks, bmSuiteArgs)
+        self._enforce_single_benchmark(benchmarks, suite)
+        # Assigning to the 'benchmark' field directly is not possible because of @dataclass(frozen = True).
+        # If the 'frozen' attribute were to be set to false, we could assign directly here, but then assignments would
+        # be allowed at any point.
+        object.__setattr__(self, "benchmark", benchmarks[0])
+
+    def _enforce_single_benchmark(self, benchmarks: List[str], suite: BenchmarkSuite):
+        """
+        Asserts that a single benchmark is requested to run.
+        Raises an exception if none or multiple benchmarks are requested.
+        """
+        if not isinstance(benchmarks, list):
+            raise TypeError(f"{suite.__class__.__name__} expects to receive a list of benchmarks to run,"
+                            f" instead got an instance of {benchmarks.__class__.__name__}!"
+                            f" Please specify a single benchmark!")
+        if len(benchmarks) != 1:
+            raise ValueError(f"You have requested {benchmarks} to be run but {suite.__class__.__name__}"
+                             f" can only run a single benchmark at a time!"
+                             f" Please specify a single benchmark!")
+
+
 class BenchmarkSuite(object):
     """
     A harness for a benchmark suite.
@@ -461,6 +515,7 @@ class BenchmarkSuite(object):
         self._command_mapper_hooks = {}
         self._tracker = None
         self._currently_running_benchmark = None
+        self._execution_context: List[BenchmarkExecutionContext] = []
 
     def name(self):
         """Returns the name of the suite to execute.
@@ -755,6 +810,21 @@ class BenchmarkSuite(object):
 
         """
         return [bmSuiteArgs]
+
+    def new_execution_context(self, vm: Vm, benchmarks: List[str], bmSuiteArgs: List[str]) -> BenchmarkExecutionContext:
+        return BenchmarkExecutionContext(self, vm, benchmarks, bmSuiteArgs)
+
+    def pop_execution_context(self) -> BenchmarkExecutionContext:
+        return self._execution_context.pop()
+
+    def push_execution_context(self, context: BenchmarkExecutionContext):
+        self._execution_context.append(context)
+
+    @property
+    def execution_context(self) -> Optional[BenchmarkExecutionContext]:
+        if len(self._execution_context) == 0:
+            return None
+        return self._execution_context[-1]
 
 
 
@@ -1466,9 +1536,10 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     5. Use the parse rules on the standard output to create data points.
     """
     def run(self, benchmarks, bmSuiteArgs) -> DataPoints:
-        retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
-        return datapoints
+        with self.new_execution_context(None, benchmarks, bmSuiteArgs):
+            retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
+            datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
+            return datapoints
 
     def validateStdoutWithDimensions(
         self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
@@ -1761,31 +1832,32 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
         vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
         vm.command_mapper_hooks = [(name, func, self) for name, func in self._command_mapper_hooks.items()]
-        t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
-        if len(t) == 2:
-            ret_code, out = t
-            vm_dims = {}
-        else:
-            ret_code, out, vm_dims = t
-        host_vm = None
-        if isinstance(vm, GuestVm):
-            host_vm = vm.host_vm()
-            assert host_vm
-        dims = {
-            "vm": vm.name(),
-            "host-vm": host_vm.name() if host_vm else vm.name(),
-            "host-vm-config": self.host_vm_config_name(host_vm, vm),
-            "guest-vm": vm.name() if host_vm else "none",
-            "guest-vm-config": self.guest_vm_config_name(host_vm, vm),
-        }
-        for key, value in vm_dims.items():
-            if key in dims and value != dims[key]:
-                if value == 'none':
-                    mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) tried overwriting {key}='{dims[key]}' with '{value}', keeping '{dims[key]}'")
-                    continue
-                mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) is overwriting {key}='{dims[key]}' with '{value}'")
-            dims[key] = value
-        return ret_code, out, dims
+        with self.new_execution_context(vm, benchmarks, bmSuiteArgs):
+            t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
+            if len(t) == 2:
+                ret_code, out = t
+                vm_dims = {}
+            else:
+                ret_code, out, vm_dims = t
+            host_vm = None
+            if isinstance(vm, GuestVm):
+                host_vm = vm.host_vm()
+                assert host_vm
+            dims = {
+                "vm": vm.name(),
+                "host-vm": host_vm.name() if host_vm else vm.name(),
+                "host-vm-config": self.host_vm_config_name(host_vm, vm),
+                "guest-vm": vm.name() if host_vm else "none",
+                "guest-vm-config": self.guest_vm_config_name(host_vm, vm),
+            }
+            for key, value in vm_dims.items():
+                if key in dims and value != dims[key]:
+                    if value == 'none':
+                        mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) tried overwriting {key}='{dims[key]}' with '{value}', keeping '{dims[key]}'")
+                        continue
+                    mx.warn(f"VM {vm.name()}:{vm.config_name()} ({vm.__class__.__name__}) is overwriting {key}='{dims[key]}' with '{value}'")
+                dims[key] = value
+            return ret_code, out, dims
 
     def host_vm_config_name(self, host_vm, vm):
         return host_vm.config_name() if host_vm else vm.config_name()
