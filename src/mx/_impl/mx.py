@@ -6424,6 +6424,19 @@ class Project(Dependency):
         for s in self.source_dirs():
             ensure_dir_exists(s)
 
+    @staticmethod
+    def walk(d):
+        """
+        Convenience method to implement getResults() by including all files under a directory.
+        """
+        assert isabs(d)
+        results = []
+        for root, _, files in os.walk(d):
+            for name in files:
+                path = join(root, name)
+                results.append(path)
+        return results
+
     def resolveDeps(self):
         """
         Resolves symbolic dependency references to be Dependency objects.
@@ -6564,19 +6577,6 @@ class ArchivableProject(Project):  # Used from other suites. pylint: disable=r09
     @abstractmethod
     def getResults(self):
         nyi('getResults', self)
-
-    @staticmethod
-    def walk(d):
-        """
-        Convenience method to implement getResults() by including all files under a directory.
-        """
-        assert isabs(d)
-        results = []
-        for root, _, files in os.walk(d):
-            for name in files:
-                path = join(root, name)
-                results.append(path)
-        return results
 
     def get_relpath(self, f, outputDir):
         d = join(outputDir, "")
@@ -18584,7 +18584,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.3")  # GR-64081: Supporting bench suite context classes for new 'graalos' benchmark suite
+version = VersionSpec("7.54.4")  # GR-65222 add dir walker from ArchivableProject to Project.
 
 _mx_start_datetime = datetime.utcnow()
 
