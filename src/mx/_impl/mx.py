@@ -320,7 +320,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod
-from typing import Callable, IO, AnyStr, Union, Iterable, Any
+from typing import Callable, IO, AnyStr, Union, Iterable, Any, Optional
 
 from mx._impl.support import java_argument_file
 
@@ -1579,6 +1579,7 @@ class Suite(object):
         self.jreLibs = []
         self.jdkLibs = []
         self.suite_imports = []
+        self.ignored_foreign_suites = [] # foreign suites whose dynamic import is ignored
         self.extensions = None
         self.requiredMxVersion = None
         self.dists = []
@@ -2172,9 +2173,11 @@ class Suite(object):
                 if import_dict.get('ignore', False):
                     log(f"Ignoring '{imported_suite_name}' on your platform ({get_os()}/{get_arch()})")
                     continue
-                if import_dict.get('dynamic', False) and imported_suite_name not in (name for name, _ in get_dynamic_imports()):
-                    continue
                 suite_import = SuiteImport.parse_specification(import_dict, context=self, importer=self, dynamicImport=self.dynamicallyImported)
+                if import_dict.get('dynamic', False) and imported_suite_name not in (name for name, _ in get_dynamic_imports()):
+                    if suite_import.foreign:
+                        self.ignored_foreign_suites.append(suite_import)
+                    continue
                 jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
                 if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
                     _jdkProvidedSuites.add(suite_import.name)
@@ -2187,6 +2190,7 @@ class Suite(object):
         stale import data from the updated suite.py file
         """
         self.suite_imports = []
+        self.ignored_foreign_suites = []
         self._preload_suite_dict()
         self._init_imports()
 
@@ -2509,13 +2513,13 @@ class Suite(object):
                 return suite_import
         return None
 
-    def import_suite(self, name, version=None, urlinfos=None, kind=None, in_subdir=False):
+    def import_suite(self, name, version=None, urlinfos=None, kind=None, in_subdir=False, foreign=False, clone_binary_first=True):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
         imported_suite = suite(name, fatalIfMissing=False)
         if imported_suite:
             return imported_suite
-        suite_import = SuiteImport(name, version, urlinfos, kind, dynamicImport=True, in_subdir=in_subdir)
-        imported_suite, cloned = _find_suite_import(self, suite_import, fatalIfMissing=False, load=False, clone_binary_first=True)
+        suite_import = SuiteImport(name, version, urlinfos, kind, dynamicImport=True, in_subdir=in_subdir, foreign=foreign)
+        imported_suite, cloned = _find_suite_import(self, suite_import, fatalIfMissing=False, load=False, clone_binary_first=clone_binary_first)
         if imported_suite:
             if not cloned and imported_suite.isBinarySuite():
                 if imported_suite.vc.update(imported_suite.vc_dir, rev=suite_import.version, mayPull=True):
@@ -2534,6 +2538,25 @@ class Suite(object):
                 for dist in imported_suite.dists:
                     dist.post_init()
         return imported_suite
+
+    def clone_foreign_suite(self, name: str, clone_binary_first: bool=True) -> Optional[Suite]:
+        """
+        Import a foreign suite whose dynamic suite import was ignored during the original suite discovery.
+
+        :raises StopIteration: If a suite called `name` is not found in the list of ignored suites.
+
+        DEVELOPER NOTE: This method is restricted to foreign suites only, as importing an mx suite dynamically
+        is avoided due to its complexity.
+        """
+        suite_import = next(filter(lambda ignored_import: ignored_import.name == name, self.ignored_foreign_suites))
+        suite = self.import_suite(
+            name, suite_import.version, suite_import.urlinfos, suite_import.kind, suite_import.in_subdir,
+            suite_import.foreign, clone_binary_first
+        )
+        if suite is not None:
+            self.ignored_foreign_suites.remove(suite_import)
+            self.suite_imports.append(suite_import)
+        return suite
 
     def scm_metadata(self, abortOnError=False):
         return self.scm
