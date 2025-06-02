@@ -673,7 +673,10 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             mx.abort(f'The package specifier "<package-info>" cannot be used for the "opens" attribute', context=dist)
                     res.update(mx._find_packages(project_scope, onlyPublic=True))
                 else:
-                    if spec not in module_packages:
+                    if directive == 'export' and spec not in module_packages:
+                        # For the 'open' directive, we do not check whether the package spec names an
+                        # existing Java package, since it is legitimate to open a package with no
+                        # Java classes to provide access to resource files.
                         mx.abort(f'Cannot {directive} package {spec} from {moduleName} as it is not defined by any project in the module {moduleName}', context=dist)
                     if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
                         mx.abort(f'Package {spec} in "{directive}s" attribute not defined by project {project_scope}', context=project_scope)
