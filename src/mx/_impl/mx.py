@@ -7079,17 +7079,28 @@ class JavaProject(Project, ClasspathDependency):
         else:
             return {}
 
+        # If requested, we do not check generated sources directories. It can be fragile, because both
+        # 'base' or 'self' projects may or may not be built. At the same time we do not want to force
+        # the build just for this check.
+        def src_dirs(p: Project):
+            if getattr(self, 'ignoreSrcGenForOverlayMap', False) and hasattr(p, 'source_gen_dir'):
+                return set(p.source_dirs()) - {p.source_gen_dir()}
+            else:
+                return p.source_dirs()
+
         flatten_map = {}
         self_packages = self.defined_java_packages() | self.extended_java_packages()
         for package in self_packages:
             relative_package_src_dir = package.replace('.', os.sep)
-            for self_package_src_dir in [join(s, relative_package_src_dir) for s in self.source_dirs()]:
+            for self_package_src_dir in [join(s, relative_package_src_dir) for s in src_dirs(self)]:
                 if exists(self_package_src_dir):
-                    assert len(base.source_dirs()) != 0, f'{base} has no source directories!'
-                    for base_package_src_dir in [join(s, relative_package_src_dir) for s in base.source_dirs()]:
+                    base_src_dirs = src_dirs(base)
+                    assert len(base_src_dirs) != 0, f'{base} has no source directories!'
+                    for base_package_src_dir in [join(s, relative_package_src_dir) for s in base_src_dirs]:
                         if exists(base_package_src_dir) or self_package_src_dir not in flatten_map:
                             flatten_map[self_package_src_dir] = base_package_src_dir
-        assert len(self_packages) == len(flatten_map), 'could not find sources for all packages in ' + self.name
+        assert len(self_packages) == len(flatten_map), (f'could not find sources for all packages in {self.name}.\n'
+                                                        f'Found packages: {self_packages}.\nSources mapping: {flatten_map}.')
         return flatten_map
 
     def getBuildTask(self, args):
@@ -18584,7 +18595,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.4")  # GR-65222 add dir walker from ArchivableProject to Project.
+version = VersionSpec("7.54.5")  # GR-65516 Add flag to ignore generated source directories in get_overlay_flatten_map
 
 _mx_start_datetime = datetime.utcnow()
 
