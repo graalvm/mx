@@ -18594,7 +18594,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.6")  # GR-64668 Add automatic reuse of average baseline power across benchmark stages
+version = VersionSpec("7.54.7")  # GR-65583
 
 _mx_start_datetime = datetime.utcnow()
 

@@ -206,7 +206,9 @@ def _spotbugs(all_args, spotbugsArgs, suite, projectsToTest, spotbugsVersion):
             parsed_args.strict_mode)
         return 0
     _range = f'{javaCompliance.value}..{max_jdk_version}' if javaCompliance.value < max_jdk_version else str(max_jdk_version)
-    jdk = mx.get_tools_jdk(_range, purpose='SpotBugs')
+
+    # If SPOTBUGS_HOME is set, then assume that it can be run with JAVA_HOME
+    jdk = mx.get_jdk() if spotbugsHome else mx.get_tools_jdk(_range, purpose='SpotBugs')
 
     spotbugsResults = join(suite.dir, 'spotbugs.results')
 
