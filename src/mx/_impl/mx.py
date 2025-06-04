@@ -18231,7 +18231,6 @@ update_commands("mx", {
     'envs': [show_envs, '[options]'],
     'verifymultireleaseprojects' : [verifyMultiReleaseProjects, ''],
     'flattenmultireleasesources' : [flattenMultiReleaseSources, 'version'],
-    'findbugs': [mx_spotbugs.spotbugs, ''],
     'spotbugs': [mx_spotbugs.spotbugs, ''],
     'findclass': [findclass, ''],
     'gate': [mx_gate.gate, '[options]'],
