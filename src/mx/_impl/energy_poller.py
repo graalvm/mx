@@ -16,6 +16,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Capture energy and power consumption using 'powerstat'")
     parser.add_argument("target_cmd", nargs=argparse.REMAINDER, help="Command to run and poll for energy data")
     parser.add_argument(
+        "--baseline-output-file",
+        type=str,
+        help="If provided, the measured average baseline power will be saved to this file for reuse in subsequent stages",
+    )
+    parser.add_argument(
         "--delay",
         type=float,
         default=DEFAULT_SAMPLE_DELAY,
@@ -26,6 +31,11 @@ def parse_args():
         type=int,
         default=DEFAULT_BASELINE_DURATION,
         help="Duration of the baseline computation in seconds (default: {DEFAULT_BASELINE_DURATION})",
+    )
+    parser.add_argument(
+        "--avg-baseline-power",
+        type=float,
+        help="Power consumption, in watts, to be used as the baseline of the system. If not provided, a 'powerstat' measurement will be executed with no additional processes running to determine the system baseline",
     )
 
     args = parser.parse_args()
@@ -276,7 +286,7 @@ def compute_benchmark_energy(target_cmd, delay):
 
     if powerstat_process.returncode not in [0, -15, -9]:  # -15 is SIGTERM, -9 is SIGKILL
         log.error("Powerstat output:\n%s", output_file.read_text())
-        raise RuntimeError("Powerstat process exited with an unexpected return code: {powerstat_process.returncode}")
+        raise RuntimeError(f"Powerstat process exited with an unexpected return code: {powerstat_process.returncode}")
 
     benchmark_duration = benchmark_end_time - benchmark_start_time
     log.info("The benchmark ran for %.2f seconds", benchmark_duration)
@@ -295,9 +305,24 @@ def main():
     if not check_powerstat_access():
         return 1
 
-    total_baseline_energy, avg_baseline_power = compute_baseline_energy(args.delay, args.baseline_duration)
-    if total_baseline_energy is None or avg_baseline_power is None:
-        log.error("Could not compute baseline energy. Exiting...")
+    if args.baseline_output_file:
+        log.info("Performing a fresh baseline power measurement")
+        total_baseline_energy, avg_baseline_power = compute_baseline_energy(args.delay, args.baseline_duration)
+        if total_baseline_energy is None or avg_baseline_power is None:
+            log.error("Could not compute baseline energy. Exiting...")
+            return 1
+        try:
+            baseline_output_file = Path(args.baseline_output_file)
+            baseline_output_file.write_text(f"{avg_baseline_power:.2f}")
+            log.info("Stored new baseline power: %.2f W", avg_baseline_power)
+        except (OSError, IOError) as e:
+            log.error("Failed to write baseline file: %s. Exiting...", e)
+            return 1
+    elif args.avg_baseline_power:
+        avg_baseline_power = args.avg_baseline_power
+        log.info("Using cached baseline power: %.2f W", avg_baseline_power)
+    else:
+        log.error("No baseline source provided. Exiting...")
         return 1
 
     powerstat_output = compute_benchmark_energy(args.target_cmd, args.delay)

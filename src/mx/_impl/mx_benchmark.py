@@ -3408,9 +3408,39 @@ class EnergyConsumptionTracker(Tracker):
     Measures the energy consumption of a benchmark using 'powerstat' by wrapping the benchmark command with an energy polling script
     """
     def __init__(self, bmSuite):
+        import datetime
+        from pathlib import Path
+        import atexit
+
         super().__init__(bmSuite)
         self.delay = 0.5
         self.baseline_duration = 60
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.temp_dir = Path(mx.primary_suite().get_mx_output_dir()) / "energy_tracker_temp"
+        self.temp_dir.mkdir(exist_ok=True)
+        self.baseline_file = self.temp_dir / f"avg_baseline_power_{timestamp}.txt"
+        self.loaded_baseline = None
+        # GR-65536
+        atexit.register(self.cleanup)
+
+    @property
+    def baseline_power(self):
+        """Caches the average baseline power value"""
+        if self.loaded_baseline is None and self.baseline_file.exists():
+            try:
+                with open(self.baseline_file, 'r') as f:
+                    self.loaded_baseline = float(f.read().strip())
+            except (ValueError, OSError) as e:
+                mx.abort(f"Failed to read the baseline power from file: {e}")
+        return self.loaded_baseline
+
+    def cleanup(self):
+        """Removes the average baseline file on exit"""
+        try:
+            if self.baseline_file.exists():
+                os.remove(self.baseline_file)
+        except (OSError, IOError) as e:
+            mx.warn(f"Failed to clean up baseline file: {e}")
 
     def map_command(self, cmd):
         """
@@ -3431,10 +3461,20 @@ class EnergyConsumptionTracker(Tracker):
         from pathlib import Path
         energy_poller_script_path = Path(__file__).resolve().parent / "energy_poller.py"
 
-        return [
+        args = [
             sys.executable,
             str(energy_poller_script_path),
-            "--delay", str(self.delay), "--baseline-duration", str(self.baseline_duration)] + cmd
+            "--delay", str(self.delay),
+        ]
+
+        # Only measuring the baseline power if we don't have one cached
+        if self.baseline_power is None:
+            args.extend(["--baseline-output-file", str(self.baseline_file)])
+            args.extend(["--baseline-duration", str(self.baseline_duration)])
+        else:
+            args.extend(["--avg-baseline-power", str(self.baseline_power)])
+
+        return args + cmd
 
     def get_rules(self, bmSuiteArgs):
         """
