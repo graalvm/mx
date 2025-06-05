@@ -13654,8 +13654,6 @@ def run(
 
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
-            if _opts.very_verbose:
-                raise subprocess.CalledProcessError(retcode, cmd_line)
             log('[exit code: ' + str(retcode) + ']')
         abort(retcode, context=subprocess.CalledProcessError(retcode, cmd_line))
 
