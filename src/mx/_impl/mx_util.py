@@ -24,6 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+from __future__ import annotations
 
 #
 # Utility functions for use by mx and mx extensions.
@@ -37,14 +38,21 @@ __all__ = [
     "get_file_extension",
     "ensure_dirname_exists",
     "ensure_dir_exists",
-    "SafeFileCreation"
+    "SafeFileCreation",
+    "Stage",
+    "StageName",
+    "Layer",
+    "MapperHook",
+    "FunctionHookAdapter"
 ]
 
 import os.path
 import errno
 import sys
 import tempfile
-from typing import Optional
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional, List, Callable
 from os.path import dirname, exists, join, isdir, basename
 
 min_required_python_version = (3, 8)
@@ -215,3 +223,93 @@ def _create_tmp_files(tmp_dir, num):
             pid = os.getpid()
             with open(sfc.tmpPath, 'w') as out:
                 print(f"file {i} created by process {pid}", file=out)
+
+
+@dataclass(frozen = True)
+class Stage:
+    stage_name: StageName
+    layer_info: Layer = None
+
+    @staticmethod
+    def from_string(s: str) -> Stage:
+        return Stage(StageName(s))
+
+    def is_image(self) -> bool:
+        return self.stage_name.is_image()
+
+    def is_instrument(self) -> bool:
+        return self.stage_name.is_instrument()
+
+    def is_agent(self) -> bool:
+        return self.stage_name.is_agent()
+
+    def is_final(self) -> bool:
+        return self.stage_name.is_final()
+
+    def is_layered(self) -> bool:
+        return self.layer_info is not None
+
+    def is_requested(self, request: str):
+        """Whether the 'request' is equal to either the full name of the stage or it's name without layer info."""
+        return str(self) == request or str(self.stage_name) == request
+
+    def __str__(self):
+        if not self.is_layered():
+            return str(self.stage_name)
+        return f"{self.stage_name}-{self.layer_info}"
+
+class StageName(Enum):
+    AGENT = "agent"
+    INSTRUMENT_IMAGE = "instrument-image"
+    INSTRUMENT_RUN = "instrument-run"
+    IMAGE = "image"
+    RUN = "run"
+
+    def __str__(self):
+        return self.value
+
+    def is_image(self) -> bool:
+        """Whether this is an image stage (a stage that performs an image build)"""
+        return self in [StageName.INSTRUMENT_IMAGE, StageName.IMAGE]
+
+    def is_instrument(self) -> bool:
+        """Whether this is an image stage (a stage that performs an image build)"""
+        return self in [StageName.INSTRUMENT_IMAGE, StageName.INSTRUMENT_RUN]
+
+    def is_agent(self) -> bool:
+        return self == StageName.AGENT
+
+    def is_final(self) -> bool:
+        return self in [StageName.IMAGE, StageName.RUN]
+
+@dataclass(frozen = True)
+class Layer:
+    index: int
+    is_shared_library: bool
+
+    def __str__(self):
+        return f"layer{self.index}"
+
+
+class MapperHook:
+    """Base class for all command mapper hooks."""
+    def hook(self, cmd: List[str], suite=None) -> List[str]:
+        raise NotImplementedError()
+
+    def should_apply(self, stage: Optional[Stage]) -> bool:
+        """Determines if this hook should be applied for the given stage. By default, hooks shouldn't apply to image stages.
+        Args:
+            stage: For NativeImage suites, the current stage
+                   For JIT suites, None
+        Returns:
+            bool: True if the hook should be applied
+        """
+        return not stage.is_image() if stage else True
+
+class FunctionHookAdapter(MapperHook):
+    """Adapter for function hooks."""
+    def __init__(self, func: Callable[[List[str]], List[str]]):
+        self.func = func
+
+    def hook(self, cmd: List[str], suite=None) -> List[str]:
+        return self.func(cmd, suite)

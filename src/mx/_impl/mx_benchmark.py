@@ -132,6 +132,7 @@ from collections import OrderedDict, abc
 from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection
 from dataclasses import dataclass
 
+from .mx_util import Stage, MapperHook, FunctionHookAdapter
 from .support.logging import log_deprecation
 
 from . import mx
@@ -513,7 +514,7 @@ class BenchmarkSuite(object):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
         self._suite_dimensions: DataPoint = {}
-        self._command_mapper_hooks = {}
+        self._command_mapper_hooks: Dict[str, MapperHook] = {}
         self._tracker = None
         self._currently_running_benchmark = None
         self._execution_context: List[BenchmarkExecutionContext] = []
@@ -586,23 +587,27 @@ class BenchmarkSuite(object):
         """
         return self._currently_running_benchmark
 
-    def register_command_mapper_hook(self, name, func):
-        """Registers a function that takes as input the benchmark suite object and the command to execute and returns
-        a modified command line.
+    def register_command_mapper_hook(self, name: str, hook: Callable | MapperHook):
+        """Registers a command modification hook with stage awareness.
 
         :param string name: Unique name of the hook.
-        :param function func:
+        :param hook: MapperHook instance or callable
         :return: None
         """
-        self._command_mapper_hooks[name] = func
+        if isinstance(hook, MapperHook):
+            self._command_mapper_hooks[name] = hook
+        elif callable(hook):
+            mx.warn(f"Registering a Callable as a command mapper hook '{name}' for the benchmark suite. Please use the MapperHook interface instead of Callable as it will be deprecated in the future!")
+            self._command_mapper_hooks[name] = FunctionHookAdapter(hook)
+        else:
+            raise ValueError(f"Hook must be MapperHook or callable, got {type(hook)}")
+
 
     def register_tracker(self, name, tracker_type):
         tracker = tracker_type(self)
         self._tracker = tracker
+        hook = tracker.get_hook()
 
-        def hook(cmd, suite):
-            assert suite == self
-            return tracker.map_command(cmd)
         self.register_command_mapper_hook(name, hook)
 
     def version(self):
@@ -1764,9 +1769,10 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
 
                     def func(cmd, bmSuite, prefix_command=prefix_command):
                         return prefix_command + cmd
+
                     if self._command_mapper_hooks and any(hook_name != profiler for hook_name in self._command_mapper_hooks):
                         mx.abort(f"Profiler '{profiler}' conflicts with trackers '{', '.join([hook_name for hook_name in self._command_mapper_hooks if hook_name != profiler])}'\nUse --tracker none to disable all trackers")
-                    self._command_mapper_hooks = {profiler: func}
+                    self.register_command_mapper_hook(profiler, FunctionHookAdapter(func))
         return args
 
     def parserNames(self):
@@ -2010,7 +2016,7 @@ class Vm(object): #pylint: disable=R0922
         """
         Registers a list of `hooks` (given as a tuple 'name', 'func', 'suite') to manipulate the command line before its
         execution.
-        :param list[tuple] hooks: the list of hooks given as tuples of names and functions
+        :param list[tuple] hooks: the list of hooks given as tuples of names and MapperHook instances
         """
         self._command_mapper_hooks = hooks
 
@@ -3078,6 +3084,14 @@ def disable_tracker():
     global _use_tracker
     _use_tracker = False
 
+class DefaultTrackerHook(MapperHook):
+    def __init__(self, tracker: Tracker):
+        self.tracker = tracker
+
+    def hook(self, cmd, suite=None):
+        assert suite == self.tracker.bmSuite
+        return self.tracker.map_command(cmd)
+
 class Tracker(object):
     def __init__(self, bmSuite):
         self.bmSuite = bmSuite
@@ -3087,6 +3101,9 @@ class Tracker(object):
 
     def get_rules(self, bmSuiteArgs):
         raise NotImplementedError()
+
+    def get_hook(self) -> MapperHook:
+        return DefaultTrackerHook(self)
 
 class RssTracker(Tracker):
     def __init__(self, bmSuite):
@@ -3461,6 +3478,10 @@ class EnergyConsumptionTracker(Tracker):
         # GR-65536
         atexit.register(self.cleanup)
 
+    def get_hook(self) -> MapperHook:
+        """Returns an energy tracking hook"""
+        return EnergyTrackerHook(self)
+
     @property
     def baseline_power(self):
         """Caches the average baseline power value"""
@@ -3558,6 +3579,15 @@ class EnergyConsumptionTracker(Tracker):
             rules.append(StdOutRule(pattern, sample_rule_dict))
 
         return rules
+
+class EnergyTrackerHook(DefaultTrackerHook):
+    """Hook for energy consumption tracking."""
+    def __init__(self, tracker: EnergyConsumptionTracker):
+        assert isinstance(tracker, EnergyConsumptionTracker)
+        super().__init__(tracker)
+
+    def should_apply(self, stage: Optional[Stage]) -> bool:
+        return stage.is_final() if stage else False
 
 _available_trackers = {
     "rss": RssTracker,
