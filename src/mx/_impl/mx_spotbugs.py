@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2015, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -26,7 +26,7 @@
 #
 
 __all__ = [
-    "defaultFindbugsArgs",
+    "defaultSpotbugsArgs",
     "spotbugs",
 ]
 
@@ -62,7 +62,10 @@ def _max_jdk_version_supported(spotbugs_version):
         return 11
     return 8
 
-def defaultFindbugsArgs():
+def defaultSpotbugsArgs():
+    """
+    Gets the default args passed directly through to spotbugs.
+    """
     args = ['-textui', '-low', '-maxRank', '15']
     if mx.is_interactive():
         args.append('-progress')
@@ -70,7 +73,7 @@ def defaultFindbugsArgs():
 
 def _get_spotbugs_attribute(p, suffix, default=None):
     spotbugs_attribute_value = None
-    attributes = [s + suffix for s in ('spotbugs', 'findbugs')]
+    attributes = ['spotbugs' + suffix]
     found = False
     for spotbugs_attribute_name in attributes:
         if hasattr(p, spotbugs_attribute_name):
@@ -103,34 +106,43 @@ def _warn_or_abort(msg, strict_mode):
     reporter(msg)
 
 
-def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs.jar'):
+def spotbugs(args, spotbugsArgs=None, suite=None, projects=None, jarFileName='spotbugs.jar'):
+    """
+
+    :param spotbugsArgs: args passed directly through to spotbugs
+    """
     projectsToTest = [p for p in mx.projects() if _should_test_project(p)]
     projectsByVersion = {}
     for p in projectsToTest:
         compat = p.suite.getMxCompatibility()
         spotbugsVersion = compat.spotbugs_version()
         projectsByVersion.setdefault(spotbugsVersion, []).append(p)
+        max_jdk_version_supported = _max_jdk_version_supported(spotbugsVersion)
+        if _max_jdk_version_supported(spotbugsVersion) < p.javaCompliance.value:
+            if getattr(p, "spotbugsStrict", True) is False:
+                mx.warn(f'Spotbugs {spotbugsVersion} only runs on JDK {max_jdk_version_supported} or lower, not {p.javaCompliance}. Skipping {p}')
+
     resultcode = 0
     for spotbugsVersion, versionProjects in projectsByVersion.items():
         mx.logv(f'Running spotbugs version {spotbugsVersion} on projects {versionProjects}')
-        resultcode = max(resultcode, _spotbugs(args, fbArgs, suite, versionProjects, spotbugsVersion))
+        resultcode = max(resultcode, _spotbugs(args, spotbugsArgs, suite, versionProjects, spotbugsVersion))
     return resultcode
 
-def _spotbugs(all_args, fbArgs, suite, projectsToTest, spotbugsVersion):
-    """run FindBugs against non-test Java projects"""
+def _spotbugs(all_args, spotbugsArgs, suite, projectsToTest, spotbugsVersion):
+    """run SpotBugs against non-test Java projects
+
+    :param spotbugsArgs: args passed directly through to spotbugs
+    """
     parser = ArgumentParser(prog='mx spotbugs')
     parser.add_argument('--strict-mode', action='store_true', help='abort if SpotBugs cannot be executed for some reason (e.g., unsupported JDK version)')
     parsed_args, args = parser.parse_known_args(all_args)
 
-    findBugsHome = mx.get_env('SPOTBUGS_HOME', mx.get_env('FINDBUGS_HOME', None))
-    if spotbugsVersion == '3.0.0':
-        jarFileName = 'findbugs.jar'
-    else:
-        jarFileName = 'spotbugs.jar'
+    spotbugsHome = mx.get_env('SPOTBUGS_HOME', None)
+    jarFileName = 'spotbugs.jar'
     if suite is None:
         suite = mx.primary_suite()
-    if findBugsHome:
-        spotbugsJar = join(findBugsHome, 'lib', jarFileName)
+    if spotbugsHome:
+        spotbugsJar = join(spotbugsHome, 'lib', jarFileName)
     else:
         spotbugsLib = join(mx._mx_suite.get_output_root(), 'spotbugs-' + spotbugsVersion)
         if not exists(spotbugsLib):
@@ -194,13 +206,15 @@ def _spotbugs(all_args, fbArgs, suite, projectsToTest, spotbugsVersion):
             parsed_args.strict_mode)
         return 0
     _range = f'{javaCompliance.value}..{max_jdk_version}' if javaCompliance.value < max_jdk_version else str(max_jdk_version)
-    jdk = mx.get_tools_jdk(_range, purpose='SpotBugs')
+
+    # If SPOTBUGS_HOME is set, then assume that it can be run with JAVA_HOME
+    jdk = mx.get_jdk() if spotbugsHome else mx.get_tools_jdk(_range, purpose='SpotBugs')
 
     spotbugsResults = join(suite.dir, 'spotbugs.results')
 
-    if fbArgs is None:
-        fbArgs = defaultFindbugsArgs()
-    cmd = ['-jar', mx._cygpathU2W(spotbugsJar)] + fbArgs
+    if spotbugsArgs is None:
+        spotbugsArgs = defaultSpotbugsArgs()
+    cmd = ['-jar', mx._cygpathU2W(spotbugsJar)] + spotbugsArgs
     cmd = cmd + ['-exclude', spotbugsExcludeFilterFile]
     cmd = cmd + ['-auxclasspath', mx._separatedCygpathU2W(mx.classpath([p.name for p in projectsToTest], jdk=jdk)), '-output', mx._cygpathU2W(spotbugsResults), '-exitcode'] + args + outputDirs
     try:
