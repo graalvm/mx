@@ -6,10 +6,16 @@ test, run, update, etc the code and built artifacts. `mx` contains support for d
 spread across multiple source repositories. `mx` is written in Python and is extensible.
 
 The organizing principle of `mx` is a _suite_. A _suite_ is both a directory and the container for the components of the suite.
-A suite component is either a _project_, _library_ or _distribution_. There are various flavors of each of these.
+A suite component is either a _library_,  _project_, or _distribution_. There are various flavors of each of these.
 A suite may import and depend on other suites. For an execution of mx, exactly one suite is the primary suite.
 This is either the suite in whose directory `mx` is executed or the value of the global `-p` mx option.
 The set of suites reachable from the primary suite by transitive closure of the imports relation form the set that `mx` operates on.
+
+### mx concepts
+
+* A mx `library` is an archive to download, such as a `.jar` from Maven Central or a source archive of a C project.
+* A mx `project` builds result files from source files (think `.c`->`.o` or `.java`->`.class`). It can depend on libraries and distributions and can have a custom build task when necessary.
+* A mx `distribution` assembles multiple results into one archive or output directory. For example it can group multiple Java projects into a `.jar`, or various files into a `.tar.gz`.
 
 ### Running mx
 
