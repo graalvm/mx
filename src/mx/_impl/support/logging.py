@@ -273,7 +273,7 @@ def abort(codeOrMessage: str | int, context=None, killsig=signal.SIGTERM) -> NoR
         terminate_subprocesses(killsig)
 
     sys.stdout.flush()
-    if is_continuous_integration() or (_opts and hasattr(_opts, "verbose") and _opts.verbose):
+    if _opts and hasattr(_opts, "verbose") and _opts.verbose:
         traceback.print_stack()
     if context is not None:
         if callable(context):
