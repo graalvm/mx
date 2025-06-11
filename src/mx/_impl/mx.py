@@ -13654,10 +13654,8 @@ def run(
 
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
-            if _opts.very_verbose:
-                raise subprocess.CalledProcessError(retcode, cmd_line)
             log('[exit code: ' + str(retcode) + ']')
-        abort(retcode)
+        abort(retcode, context=subprocess.CalledProcessError(retcode, cmd_line))
 
     return retcode
 
@@ -18594,7 +18592,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.8")  # GR-65805
+version = VersionSpec("7.54.9")  # GR-65590 Improve output when mx.run fails and nonZeroIsFatal
 
 _mx_start_datetime = datetime.utcnow()
 
