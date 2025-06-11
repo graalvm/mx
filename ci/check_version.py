@@ -36,6 +36,7 @@ of P and the branch named by the TO_BRANCH environment variable.
 import subprocess
 import re
 import os
+import sys
 from os.path import realpath, dirname, join
 
 mx_home = realpath(join(dirname(__file__), ".."))
@@ -75,7 +76,14 @@ new_version = new_version_re.search(diff)
 old_version = old_version_re.search(diff)
 
 # Get mx version of the TO_BRANCH
-to_branch_mx_py = git(["cat-file", "-p", f"{to_branch}:src/mx/mx_version.py"]).strip()
+try:
+    to_branch_mx_py = git(["cat-file", "-p", f"{to_branch}:src/mx/mx_version.py"]).strip()
+except subprocess.CalledProcessError as e:
+    if os.environ["FROM_BRANCH"] == "bd/GR-65806":
+        print("Skipping the version check to bootstrap the moved version file")
+        sys.exit(0)
+    else:
+        sys.exit(f"src/mx/mx_version.py does not exist on {from_branch}, please rebase your PR")
 to_branch_version = version_re.search(to_branch_mx_py)
 
 
