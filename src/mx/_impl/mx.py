@@ -364,6 +364,7 @@ from stat import S_IWRITE
 from .mx_commands import MxCommands, MxCommand
 from copy import copy, deepcopy
 import posixpath
+from .. import mx_version
 
 from .build.suite import Dependency, SuiteConstituent
 from .build.tasks import BuildTask, NoOpTask, TaskAbortException, TaskSequence
@@ -18591,8 +18592,9 @@ def main():
 
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
-# The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.9")  # GR-65590 Improve output when mx.run fails and nonZeroIsFatal
+# Looking for the version?
+# The version has moved to src/mx/mx_version.py
+version = VersionSpec(mx_version.version)
 
 _mx_start_datetime = datetime.utcnow()
 

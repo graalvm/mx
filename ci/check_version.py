@@ -36,6 +36,7 @@ of P and the branch named by the TO_BRANCH environment variable.
 import subprocess
 import re
 import os
+import sys
 from os.path import realpath, dirname, join
 
 mx_home = realpath(join(dirname(__file__), ".."))
@@ -49,9 +50,9 @@ def git(args):
     return _check_output_str(["git"] + args, cwd=mx_home)
 
 
-version_re = re.compile(r'.*version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
-new_version_re = re.compile(r'.*\+version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
-old_version_re = re.compile(r'.*\-version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
+version_re = re.compile(r'.*version = "([^"]+)"', re.DOTALL)
+new_version_re = re.compile(r'\+version = "([^"]+)"', re.DOTALL)
+old_version_re = re.compile(r'\-version = "([^"]+)"', re.DOTALL)
 
 
 def find_remote_branch(local_branch):
@@ -70,13 +71,20 @@ except KeyError as e:
     raise SystemExit(f"Missing environment variable {e}")
 
 merge_base = git(["merge-base", to_branch, from_branch]).strip()
-diff = git(["diff", merge_base, from_branch, "--", "src/mx/_impl/mx.py"]).strip()
-new_version = new_version_re.match(diff)
-old_version = old_version_re.match(diff)
+diff = git(["diff", merge_base, from_branch, "--", "src/mx/mx_version.py"]).strip()
+new_version = new_version_re.search(diff)
+old_version = old_version_re.search(diff)
 
 # Get mx version of the TO_BRANCH
-to_branch_mx_py = git(["cat-file", "-p", f"{to_branch}:src/mx/_impl/mx.py"]).strip()
-to_branch_version = version_re.match(to_branch_mx_py)
+try:
+    to_branch_mx_py = git(["cat-file", "-p", f"{to_branch}:src/mx/mx_version.py"]).strip()
+except subprocess.CalledProcessError as e:
+    if os.environ["FROM_BRANCH"] == "bd/GR-65806":
+        print("Skipping the version check to bootstrap the moved version file")
+        sys.exit(0)
+    else:
+        sys.exit(f"src/mx/mx_version.py does not exist on {from_branch}, please rebase your PR")
+to_branch_version = version_re.search(to_branch_mx_py)
 
 
 def version_to_ints(spec):
@@ -100,5 +108,5 @@ if new_version and old_version:
         raise SystemExit(f"Version update does not go forward ({new_tag} < {to_branch_tag})")
 else:
     raise SystemExit(
-        f"Could not find mx version update in the PR (based on `git diff {merge_base}..{from_branch}`).\n\nPlease bump the value of the `version` field near the bottom of src/mx/_impl/mx.py"
+        f"Could not find mx version update in the PR (based on `git diff {merge_base}..{from_branch}`).\n\nPlease bump the version in src/mx/mx_version.py"
     )
