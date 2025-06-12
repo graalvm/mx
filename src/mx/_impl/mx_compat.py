@@ -795,6 +795,21 @@ class MxCompatibility733(MxCompatibility728):
     def automatically_export_jvmci_packages(self):
         return False
 
+class MxCompatibility7552(MxCompatibility733):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.55.2")
+
+    def proguard_supported_jdk_version(self):
+        return 24
+
+    def proguard_libs(self):
+        return {
+            'CORE': '9_1_10',
+            'BASE': '7_7_0',
+            'RETRACE': '7_7_0',
+        }
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]

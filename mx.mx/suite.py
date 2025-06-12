@@ -563,6 +563,24 @@ suite = {
       }
     },
 
+    "LOG4J_API_2_24_2" : {
+      "digest": "sha512:9665821c14c582dddd0ed181f8d49da3e25857eec11328e0d8978757f1cd2360ae60cf103a4b26b1ad5be47cf0857863a7a3c432a0f71f9eef14f64e8754f35c",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-api",
+        "version" : "2.24.2",
+      }
+    },
+
+    "LOG4J_CORE_2_24_2" : {
+      "digest": "sha512:9a8ab3921a8285d500c3e6ce78254803cd785a18fb196951b2161a2a773043317e7c7a30fcf171948e861c952ff1d14a3baf66e1eba7f3393eb956f1069ac677",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-core",
+        "version" : "2.24.2",
+      }
+    },
+
     "ORG_JSON_20211205" : {
       "digest": "sha512:bcfada5d9f87bd6494e2c9b4d8da2a700b262eb2541296cf5f38a6e4c8dddf496f1db4bb8b10277dcdf8882a7942ab84b5d73e636312c2b193cf3d5d2969ef82",
       "maven" : {
@@ -587,6 +605,15 @@ suite = {
         "groupId" : "com.google.code.gson",
         "artifactId" : "gson",
         "version" : "2.9.0",
+      }
+    },
+
+    "GSON_2.11.0" : {
+      "digest": "sha512:b8c91426a8275b42ea5c55b104308ffbe656ae3354bc661f62173352e53a4818a009e4dd82bc6cf518c77fda5a4d2eab0d3ad832581a8f0d87966ef04e6c025a",
+      "maven" : {
+        "groupId" : "com.google.code.gson",
+        "artifactId" : "gson",
+        "version" : "2.11.0",
       }
     },
 
@@ -759,6 +786,51 @@ suite = {
         "version" : "9.1.4",
       },
       "dependencies" : ["LOG4J_CORE_2_19_0", "LOG4J_API_2_19_0"],
+    },
+
+    "JETBRAINS_JAVA_ANNOTATIONS_26_0_1" : {
+      "digest": "sha512:c7be38957318874b837d029dc7b2a1f8b009feaa5362a56cba4f4c8a7d502993b3c900ee338eb9c9ee9494d7fd946bd280403eee28b244d213edb0b145a9ebfd",
+      "maven" : {
+        "groupId" : "org.jetbrains",
+        "artifactId" : "annotations",
+        "version" : "26.0.1",
+      },
+    },
+
+    "PROGUARD_CORE_9_1_10" : {
+      "digest": "sha512:45b3e9170e56b7beebb81e74160292556a2d6adb22f315287a288cccfa56868ca59d82a8eb0960c26fec369fd37971b761f3655a1b8ad38b77d6b66a776c8fc0",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-core",
+        "version" : "9.1.10",
+      },
+      "dependencies" : ["LOG4J_CORE_2_24_2", "LOG4J_API_2_24_2", "JETBRAINS_JAVA_ANNOTATIONS_26_0_1"],
+    },
+
+    "PROGUARD_BASE_7_7_0" : {
+      "digest": "sha512:8d4dffc91c7710101e7b08becca484c10396a680918aea68a84929f77f037d58e717174f306a48421d051eb1559c2e40d77751b8efe7bc13472d32769f99c705",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.7.0",
+      },
+      "dependencies" : [
+        "PROGUARD_CORE_9_1_10",
+        "GSON_2.11.0",
+        "LOG4J_CORE_2_24_2",
+        "LOG4J_API_2_24_2",
+        "ORG_JSON_20231013"
+      ],
+    },
+
+    "PROGUARD_RETRACE_7_7_0" : {
+      "digest": "sha512:14c88b9f314827d0f5f27ad29c9eeef622451004168970a5fc41e3ae9b085eb924132af62c32809a388a5edc7ce790e0d53ae833518031f120031111c9775991",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-retrace",
+        "version" : "7.7.0",
+      },
+      "dependencies" : ["PROGUARD_BASE_7_7_0"],
     },
 
     "NINJA" : {
