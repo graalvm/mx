@@ -13656,7 +13656,15 @@ def run(
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
             log('[exit code: ' + str(retcode) + ']')
-        abort(retcode, context=subprocess.CalledProcessError(retcode, cmd_line))
+        from .mx_unittest import _junit_wrapper_main_class
+        context = None
+        if not _junit_wrapper_main_class in args:
+            context = str(subprocess.CalledProcessError(retcode, cmd_line))
+            max_len = 1024
+            if not _opts.verbose and len(context) > max_len:
+                half = int(max_len / 2)
+                context = f"Truncated {context[:half]} ... {context[-half:]}"
+        abort(retcode, context=context)
 
     return retcode
 

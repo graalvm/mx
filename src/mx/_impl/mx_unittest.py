@@ -450,6 +450,7 @@ def add_unittest_argument(*args, **kwargs):
     """
     _extra_unittest_arguments.append((args, kwargs))
 
+_junit_wrapper_main_class = 'com.oracle.mxtool.junit.MxJUnitWrapper'
 
 def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitelist=None, regex=None, suite=None, **extra_args):
     testfile = os.environ.get('MX_TESTFILE', None)
@@ -457,7 +458,7 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
         os.close(_)
 
-    mainClass = 'com.oracle.mxtool.junit.MxJUnitWrapper'
+    mainClass = _junit_wrapper_main_class
     mx.build(['--no-daemon', '--dependencies', 'JUNIT_TOOL'])
     coreCp = mx.classpath(['JUNIT_TOOL'])
 
