@@ -149,6 +149,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         return join(dirname(self._default_path()), self.default_source_filename())
 
     def _extra_artifact_discriminant(self):
+        if not self.suite._output_root_includes_config():
+            return ''
         if self.suite.isBinarySuite() or not self.suite.getMxCompatibility().jarsUseJDKDiscriminant():
             return ''
         compliance = self._compliance_for_build()
