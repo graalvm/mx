@@ -56,6 +56,7 @@ import org.junit.runners.ParentRunner;
 import org.junit.runners.model.RunnerScheduler;
 
 import junit.runner.Version;
+import sun.misc.Signal;
 
 public class MxJUnitWrapper {
 
@@ -137,6 +138,8 @@ public class MxJUnitWrapper {
         }
     }
 
+    private static volatile boolean ctrlCPressed = false;
+
     /**
      * Run the tests contained in the classes named in the <code>args</code>. A single test method
      * can be specified by adding #method after the class name. Only a single test can be run in
@@ -147,6 +150,11 @@ public class MxJUnitWrapper {
      * @param args names of classes in which to find tests to run
      */
     public static void main(String... args) {
+        Signal.handle(new Signal("INT"), signal -> {
+            ctrlCPressed = true;
+            System.exit(1);
+        });
+
         JUnitSystem system = new RealSystem();
         JUnitCore junitCore = new JUnitCore();
         system.out().println("MxJUnitCore");
@@ -402,7 +410,7 @@ public class MxJUnitWrapper {
             system.out().println("FAILURES!!!");
             system.out().printf("Tests exceeded max time of %d seconds (specified by -JUnitMaxTestTime or --max-test-time): %d%n", config.maxTestTime, maxTestTimeExceeded.size());
             for (MxJUnitWrapper.Timing<Description> timing : maxTestTimeExceeded) {
-                system.out().printf(" %,10d ms    %s%n", timing.value, timing.subject);
+                system.out().printf(" %,10d ms    %s [timehog] %n", timing.value, timing.subject);
             }
 
             // Add a failure to the final result so that it reports false for Report.wasSuccessful()
@@ -482,7 +490,7 @@ public class MxJUnitWrapper {
                 System.out.printf(" %,10d ms    %s%n", timing.value, timing.subject);
             }
             Object[] current = timings.getCurrentTestDuration();
-            if (current != null) {
+            if (current != null && !ctrlCPressed) {
                 System.out.printf("Test %s not finished after %d ms%n", current[0], current[1]);
 
                 FullThreadDumpDecorator.printFullThreadDump(System.out);

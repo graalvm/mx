@@ -1085,6 +1085,10 @@ suite = {
       "multiReleaseJarVersion": "9",
       "overlayTarget" : "com.oracle.mxtool.junit",
       "checkPackagePrefix" : False,
+      "requires" : [
+        "java.management",
+        "jdk.unsupported",
+      ],
       "javaCompliance" : "9+",
       "checkstyle" : "com.oracle.mxtool.junit",
       "graalCompilerSourceEdition": "ignore",

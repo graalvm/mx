@@ -28,6 +28,7 @@ import os, tempfile, shlex, subprocess, re, sys
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath, basename, getmtime
 from io import StringIO
+from subprocess import CalledProcessError
 
 default_jdk_cache_path = join(expanduser('~'), '.mx', 'jdk_cache')
 
@@ -213,7 +214,11 @@ class JDKInfo(object):
         java_exe = join(java_home, 'bin', 'java')
         if not exists(java_exe):
             java_exe += '.exe'
-        p = subprocess.run([java_exe, '-XshowSettings:properties', '-version'], capture_output=True, text=True, check=True)
+        try:
+            p = subprocess.run([java_exe, '-XshowSettings:properties', '-version'], capture_output=True, text=True, check=True)
+        except CalledProcessError as e:
+            print(f"warning: {java_home} not usable: {e}")
+            return None
         props = {}
         for line in p.stderr.split('\n'):
             JDKInfo.extract_java_prop(line, props)
@@ -278,10 +283,14 @@ def choose_jdks(jdk_cache_path=default_jdk_cache_path, only_list=False):
                         base_dir = base_dir[0:-len('/Contents/Home')]
                     for java_home in find_jdks_in(base_dir):
                         if java_home not in jdks:
-                            jdks[java_home] = JDKInfo.for_java_home(java_home)
+                            jdk_info = JDKInfo.for_java_home(java_home)
+                            if jdk_info:
+                                jdks[java_home] = jdk_info
     for java_home in find_system_jdks():
         if java_home not in jdks:
-            jdks[java_home] = JDKInfo.for_java_home(java_home)
+            jdk_info = JDKInfo.for_java_home(java_home)
+            if jdk_info:
+                jdks[java_home] = jdk_info
 
     sorted_jdks = sorted(jdks.values())
     choices = list(enumerate(sorted_jdks))
