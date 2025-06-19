@@ -1,0 +1,40 @@
+# Ninja rules for a zig toolchain found on the path
+
+# These variables can be overwritten to use a different toolchain than the one on the PATH
+# ZIG = zig
+CC = $ZIG cc
+CXX = $ZIG c++
+AR = $ZIG ar
+CFLAGS = <cflags: >
+CXXFLAGS = <cxxflags: >
+LDFLAGS = <ldflags: >
+
+rule cc
+  command = $ZIG cc -MMD -MF $out.d $includes $CFLAGS $cflags -c $in -o $out
+  description = CC $out
+  depfile = $out.d
+  deps = gcc
+
+rule cxx
+  command = $ZIG c++ -MMD -MF $out.d $includes $CXXFLAGS $cflags -c $in -o $out
+  description = CXX $out
+  depfile = $out.d
+  deps = gcc
+
+rule link
+  command = $ZIG cc $LDFLAGS $ldflags -o $out $in $ldlibs
+  description = LINK $out
+
+rule linkxx
+  command = $ZIG c++ $LDFLAGS $ldflags -o $out $in $ldlibs
+  description = LINKXX $out
+
+rule ar
+  command = $ZIG ar -rc $out $in
+  description = AR $out
+
+rule asm
+  command = $ZIG cc -MMD -MF $out.d $includes $cflags -c $in -o $out
+  description = ASM $out
+  depfile = $out.d
+  deps = zig
