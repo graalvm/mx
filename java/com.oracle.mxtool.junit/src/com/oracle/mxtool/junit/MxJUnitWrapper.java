@@ -410,7 +410,7 @@ public class MxJUnitWrapper {
             system.out().println("FAILURES!!!");
             system.out().printf("Tests exceeded max time of %d seconds (specified by -JUnitMaxTestTime or --max-test-time): %d%n", config.maxTestTime, maxTestTimeExceeded.size());
             for (MxJUnitWrapper.Timing<Description> timing : maxTestTimeExceeded) {
-                system.out().printf(" %,10d ms    %s%n", timing.value, timing.subject);
+                system.out().printf(" %,10d ms    %s [timehog] %n", timing.value, timing.subject);
             }
 
             // Add a failure to the final result so that it reports false for Report.wasSuccessful()
