@@ -769,9 +769,13 @@ class NinjaBuildTask(TargetArchBuildTask):
 
     def __init__(self, args, project, target_arch, ninja_targets=None, **kwArgs):
         super(NinjaBuildTask, self).__init__(args, project, target_arch, **kwArgs)
+        cpu_overbooking = getattr(project, "cpu_overbooking", False)
+        parallelism = self.parallelism
+        if cpu_overbooking:
+            parallelism = mx.cpu_count()
         self._reason = None
         self._manifest = os.path.join(self.out_dir, Ninja.default_manifest)
-        self.ninja = Ninja(self.out_dir, self.parallelism, targets=ninja_targets)
+        self.ninja = Ninja(self.out_dir, parallelism, targets=ninja_targets)
 
     def __str__(self):
         return f'Building {self.name} with Ninja'
