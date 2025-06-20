@@ -141,8 +141,15 @@ def fetch_jdk(args):
         else:
             final_path = join(final_path, 'Contents', 'Home')
 
-    alias = settings.get('alias')
-    if alias:
+    # Order of aliases is important (more specific alias first),
+    # because later aliases will symlink to previous alias.
+    #
+    # Example: aliases = ["labsjdk-ce-latest_aarch64", "labsjdk-ce-latest"]
+    # Outcome:
+    #   "labsjdk-ce-latest_aarch64" symlinks to "labsjdk-ce-latest-25+13-jvmci-b01_aarch64"
+    #   "labsjdk-ce-latest" symlinks to "labsjdk-ce-latest_aarch64"
+    aliases = settings.get('alias', [])
+    for alias in aliases:
         alias_full_path = join(jdks_dir, alias)
         if not exists(alias_full_path) or os.path.realpath(alias_full_path) != os.path.realpath(abspath(curr_path)):
             if os.path.islink(alias_full_path):
@@ -162,17 +169,21 @@ def fetch_jdk(args):
                     os.symlink(alias_target, alias_full_path)
             else:
                 mx.copytree(curr_path, alias_full_path)
-            final_path = alias_full_path
+            # needed to chain aliases as described above
+            curr_path = alias_full_path
+
+        final_path = alias_full_path
+
+    # alias logic might have updated final_path, so we might have to append 'Contents/Home' again
+    if not settings["strip-contents-home"] and exists(join(final_path, 'Contents', 'Home')):
+        final_path = join(final_path, 'Contents', 'Home')
 
     mx.log("Run the following to set JAVA_HOME in your shell:")
     shell = os.environ.get("SHELL")
     if shell is None:
         shell = ''
-    if not settings["strip-contents-home"] and exists(join(final_path, 'Contents', 'Home')):
-        java_home = join(final_path, 'Contents', 'Home')
-    else:
-        java_home = final_path
-    mx.log(get_setvar_format(shell) % ("JAVA_HOME", abspath(java_home)))
+    mx.log(get_setvar_format(shell) % ("JAVA_HOME", abspath(final_path)))
+
     return final_path
 
 
@@ -392,9 +403,16 @@ def _parse_args(args):
 
     if args.alias is not None:
         if args.alias == "-":
-            settings["alias"] = settings["jdk-binary"]._jdk_id
+            jdk_id = settings["jdk-binary"]._jdk_id
+            # One alias contains the architecture.  This is useful for scenarios where multiple
+            # architectures can be used on the same machine (e.g. Darwin on Apple Silicon with
+            # AArch64 and x86_64 via Rosetta 2).
+            settings["alias"] = [
+                jdk_id + "_" + args.arch,
+                jdk_id,
+            ]
         else:
-            settings["alias"] = args.alias
+            settings["alias"] = [args.alias]
 
     if args.keep_archive is not None:
         settings["keep-archive"] = args.keep_archive
@@ -768,7 +786,9 @@ class _JdkBinary(object):
         return _JdkBinary(self._jdk_id, jdk_def, self._filename_template, self._url_template, self._source, self._arch, keywords)
 
     def get_final_path(self, jdk_path):
-        return join(jdk_path, self._folder_name)
+        # add arch to path, for situations where multiple architectures are in use
+        # (e.g. Darwin on Apple Silicon with AArch64 and x86_64 via Rosetta 2).
+        return join(jdk_path, self._folder_name + "_" + self._arch)
 
 
 _instantiate_filters = {
