@@ -3507,9 +3507,9 @@ class EnergyConsumptionTracker(Tracker):
         rules = []
 
         energy_patterns = {
-            "total-machine-energy": r"Total system energy consumption (including idle): (?P<total_machine_energy>[0-9]*\.?[0-9]+) Joules",
-            "total-compute-energy": r"Total energy used by the benchmark (excluding idle): (?P<total_compute_energy>[0-9]*\.?[0-9]+) Joules",
-            "avg-machine-power": r"Average system power (including idle): (?P<avg_machine_power>[0-9]*\.?[0-9]+) Watts",
+            "total-machine-energy": r"Total system energy consumption \(including idle\): (?P<total_machine_energy>[0-9]*\.?[0-9]+) Joules",
+            "total-compute-energy": r"Total energy used by the benchmark \(excluding idle\): (?P<total_compute_energy>[0-9]*\.?[0-9]+) Joules",
+            "avg-machine-power": r"Average system power \(including idle\): (?P<avg_machine_power>[0-9]*\.?[0-9]+) Watts",
             "avg-compute-power": r"Average power used by benchmark: (?P<avg_compute_power>[0-9]*\.?[0-9]+) Watts"
         }
         for metric_name, pattern in energy_patterns.items():
