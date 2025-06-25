@@ -930,7 +930,7 @@ def get_jacoco_dest_file():
 
 def jacoco_library():
     # Might be not available in source bundles
-    return mx.library('JACOCOAGENT_0.8.10', fatalIfMissing=False)
+    return mx.library('JACOCOAGENT_0.8.13', fatalIfMissing=False)
 
 def get_jacoco_agent_path(resolve):
     jacoco_lib = jacoco_library()
