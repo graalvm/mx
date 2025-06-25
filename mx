@@ -76,4 +76,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-exec $python_exe -u "$dir/mx.py" "$@"
+if [ "$MX_DEBUG" == "" ]
+then
+    exec $python_exe -u "$dir/mx.py" "$@"
+else
+    exec $python_exe -u -Xfrozen_modules=off -m debugpy --listen localhost:5678 --wait-for-client "$dir/mx.py" "$@"
+fi
