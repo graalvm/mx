@@ -38,17 +38,6 @@ suite = {
       "license": "EPL-2.0",
     },
 
-    "ASM_9.5": {
-      "digest": "sha512:9e65f2983783725bae196ca939b45246958731246df1c495089c8ea5ce646de77c4e01a5a9ba10642016bb3258e1727e9ebcece6e74d9e3c32f528025d76b955",
-      "sourceDigest": "sha512:64262b68c1acd473a49be3c8a89190200be66808034c55fb23ed08d8a977111c234b6dc77b6ca95310e1f1cbc43437cdc863aadb6217976cc1720d63ef01e937",
-      "maven": {
-        "groupId": "org.ow2.asm",
-        "artifactId": "asm",
-        "version": "9.5",
-      },
-      "license": "BSD-new",
-    },
-
     "ASM_9.8": {
       "digest": "sha512:cbd250b9c698a48a835e655f5f5262952cc6dd1a434ec0bc3429a9de41f2ce08fcd3c4f569daa7d50321ca6ad1d32e131e4199aa4fe54bce9e9691b37e45060e",
       "sourceDigest": "sha512:329663d73f165c7e006a20dd24bb6f5b4ac1079097d83c91770fd9fc537655a384c4cc40e5835f800d6453d393b6adbcd51c6eab6fe90cd8e1e8e87b9b513cc4",
@@ -57,18 +46,6 @@ suite = {
         "artifactId": "asm",
         "version": "9.8",
       },
-      "license": "BSD-new",
-    },
-
-    "ASM_ANALYSIS_9.5": {
-      "digest": "sha512:30f1300588a0464110d7a40b07501863626ca8a9085f8ee33686f20ddc5d67e7456fd30168d7168f189142027eb6bcc1a4b9990d24e8ebeada9207ac015e2b46",
-      "sourceDigest": "sha512:bfcca1059a2fc5dae998615e006dda282a86a6e6a12bb43955816620642770c2cf5b1bc8d619cb4e7c3d1920a06cec2b51386571b92f3bf5025e2da0d1236822",
-      "maven": {
-        "groupId": "org.ow2.asm",
-        "artifactId": "asm-analysis",
-        "version": "9.5",
-      },
-      "dependencies" : ["ASM_TREE_9.5"],
       "license": "BSD-new",
     },
 
@@ -84,18 +61,6 @@ suite = {
       "license": "BSD-new",
     },
 
-    "ASM_COMMONS_9.5": {
-      "digest": "sha512:6121a9d033627a33839d9bd264fce4a531b6a3f974720adc6150816f0316d1522c3d8caf7df039fdd46cb66bedd788e50f709d4a1f75d3525912ad7a4d87f7da",
-      "sourceDigest": "sha512:688d56a1b4fb6f7d86b79b7493a848851892910d00067a0c5effdaf7132266ec7a1ba57a8248c2fd6c0ebdef18a4918908a36e85f5927b9acb55448047a1e333",
-      "maven": {
-        "groupId": "org.ow2.asm",
-        "artifactId": "asm-commons",
-        "version": "9.5",
-      },
-      "dependencies" : ["ASM_9.5", "ASM_TREE_9.5", "ASM_ANALYSIS_9.5"],
-      "license": "BSD-new",
-    },
-
     "ASM_COMMONS_9.8": {
       "digest": "sha512:d2add10e25416b701bd84651b42161e090df2f32940de5e06e0e2a41c6106734db2fe5136f661d8a8af55e80dc958bc7b385a1004f0ebe550828dfa1e9d70d41",
       "sourceDigest": "sha512:dea8a2f871024210980821dc06c6796a3fca58293f650614275a086aaf9e2f45066a128f434dadabb85162c52796e99c863a6838e851ec02d6d97c603ed5a6d9",
@@ -105,18 +70,6 @@ suite = {
         "version": "9.8",
       },
       "dependencies" : ["ASM_9.8", "ASM_TREE_9.8", "ASM_ANALYSIS_9.8"],
-      "license": "BSD-new",
-    },
-
-    "ASM_TREE_9.5": {
-      "digest": "sha512:816de8f84c216a7bd97b2458bde64a4b99a039b7b59fbd1ef52edf8bf869edabb93967736fe0c61e8eb3e1520e0cefe69ba59cda12df30f9f85db75fb6c064f3",
-      "sourceDigest": "sha512:a107043c05398091e3f3c614270c626be8ea5a1a547e30dc5709ef92069c8c8baa315c385a68f244c3a37bc148c3aeeec26adc8c00afc2a03a1d21a40e076a4c",
-      "maven": {
-        "groupId": "org.ow2.asm",
-        "artifactId": "asm-tree",
-        "version": "9.5",
-      },
-      "dependencies" : ["ASM_9.5"],
       "license": "BSD-new",
     },
 
