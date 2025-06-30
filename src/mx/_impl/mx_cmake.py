@@ -238,6 +238,10 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
             return need_configure, f"reconfigure needed by CMake ({reason})"
         return super(CMakeNinjaBuildTask, self).needsBuild(newestInput)
 
+    def needsGenerateManifest(self):
+        need_configure, _ = self._need_configure()
+        return need_configure
+
     def build(self):
         super(CMakeNinjaBuildTask, self).build()
         # write guard file
