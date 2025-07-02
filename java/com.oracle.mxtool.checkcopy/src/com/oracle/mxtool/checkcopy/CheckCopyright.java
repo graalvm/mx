@@ -39,9 +39,12 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -559,6 +562,10 @@ public class CheckCopyright {
 
         abstract Info getInfo(String fileName, List<String> logInfo);
 
+        Set<String> getStagedFiles() throws Exception {
+            return Collections.emptySet();
+        }
+
         protected static int getYear(String dateLine) {
             final String[] parts = dateLine.split(" ");
             assert parts[parts.length - 2].startsWith("20");
@@ -687,6 +694,11 @@ public class CheckCopyright {
             return null;
         }
 
+        @Override
+        Set<String> getStagedFiles() throws Exception {
+            return new HashSet<>(exec(null, new String[]{gitPath, "diff", "--cached", "--name-only"}, true));
+        }
+
     }
 
     public static void main(String[] args) {
@@ -741,6 +753,8 @@ public class CheckCopyright {
 
         int threadCount = Runtime.getRuntime().availableProcessors();
 
+        Set<String> stagedFiles = vc.getStagedFiles();
+
         ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
         try {
             List<Future<?>> tasks = new ArrayList<>();
@@ -751,7 +765,7 @@ public class CheckCopyright {
                     if (file.isDirectory()) {
                         continue;
                     }
-                    tasks.add(threadPool.submit(() -> processFile(cal, fileName)));
+                    tasks.add(threadPool.submit(() -> processFile(cal, fileName, stagedFiles)));
                 }
             }
 
@@ -763,13 +777,13 @@ public class CheckCopyright {
         }
     }
 
-    private static void processFile(Calendar cal, String fileName) {
+    private static void processFile(Calendar cal, String fileName, Set<String> stagedFiles) {
         try {
             if (verbose) {
                 System.out.println("checking " + fileName);
             }
             Info info;
-            if (DIR_WALK.getValue() || ASSUME_MODIFIED.getValue()) {
+            if (DIR_WALK.getValue() || ASSUME_MODIFIED.getValue() || stagedFiles.contains(fileName)) {
                 info = getFromLastModified(cal, fileName);
             } else {
                 final List<String> logInfo = vc.log(fileName);
