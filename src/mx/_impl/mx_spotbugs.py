@@ -111,7 +111,12 @@ def spotbugs(args, spotbugsArgs=None, suite=None, projects=None, jarFileName='sp
 
     :param spotbugsArgs: args passed directly through to spotbugs
     """
-    projectsToTest = [p for p in mx.projects() if _should_test_project(p)]
+    parser = ArgumentParser(prog='mx spotbugs')
+    parser.add_argument('--strict-mode', action='store_true', help='abort if SpotBugs cannot be executed for some reason (e.g., unsupported JDK version)')
+    parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    parsed_args, remaining_args = parser.parse_known_args(args)
+
+    projectsToTest = [p for p in mx.projects(limit_to_primary=parsed_args.primary) if _should_test_project(p)]
     projectsByVersion = {}
     for p in projectsToTest:
         compat = p.suite.getMxCompatibility()
@@ -124,18 +129,16 @@ def spotbugs(args, spotbugsArgs=None, suite=None, projects=None, jarFileName='sp
 
     resultcode = 0
     for spotbugsVersion, versionProjects in projectsByVersion.items():
-        mx.logv(f'Running spotbugs version {spotbugsVersion} on projects {versionProjects}')
-        resultcode = max(resultcode, _spotbugs(args, spotbugsArgs, suite, versionProjects, spotbugsVersion))
+        mx.log(f'Running spotbugs version {spotbugsVersion}')
+        mx.logv('Projects to check:\n' + ('\n  '.join([x.name for x in versionProjects])))
+        resultcode = max(resultcode, _spotbugs(parsed_args, remaining_args, spotbugsArgs, suite, versionProjects, spotbugsVersion))
     return resultcode
 
-def _spotbugs(all_args, spotbugsArgs, suite, projectsToTest, spotbugsVersion):
+def _spotbugs(parsed_args, args, spotbugsArgs, suite, projectsToTest, spotbugsVersion):
     """run SpotBugs against non-test Java projects
 
     :param spotbugsArgs: args passed directly through to spotbugs
     """
-    parser = ArgumentParser(prog='mx spotbugs')
-    parser.add_argument('--strict-mode', action='store_true', help='abort if SpotBugs cannot be executed for some reason (e.g., unsupported JDK version)')
-    parsed_args, args = parser.parse_known_args(all_args)
 
     spotbugsHome = mx.get_env('SPOTBUGS_HOME', None)
     jarFileName = 'spotbugs.jar'
