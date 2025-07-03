@@ -75,11 +75,9 @@ public class CheckCopyright {
 
     static class YearInfo {
 
-        final int firstYear;
         final int lastYear;
 
-        YearInfo(int firstYear, int lastYear) {
-            this.firstYear = firstYear;
+        YearInfo(int lastYear) {
             this.lastYear = lastYear;
         }
 
@@ -89,12 +87,12 @@ public class CheckCopyright {
                 return false;
             }
             final YearInfo yearInfo = (YearInfo) other;
-            return yearInfo.firstYear == firstYear && yearInfo.lastYear == lastYear;
+            return yearInfo.lastYear == lastYear;
         }
 
         @Override
         public int hashCode() {
-            return firstYear ^ lastYear;
+            return lastYear;
         }
     }
 
@@ -102,14 +100,14 @@ public class CheckCopyright {
 
         final String fileName;
 
-        Info(String fileName, int firstYear, int lastYear) {
-            super(firstYear, lastYear);
+        Info(String fileName, int lastYear) {
+            super(lastYear);
             this.fileName = fileName;
         }
 
         @Override
         public String toString() {
-            return fileName + " " + firstYear + ", " + lastYear;
+            return fileName + " " + lastYear;
         }
     }
 
@@ -611,7 +609,6 @@ public class CheckCopyright {
         Info getInfo(String fileName, List<String> logInfo) {
             // process sequence of changesets
             int lastYear = 0;
-            int firstYear = 0;
             int ix = 0;
 
             while (ix < logInfo.size()) {
@@ -622,9 +619,6 @@ public class CheckCopyright {
                 final int csYear = getYear(date);
                 if (lastYear == 0) {
                     lastYear = csYear;
-                    firstYear = lastYear;
-                } else {
-                    firstYear = csYear;
                 }
                 // we only want the last modified year, quit now
                 break;
@@ -636,7 +630,7 @@ public class CheckCopyright {
                 // file is committed, so that is what we want to check against.
                 lastYear = currentYear;
             }
-            return new Info(fileName, firstYear, lastYear);
+            return new Info(fileName, lastYear);
         }
 
         /**
@@ -687,7 +681,7 @@ public class CheckCopyright {
             for (String line : logInfo) {
                 if (line.startsWith("Date:")) {
                     int lastYear = getYear(line);
-                    return new Info(fileName, -1, lastYear);
+                    return new Info(fileName, lastYear);
                 }
             }
             assert false;
@@ -804,7 +798,7 @@ public class CheckCopyright {
         File file = new File(fileName);
         cal.setTimeInMillis(file.lastModified());
         int year = cal.get(Calendar.YEAR);
-        return new Info(fileName, year, year);
+        return new Info(fileName, year);
     }
 
     private static boolean isInProjects(String fileName, List<String> projects) {
