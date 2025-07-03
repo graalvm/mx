@@ -182,6 +182,13 @@ class MxCompatibility500(object):
         """
         return "3.0.0"
 
+    def spotbugs_primary_support(self):
+        """
+        Whether the spotbugs command supports the --primary flag. If it does, mx gate -t SpotBugs will
+        use it by default.
+        """
+        return False
+
     def automatic_overlay_distribution_deps(self):
         """
         When a distribution depends on a project that has versioned overlays, are the
@@ -809,6 +816,14 @@ class MxCompatibility7552(MxCompatibility733):
             'BASE': '7_7_0',
             'RETRACE': '7_7_0',
         }
+
+class MxCompatibility7580(MxCompatibility7552):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.58.0")
+
+    def spotbugs_primary_support(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()

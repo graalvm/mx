@@ -781,8 +781,9 @@ def _run_gate(cleanArgs, args, tasks):
             t.abort('Checkstyle warnings were found')
 
     with Task('SpotBugs', tasks, tags=[Tags.fullbuild]) as t:
-        _spotbugs_strict_mode = args.strict_mode and mx.primary_suite().getMxCompatibility().gate_spotbugs_strict_mode()
-        if t and mx.command_function('spotbugs')(['--strict-mode'] if _spotbugs_strict_mode else []) != 0:
+        _spotbugs_strict_mode_args = ['--strict-mode'] if args.strict_mode and mx.primary_suite().getMxCompatibility().gate_spotbugs_strict_mode() else []
+        _spotbugs_primary_args = ["--primary"] if mx.primary_suite().getMxCompatibility().spotbugs_primary_support() else []
+        if t and mx.command_function('spotbugs')(_spotbugs_strict_mode_args + _spotbugs_primary_args) != 0:
             t.abort('SpotBugs warnings were found')
 
     jacoco_exec = get_jacoco_dest_file()
