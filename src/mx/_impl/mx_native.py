@@ -797,13 +797,12 @@ class NinjaBuildTask(TargetArchBuildTask):
         return mx.TimeStampFile.newest([os.path.join(self.out_dir, self.subject._target)])
 
     def needsGenerateManifest(self):
-        return not os.path.exists(self._manifest) \
-                or self._reason is None \
+        return self._reason is None \
                 or os.path.basename(self._manifest) in self._reason \
                 or 'phony' in self._reason
 
     def build(self):
-        if self.needsGenerateManifest():
+        if not os.path.exists(self._manifest) or self.needsGenerateManifest():
             with mx_util.SafeFileCreation(self._manifest) as sfc:
                 output_dir = os.path.dirname(sfc.tmpPath)
                 tmpfilename = os.path.basename(sfc.tmpPath)
