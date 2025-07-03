@@ -741,9 +741,10 @@ public class CheckCopyright {
         }
     }
 
+    private static final int CURRENT_YEAR = Calendar.getInstance().get(Calendar.YEAR);
+
     private static void processFiles(List<String> fileNames) throws Exception {
         final List<String> projects = PROJECT.getValue();
-        Calendar cal = Calendar.getInstance();
 
         int threadCount = Runtime.getRuntime().availableProcessors();
 
@@ -759,7 +760,7 @@ public class CheckCopyright {
                     if (file.isDirectory()) {
                         continue;
                     }
-                    tasks.add(threadPool.submit(() -> processFile(cal, fileName, stagedFiles)));
+                    tasks.add(threadPool.submit(() -> processFile(fileName, stagedFiles)));
                 }
             }
 
@@ -771,19 +772,19 @@ public class CheckCopyright {
         }
     }
 
-    private static void processFile(Calendar cal, String fileName, Set<String> stagedFiles) {
+    private static void processFile(String fileName, Set<String> stagedFiles) {
         try {
             if (verbose) {
                 System.out.println("checking " + fileName);
             }
             Info info;
             if (DIR_WALK.getValue() || ASSUME_MODIFIED.getValue() || stagedFiles.contains(fileName)) {
-                info = getFromLastModified(cal, fileName);
+                info = new Info(fileName, CURRENT_YEAR);
             } else {
                 final List<String> logInfo = vc.log(fileName);
                 if (logInfo.isEmpty()) {
-                    // an added file, so go with last modified
-                    info = getFromLastModified(cal, fileName);
+                    // an added file, so go with current year
+                    info = new Info(fileName, CURRENT_YEAR);
                 } else {
                     info = vc.getInfo(fileName, logInfo);
                 }
@@ -792,13 +793,6 @@ public class CheckCopyright {
         } catch (Exception e) {
             System.err.format("COPYRIGHT CHECK WARNING: error while processing %s: %s%n", fileName, e.getMessage());
         }
-    }
-
-    private static Info getFromLastModified(Calendar cal, String fileName) {
-        File file = new File(fileName);
-        cal.setTimeInMillis(file.lastModified());
-        int year = cal.get(Calendar.YEAR);
-        return new Info(fileName, year);
     }
 
     private static boolean isInProjects(String fileName, List<String> projects) {
