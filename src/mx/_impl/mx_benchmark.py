@@ -98,6 +98,7 @@ __all__ = [
     "PsrecordMaxrssTracker",
     "RssPercentilesTracker",
     "RssPercentilesAndMaxTracker",
+    "EnergyConsumptionTracker",
     "BenchmarkExecutor",
     "make_hwloc_bind",
     "init_benchmark_suites",
@@ -2431,15 +2432,31 @@ class CustomHarnessBenchmarkSuite(JavaBenchmarkSuite):
     """Benchmark suite that enables mapping the final JVM command into a command tailored for a custom harness.
 
     Mapping of the final JVM command is facilitated by registering the "custom-harness-hook" in the constructor.
-    This ensures that this is the first hook, thereby it is applied last, after all the other hooks apply their modifications.
+    This ensures that this is the first hook, thereby it is applied last, after all the other hooks apply their
+    modifications.
+
+    The usage of the custom harness can interfere with how trackers work. For this reason no trackers are allowed by
+    default. Any implementing classes must declare their own list of supported trackers and facilitate their correct
+    functioning.
     """
-    def __init__(self, custom_harness_command: CustomHarnessCommand, *args, **kwargs):
+    def __init__(self, custom_harness_command: CustomHarnessCommand, *args, supported_trackers: List[type(Tracker)]=None, **kwargs):
         super().__init__(*args, **kwargs)
         if not isinstance(custom_harness_command, CustomHarnessCommand):
             raise TypeError(f"Expected an instance of {CustomHarnessCommand.__name__}, instead got an instance of {custom_harness_command.__class__.__name__}")
         def custom_harness_hook(cmd, suite):
             return custom_harness_command.produceHarnessCommand(cmd, suite)
         self.register_command_mapper_hook("custom-harness-hook", custom_harness_hook)
+        self._supported_trackers = supported_trackers if supported_trackers is not None else []
+
+    @property
+    def supported_trackers(self):
+        return self._supported_trackers
+
+    def register_tracker(self, name: str, tracker_type: type(Tracker)):
+        if tracker_type not in self.supported_trackers:
+            mx.log(f"Ignoring the registration of '{name}' tracker as it was disabled for {self.__class__.__name__}.")
+            return
+        super().register_tracker(name, tracker_type)
 
 
 class JMeterBenchmarkSuite(JavaBenchmarkSuite, AveragingBenchmarkMixin):
