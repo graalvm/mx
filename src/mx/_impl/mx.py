@@ -2790,7 +2790,6 @@ class SourceSuite(Suite):
                         project_type_name = attrs.pop('type', 'JavaProject')
                     else:
                         project_type_name = None
-
                     old_test_project = attrs.pop('isTestProject', None)
                     if old_test_project is not None:
                         abort_or_warn("`isTestProject` attribute has been renamed to `testProject`", self.getMxCompatibility().deprecateIsTestProject(), context)
@@ -2826,6 +2825,8 @@ class SourceSuite(Suite):
                             p._javac_lint_overrides = jlintOverrides
                         if hasattr(p, "javaVersionExclusion") and self.getMxCompatibility().supports_disjoint_JavaCompliance_range():
                             abort('The "javaVersionExclusion" is no longer supported. Use a disjoint range for the "javaCompliance" attribute instead (e.g. "8,13+")', context=p)
+                        if (not getattr(p, 'forceJavac', False) and getattr(p, 'patchModule', None)):
+                            abort('`forceJavac` property must be set to True when using `patchModule`', context=p)
                     else:
                         assert project_type_name
                         project_type = getattr(self.extensions, project_type_name, None)
@@ -7803,6 +7804,11 @@ class JavacCompiler(JavacLikeCompiler):
 
         if forceDeprecationAsWarning:
             lint += ['-deprecation']
+
+        if getattr(project, "patchModule", None):
+            patch_module = project.patchModule
+            source_dirs = ':'.join(project.source_dirs())
+            javacArgs += ['--patch-module=' + patch_module + '=' + source_dirs]
 
         knownLints = jdk.getKnownJavacLints()
         if knownLints:
