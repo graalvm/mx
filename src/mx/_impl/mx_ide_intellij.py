@@ -493,13 +493,15 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
             moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
             for src in p.srcDirs:
+                if hasattr(p, 'shadedDeps') and src == p.source_gen_dir():
+                    continue
                 srcDir = mx_util.ensure_dir_exists(join(p.dir, src))
                 moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + os.path.relpath(srcDir, module_dir), 'isTestSource': str(p.is_test_project())})
             for name in ['.externalToolBuilders', '.settings', 'nbproject']:
                 _intellij_exclude_if_exists(moduleXml, p, name)
             moduleXml.close('content')
 
-            if processors:
+            if processors or hasattr(p, 'shadedDeps'):
                 moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
                 genDir = p.source_gen_dir()
                 mx_util.ensure_dir_exists(genDir)
