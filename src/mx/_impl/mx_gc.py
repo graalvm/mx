@@ -296,12 +296,16 @@ def gc_jdks(args):
 
         result = []
         for entry in os.listdir(jdks_dir):
-            full_path = os.path.join(jdks_dir, entry)
-            if os.path.realpath(full_path) in keep_jdks:
+            try:
+                full_path = os.path.join(jdks_dir, entry)
+                if os.path.realpath(full_path) in keep_jdks:
+                    continue
+                modtime = datetime.fromtimestamp(os.path.getmtime(full_path))
+                size = _get_size_in_bytes(full_path)
+                result.append(CollectionCandidate(full_path, modtime, size))
+            except FileNotFoundError:
+               # probably a broken symlink - ignore
                 continue
-            modtime = datetime.fromtimestamp(os.path.getmtime(full_path))
-            size = _get_size_in_bytes(full_path)
-            result.append(CollectionCandidate(full_path, modtime, size))
         return result
 
     _gc_collect_generic(args, parser, _gc_collect_candidates)
