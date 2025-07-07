@@ -13906,7 +13906,7 @@ def apply_command_mapper_hooks(command, hooks):
             for hook in reversed(hooks):
                 hook_name, hook_func, suite = hook[:3]
                 logv(f"Applying command mapper hook '{hook_name}'")
-                new_cmd = hook_func(new_cmd, suite)
+                new_cmd = hook_func.hook(new_cmd, suite)
                 logv(f"New command: {new_cmd}")
     else:
         log("Skipping command mapper hooks as they were disabled explicitly.")
