@@ -2451,7 +2451,7 @@ class CustomHarnessBenchmarkSuite(JavaBenchmarkSuite):
             raise TypeError(f"Expected an instance of {CustomHarnessCommand.__name__}, instead got an instance of {custom_harness_command.__class__.__name__}")
         def custom_harness_hook(cmd, suite):
             return custom_harness_command.produceHarnessCommand(cmd, suite)
-        self.register_command_mapper_hook("custom-harness-hook", custom_harness_hook)
+        self.register_command_mapper_hook("custom-harness-hook", FunctionHookAdapter(custom_harness_hook))
         self._supported_trackers = supported_trackers if supported_trackers is not None else []
 
     @property
