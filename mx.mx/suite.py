@@ -835,16 +835,17 @@ suite = {
 
     "NINJA" : {
       "packedResource" : True,
-      "version" : "1.10.2",
       "os_arch" : {
         "linux" : {
           "amd64" : {
+            "version" : "1.10.2",
             # Built from the same source as https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip,
             # but on a system with older glibc for maximum compatibility with older Linux distributions.
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-amd64.zip"],
             "digest": "sha512:203be0ba85c899530cbf8d27f9f2a2e8247ae3cea66ea3f9f2e2f159cc4583bf424c130791f9ac6d70a4abf53e48291a696704b0670272ceb5ab63d00003acaf"
           },
           "aarch64" : {
+            "version" : "1.10.2",
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-aarch64.zip"],
             "digest": "sha512:6592d1c6397a3968df5d473c11c29de040df938a06ac5351f09bdea10fe78a4d171e9dd8be68e62cba30d01b72d575f55b29376b46812e7c4c168df34dbbf76f"
           },
@@ -861,24 +862,30 @@ suite = {
           # git checkout <github release commit of the particular Ninja version>
           # ./configure.py --bootstrap
           "amd64" : {
+            "version" : "1.10.2",
             "urls" : ["https://lafo.ssw.jku.at/pub/graal-external-deps/ninja-{version}-linux-amd64-musl.zip"],
             "digest": "sha512:5f23099cac6d9e852c2368930ecf0eb859afc17aeba48cbcba844ecb7a020e30aae2f637186544d780a1319162a4b4dc8b230996f19ce0b4f1aeb61be6a56653"
           }
         },
         "darwin" : {
           "amd64" : {
+            "version" : "1.10.2",
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
             "digest": "sha512:bcd12f6a3337591306d1b99a7a25a6933779ba68db79f17c1d3087d7b6308d245daac08df99087ff6be8dc7dd0dcdbb3a50839a144745fa719502b3a7a07260b"
           },
           "aarch64" : {
+            "version" : "1.10.2",
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
             "digest": "sha512:bcd12f6a3337591306d1b99a7a25a6933779ba68db79f17c1d3087d7b6308d245daac08df99087ff6be8dc7dd0dcdbb3a50839a144745fa719502b3a7a07260b"
           }
         },
         "windows" : {
           "amd64" : {
+            # This is a hotfix version for Windows to support long paths (GR-67552). Eventually, this dependency should
+            # be updated and built from source on all platforms (GR-13214).
+            "version" : "1.12.1",
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip"],
-            "digest": "sha512:6004140d92e86afbb17b49c49037ccd0786ce238f340f7d0e62b4b0c29ed0d6ad0bab11feda2094ae849c387d70d63504393714ed0a1f4d3a1f155af7a4f1ba3"
+            "digest": "sha512:d6715c6458d798bcb809f410c0364dabd937b5b7a3ddb4cd5aba42f9fca45139b2a8a3e7fd9fbd88fd75d298ed99123220b33c7bdc8966a9d5f2a1c9c230955f"
           }
         },
         "solaris" : {
