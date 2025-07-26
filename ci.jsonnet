@@ -112,7 +112,7 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "build"],
         ],
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--branch", "release/graal-vm/25.0", "--dest", "../graal"],
             [mx, "-p", "../graal/compiler", "build"],
             [mx, "-p", "../graal/compiler", "profrecord", "-E", "gate-xcomp", "$JAVA_HOME/bin/java", "-Xcomp", "foo", "||", "true"],
             [mx, "-p", "../graal/compiler", "profpackage", "gate-xcomp"],
@@ -165,7 +165,7 @@ local with(platform, java_release, timelimit="15:00") = {
             make: ">=" + versions.make,
         },
         run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
+            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--branch", "release/graal-vm/25.0", "--dest", "../graal"],
         ] + self.java_home_in_env("../graal/vm", "vm") + [
             # Test the ce env file
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
@@ -241,7 +241,7 @@ local with(platform, java_release, timelimit="15:00") = {
     specVersion: "3",
 
     # Overlay
-    overlay: "8ee9629c22c628f07628d6500609718096992530",
+    overlay: "73fdb5dcab5032da8ca2444e5aed2d757bc08472",
 
     # For use by overlay
     versions:: versions,
