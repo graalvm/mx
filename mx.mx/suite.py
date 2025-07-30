@@ -934,6 +934,11 @@ suite = {
             "version" : "1.12.1",
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip"],
             "digest": "sha512:d6715c6458d798bcb809f410c0364dabd937b5b7a3ddb4cd5aba42f9fca45139b2a8a3e7fd9fbd88fd75d298ed99123220b33c7bdc8966a9d5f2a1c9c230955f"
+          },
+          "aarch64" : {
+            "version" : "1.12.1",
+            "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-winarm64.zip"],
+            "digest": "sha512:b1826c422a677f47f9f7e001672ce831791b092e4f1cd84ddf2ea067781c31aa8246f26e91dd66300c23ffa77a8ea29910c48ccf7e4235ff20bccc2d2b6e247b"
           }
         },
         "solaris" : {

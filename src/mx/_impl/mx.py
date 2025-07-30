@@ -3926,7 +3926,7 @@ def get_arch():
 
 def _get_real_arch():
     machine = platform.uname()[4]
-    if machine in ['aarch64', 'arm64']:
+    if machine in ['aarch64', 'ARM64', 'arm64']:
         return 'aarch64'
     if machine in ['amd64', 'AMD64', 'x86_64', 'i86pc']:
         return 'amd64'
