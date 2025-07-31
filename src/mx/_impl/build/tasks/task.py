@@ -30,6 +30,7 @@ from abc import ABCMeta, abstractmethod
 from argparse import Namespace
 from threading import Lock
 from typing import Dict, Optional, MutableSequence
+import sys
 
 from ..daemon import Daemon
 from ..suite import Dependency
@@ -119,7 +120,16 @@ class Task(object, metaclass=ABCMeta):
             self._log(msg)
         if echo or self._echoAll or (important and self._echoImportant):
             with Task.consoleLock:
-                print(msg.rstrip())
+                # Erase the current progress line, using CSI Erase in Line
+                # (https://en.wikipedia.org/wiki/ANSI_escape_code#Control_Sequence_Introducer_commands),
+                # so that if we print something shorter than the progress line
+                # we don't have leftover characters from the progress line.
+                # We should already be at the beginning of the line, either because
+                # of the trailing \r from showProgress() or a previous printed line ending with \n.
+                if sys.stdout.isatty():
+                    print(f"{msg.rstrip()}\033[K")
+                else:
+                    print(msg.rstrip())
 
     def getLastLogLine(self):
         for line in reversed(self._log.lines):
