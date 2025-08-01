@@ -320,7 +320,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod
-from typing import Callable, IO, AnyStr, Union, Iterable, Any, Optional
+from typing import Callable, IO, AnyStr, Union, Iterable, Any, Optional, overload, Literal
 
 from mx._impl.support import java_argument_file
 
@@ -687,6 +687,19 @@ def atomic_file_move_with_fallback(source_path, destination_path):
         remove_function(source_path)
 
 ### ~~~~~~~~~~~~~ command
+
+
+@overload
+def command_function(name: str) -> Callable[[list[str]], Any]: ...
+
+
+@overload
+def command_function(name: str, fatalIfMissing: Literal[True]) -> Callable[[list[str]], Any]: ...
+
+
+@overload
+def command_function(name: str, fatalIfMissing: bool = True) -> Optional[Callable[[list[str]], Any]]: ...
+
 
 def command_function(name, fatalIfMissing=True):
     """
@@ -1560,6 +1573,9 @@ class Suite(object):
     Command state and methods for all suite subclasses.
     :type dists: list[Distribution]
     """
+
+    suiteDict: dict[str, Any]
+
     def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False, foreign=False):
         if primary is True and vc_dir is None:
             abort("The primary suite must be in a vcs repository or under a directory containing a file called '.mx_vcs_root' or 'ci.hocon'")
@@ -3177,7 +3193,16 @@ def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     return res
 
 
-def suite(name, fatalIfMissing=True, context=None):
+@overload
+def suite(name: str) -> Suite: ...
+
+@overload
+def suite(name: str, fatalIfMissing: Literal[True]) -> Suite: ...
+
+@overload
+def suite(name: str, fatalIfMissing: bool = True, context = None) -> Optional[Suite]: ...
+
+def suite(name: str, fatalIfMissing: bool = True, context = None) -> Optional[Suite]:
     """
     Get the suite for a given name.
     :rtype: Suite
@@ -5177,7 +5202,7 @@ class AbstractDistribution(Distribution):
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
         self.output = output
 
-    def get_output(self):
+    def get_output(self) -> Optional[str]:
         if self.output:
             return join(self.suite.dir, self.output)
         return None
@@ -12247,6 +12272,18 @@ def _missing_dep_message(depName, depType):
     return f'{depType} named {depName} was not found'
 
 
+@overload
+def distribution(name: str) -> AbstractDistribution: ...
+
+
+@overload
+def distribution(name: str, fatalIfMissing: Literal[True]) -> AbstractDistribution: ...
+
+
+@overload
+def distribution(name: str, fatalIfMissing: bool = True, context = None) -> Optional[AbstractDistribution]: ...
+
+
 def distribution(name, fatalIfMissing=True, context=None):
     """
     Get the distribution for a given name. This will abort if the named distribution does
@@ -12259,6 +12296,18 @@ def distribution(name, fatalIfMissing=True, context=None):
     if d is None and fatalIfMissing:
         abort(_missing_dep_message(name, 'distribution'), context=context)
     return d
+
+
+@overload
+def dependency(name: str) -> Dependency: ...
+
+
+@overload
+def dependency(name: str, fatalIfMissing: Literal[True]) -> Dependency: ...
+
+
+@overload
+def dependency(name: str, fatalIfMissing: bool = True, context = None) -> Optional[Dependency]: ...
 
 
 def dependency(name, fatalIfMissing=True, context=None):
