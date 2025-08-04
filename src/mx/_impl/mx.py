@@ -7965,6 +7965,7 @@ class CompilerDaemon(Daemon):
     response_done = "MX DAEMON/DONE:"
 
     def compile(self, compilerArgs):
+        logTask = getLogTask()
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             s.connect(('127.0.0.1', self.port))
@@ -7982,7 +7983,12 @@ class CompilerDaemon(Daemon):
                     log('[Compiler daemon process appears to have crashed. ]')
                     retcode = -1
                     break
-                log(response)
+                if response.startswith('Note: '):
+                    # Unimportant, keep them in the log but don't echo them
+                    log(response)
+                else:
+                    # Always show javac warnings in the terminal
+                    logTask.log(response, echo=True)
         except ConnectionError as e:
             log(f'[Exception while communicating with compiler daemon process: {e}]')
             retcode = -1
