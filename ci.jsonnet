@@ -132,7 +132,7 @@ local with(platform, java_release, timelimit="15:00") = {
             ["set-export", "PROFTOOL_SCRABBLE_LAST", ["printf", "%s\n", "proftool_scrabble_*", "|", "sort", "|", "tail", "-n", "1"]],
             [mx, "profjson", "$PROFTOOL_SCRABBLE_LAST", "-o", "prof_scrabble.json"],
             [mx, "profhot", "$PROFTOOL_SCRABBLE_LAST"],
-            [mx, "profrecord", "-E", "profrecord_scrabble", "../graal/vm/mxbuild/native-image-benchmarks/renaissance-*-scrabble-default-ce/renaissance-*-scrabble-default-ce", "scrabble"],
+            [mx, "profrecord", "-E", "profrecord_scrabble", "../graal/sdk/mxbuild/native-image-benchmarks/renaissance-*-scrabble-default-ce/renaissance-*-scrabble-default-ce", "scrabble"],
             [mx, "profhot", "profrecord_scrabble"]
         ]
     },
