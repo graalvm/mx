@@ -182,11 +182,13 @@ def intellij_read_sdks():
         # Examples:
         #   java version "21"
         #   GraalVM version 21 (vendor name may change)
+        #   Oracle OpenJDK 11.0.18 - aarch64
         #   Oracle OpenJDK 21.0.2
+        #   Oracle OpenJDK 26 - aarch64
         intellij_java_sdk_type: re.compile(r'^java\s+version\s+"([^"]+)"$|'
                                            r'^(?:.+ )?version\s+(.+)$|'
                                            r'^([\d._]+)$|'
-                                           r'^Oracle OpenJDK ([\d._]+)$'),
+                                           r'^Oracle OpenJDK ([\d._]+).*$'),
         intellij_python_sdk_type: re.compile(r'^Python\s+(.+)$'),
 
         # Examples:
