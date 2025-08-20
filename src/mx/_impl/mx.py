@@ -15367,7 +15367,13 @@ def pylint(args):
         log_error('could not determine pylint version from ' + output)
         return -1
     major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    log(f"Detected pylint version: {major}.{minor}.{micro}")
+    m = re.search(r'^Python (.*)', output, re.MULTILINE)
+    if m:
+        python_version = m.group(0)
+    else:
+        python_version = 'unknown Python version'
+    log(f"Detected pylint version: {major}.{minor}.{micro} running on {python_version}")
+
     ver = (major, minor)
     if ver not in pylint_ver_map:
         log_error(f'pylint version must be one of {list(pylint_ver_map.keys())} (got {major}.{minor}.{micro})')
