@@ -1646,7 +1646,7 @@ def profrecord(args):
     else:
         if is_native_image:
             files.create_native_image_tag()
-        mx.run(full_cmd, nonZeroIsFatal=False)
+        exit_code = mx.run(full_cmd, nonZeroIsFatal=False)
         if not files.has_perf_binary():
             mx.abort('No perf binary file found')
 
@@ -1679,6 +1679,9 @@ def profrecord(args):
             mx.run(full_cmd)
             with files.open_perf_output_file(mode='w') as fp:
                 mx.run(convert_cmd, out=fp)
+
+        if exit_code != 0:
+            mx.abort(f'The recorded process failed with exit code {exit_code}')
 
 
 @mx.command('mx', 'profpackage', '[options]')
