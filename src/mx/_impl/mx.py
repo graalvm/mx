@@ -18206,7 +18206,7 @@ def maven_install(args):
         dists = [d for d in s.dists if _dist_matcher(d, None, False, only, None, False)]
         for dist in dists:
             # ignore non-exported dists
-            if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven and type(dist) != POMDistribution:
+            if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven and not isinstance(dist, POMDistribution):
                 arcdists.append(dist)
 
         mxMetaName = _mx_binary_distribution_root(s.name)
