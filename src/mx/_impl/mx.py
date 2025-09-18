@@ -4852,6 +4852,7 @@ class Distribution(Dependency):
            is defined by the `Distribution` subclasses.
     :param list excludedLibs: libraries whose contents should be excluded from this distribution's built artifact
     :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param bool jdkDependent: specifies if the built artifact is JDK dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
     def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
@@ -4860,6 +4861,7 @@ class Distribution(Dependency):
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
+        self.jdkDependent = kwArgs.pop('jdkDependent', None)
         if platforms == 'local':
             self.platforms = [None]
             self.local_platform_only = True
@@ -4880,6 +4882,9 @@ class Distribution(Dependency):
 
     def isPlatformDependent(self):
         return self.platformDependent
+
+    def isJDKDependent(self):
+        return self.jdkDependent
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
