@@ -1750,6 +1750,18 @@ class WarnDeprecatedMixin(DeprecatedMixin):
         return True
 
 
+def _prebuilt_vm_arg_parser():
+    parser = ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ...")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--prebuilt-vm", action="store_true", help="Uses the VM pointed to by JAVA_HOME to run benchmarks.")
+    return parser
+
+_prebuilt_vm_parser_name = "prebuilt_vm_parser"
+parsers[_prebuilt_vm_parser_name] = ParserEntry(
+    _prebuilt_vm_arg_parser(),
+    "Alternative VM selection:"
+)
+
 class VmBenchmarkSuite(StdOutBenchmarkSuite):
     def vmArgs(self, bmSuiteArgs):
         args = self.vmAndRunArgs(bmSuiteArgs)[0]
@@ -1776,7 +1788,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return args
 
     def parserNames(self):
-        names = []
+        names = [_prebuilt_vm_parser_name]
 
         def _acc(reg):
             names.append(reg.get_parser_name())
@@ -1837,7 +1849,11 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
-        vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
+        prebuilt_args, _ = get_parser(_prebuilt_vm_parser_name).parse_known_args(bmSuiteArgs)
+        if hasattr(vm, 'set_run_on_java_home'):
+            vm.set_run_on_java_home(prebuilt_args.prebuilt_vm)
+        vmArgs = self.vmArgs(bmSuiteArgs)
+        vm.extract_vm_info(vmArgs)
         vm.command_mapper_hooks = [(name, func, self) for name, func in self._command_mapper_hooks.items()]
         with self.new_execution_context(vm, benchmarks, bmSuiteArgs):
             t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
@@ -2188,6 +2204,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
     def __init__(self):
         super(OutputCapturingJavaVm, self).__init__()
         self._vm_info = {}
+        self._run_on_java_home = None
         # prevents an infinite loop when the host-vm is a GraalVm since its `run_java()` function calls `extract_vm_info()`, which calls `run_java()`
         self.currently_extracting_vm_info = False
 
@@ -2266,6 +2283,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 self.currently_extracting_vm_info = False
                 self.command_mapper_hooks = hooks
 
+            vm_info["platform.prebuilt-vm"] = self.run_on_java_home() is True
+
             self._vm_info[args_str] = vm_info
 
     def dimensions(self, cwd, args, code, out):
@@ -2287,6 +2306,14 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
+
+    def run_on_java_home(self):
+        """Describes if we should run on the given VM or on a one derived from it as some subclasses would do by default"""
+        return self._run_on_java_home
+
+    def set_run_on_java_home(self, value):
+        """When setting to True, it would force the use of the VM pointed by JAVA_HOME to be used as runtime"""
+        self._run_on_java_home = value
 
     def home(self):
         """Returns the JAVA_HOME location of that vm"""
