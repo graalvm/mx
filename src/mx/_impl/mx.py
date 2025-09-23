@@ -1615,6 +1615,7 @@ class Suite(object):
         self.vc = vc
         self.vc_dir = vc_dir
         self.ignore_suite_commit_info = False
+        self.capture_suite_commit_info = False
         self._preload_suite_dict()
         self._init_imports()
         self.removed_dists = []
@@ -1926,7 +1927,8 @@ class Suite(object):
             'externalProjects',
             'groupId',
             'release',
-            'ignore_suite_commit_info'
+            'ignore_suite_commit_info',
+            'capture_suite_commit_info'
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -2045,7 +2047,8 @@ class Suite(object):
         scmDict = self._check_suiteDict('scm')
         self.developer = self._check_suiteDict('developer')
         self.url = suiteDict.get('url')
-        self.ignore_suite_commit_info = suiteDict.get('ignore_suite_commit_info', False)
+        self.ignore_suite_commit_info = suiteDict.get('ignore_suite_commit_info')
+        self.capture_suite_commit_info = suiteDict.get('capture_suite_commit_info', False)
         if not _validate_absolute_url(self.url, acceptNone=True):
             abort(f'Invalid url in {self.suite_py()}')
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())

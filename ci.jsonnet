@@ -86,7 +86,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     bench_test:: self.with_name("bench-test") + {
         run: [
-            [mx, "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "test"],
+            [mx, "benchmark", "--results-file", "bench-results.json", "test"],
         ],
         teardown: [
             ["bench-uploader.py", "bench-results.json"],
@@ -98,7 +98,7 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "build"],
         ],
         run: [
-            [mx, "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
+            [mx, "benchmark", "jmh-dist:*"],
             ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
             ["python3", path("tests/jmh_filtering_tests.py")],
         ]
