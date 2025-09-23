@@ -232,24 +232,33 @@ class FileOwners:
         mx.logv(f"File {filepath} owned by {result} (looked into {owners_files})")
         return result
 
-def _summarize_owners(all_owners):
+def _remove_author_from_owner_list(owners, author):
+    without_author = []
+    for owner in owners:
+        if not author or owner != author:
+            without_author.append(owner)
+    return without_author
+
+def _summarize_owners(all_owners, author):
     must_review = set()
     anyof_reviewers = []
     mandatory_approvals = []
 
     for owners in all_owners:
-        for owner in owners.get('all', []):
-            must_review.add(owner)
+        must_review.update(_remove_author_from_owner_list(owners.get('all', []), author))
 
     for owners in all_owners:
-        if owners.get('any', []):
+        any_owners = owners.get('any', [])
+        if any_owners:
             # One reviewer is already present? Skip this completely
-            if not _is_some_item_in_set(owners['any'], must_review):
-                anyof_reviewers.append(owners['any'])
+            if _is_some_item_in_set(any_owners, must_review):
+                continue
+            anyof_reviewers.append(_remove_author_from_owner_list(any_owners, author))
 
     for owners in all_owners:
-        if owners.get('at_least_one_mandatory_approver'):
-            mandatory_approvals.append(owners['at_least_one_mandatory_approver'])
+        mandatory_approvers = owners.get('at_least_one_mandatory_approver', [])
+        if mandatory_approvers:
+            mandatory_approvals.append(_remove_author_from_owner_list(mandatory_approvers, author))
 
     return {
         "all": sorted(must_review),
@@ -419,7 +428,7 @@ def codeowners(args):
     file_owners = {f: owners.get_owners_of(os.path.abspath(f)) for f in args.files}
     repro_data['owners'] = file_owners
 
-    reviewers = _summarize_owners(file_owners.values())
+    reviewers = _summarize_owners(file_owners.values(), args.author)
 
     if reviewers['at_least_one_mandatory_approver']:
         approvers_yet_to_approve = []

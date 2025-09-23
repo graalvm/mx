@@ -627,6 +627,80 @@ def test_codeowners_json_output_generate_cases():
     )
 
     yield (
+        "do not suggest author as reviewer",
+        {
+            "OWNERS.toml": """
+                [[rule]]
+                files = "*.md"
+                all = "user1@example.com author@example.com"
+                [[rule]]
+                files = "*.txt"
+                any = "user2@example.com author@example.com"
+                """,
+        },
+        ["README.md", "README.txt"],
+        {
+            "branch": None,
+            "files": ["README.md", "README.txt"],
+            "mx_version": str(mx.version),
+            "owners": {
+                "README.md": {"all": ["author@example.com", "user1@example.com"], "trace": ["OWNERS.toml"]},
+                "README.txt": {"any": ["author@example.com", "user2@example.com"], "trace": ["OWNERS.toml"]},
+            },
+            "pull_request": {
+                "approvals": ["grant@example.com"],
+                "author": "author@example.com",
+                "reviewers": ["reviewer@example.com", "grant@example.com"],
+                "suggestion": {
+                    "acquire_approval": [],
+                    "add": ["user1@example.com", "user2@example.com"],
+                    "details": {
+                        "all": ["user1@example.com"],
+                        "any": ["user2@example.com"],
+                        "at_least_one_mandatory_approver": [],
+                    },
+                },
+            },
+            "version": 1,
+        },
+    )
+
+    yield (
+        "do not suggest author as reviewer: author is only owner",
+        {
+            "OWNERS.toml": """
+                [[rule]]
+                files = "*.md"
+                all = "author@example.com"
+                [[rule]]
+                files = "*.txt"
+                any = "author@example.com"
+                """,
+        },
+        ["README.md", "README.txt"],
+        {
+            "branch": None,
+            "files": ["README.md", "README.txt"],
+            "mx_version": str(mx.version),
+            "owners": {
+                "README.md": {"all": ["author@example.com"], "trace": ["OWNERS.toml"]},
+                "README.txt": {"any": ["author@example.com"], "trace": ["OWNERS.toml"]},
+            },
+            "pull_request": {
+                "approvals": ["grant@example.com"],
+                "author": "author@example.com",
+                "reviewers": ["reviewer@example.com", "grant@example.com"],
+                "suggestion": {
+                    "acquire_approval": [],
+                    "add": [],
+                    "details": {"all": [], "any": [], "at_least_one_mandatory_approver": []},
+                },
+            },
+            "version": 1,
+        },
+    )
+
+    yield (
         "multiple files",
         {
             "OWNERS.toml": """
