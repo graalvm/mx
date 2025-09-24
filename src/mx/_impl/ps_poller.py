@@ -56,7 +56,6 @@ def _parse_args(args):
 
 
 def _start_target_process(target_cmd):
-    print(f"Starting and attaching to command: \"{' '.join(target_cmd)}\"")
     return subprocess.Popen(target_cmd, start_new_session=True)
 
 
