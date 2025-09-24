@@ -2283,7 +2283,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 self.currently_extracting_vm_info = False
                 self.command_mapper_hooks = hooks
 
-            vm_info["platform.prebuilt-vm"] = self.run_on_java_home() is True
+            vm_info["platform.prebuilt-vm"] = "true" if self.run_on_java_home() is True else "false"
 
             self._vm_info[args_str] = vm_info
 
