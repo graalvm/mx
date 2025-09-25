@@ -971,7 +971,7 @@ suite = {
       "licence": "EPL-2.0",
     },
 
-    # compatible version for JDK >= 17
+    # compatible version for JDK 17..19
     "ECJ_3.32": {
       "digest": "sha512:62b19c6701547cb30922fd336a0d40fb0610279a732a93673910954028b79d69e0e3175494d20d3dae9bf4b844677c6bc5d29f337f45b6988bcfaf93b3787602",
       "maven": {
@@ -982,7 +982,7 @@ suite = {
       "licence": "EPL-2.0",
     },
 
-    # compatible version for JDK >= 21
+    # compatible version for JDK 20..21
     "ECJ_3.36": {
       "digest": "sha512:f889b0f305cdf6b548e13ef73cd8ec488be3bf43a3d48659a1fcfce01068fb47adb398bb6006a067d61cfefbee7ecc279e4fcea385f27be211817709cdebc54e",
       "maven": {
@@ -993,7 +993,7 @@ suite = {
       "licence": "EPL-2.0",
     },
 
-    # compatible version for JDK >= 24
+    # compatible version for JDK 22..23
     "ECJ_3.41": {
       "digest": "sha512:f79cadd22cc0b2c9ce8d7cd168280b98835caa24dd6b8c14aab06ce67fe2048c161c6f4b38df686783e64aeb4953cbb0886fea6e3abffad99aa62f1aa80e6d40",
       "maven": {
@@ -1004,6 +1004,16 @@ suite = {
       "licence": "EPL-2.0",
     },
 
+    # compatible version for JDK 24..25
+    "ECJ_3.43": {
+      "digest": "sha512:06d8974af46d81f7a03c257b54fb5854a9b9ba8ab2733db4946745142e07e7dc3e69ea864d4b011230ffb8f92243503d7ffb6ac2ddf9b747c1bbc155c55fb583",
+      "maven": {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "ecj",
+        "version": "3.43.0",
+      },
+      "licence": "EPL-2.0",
+    },
   },
 
   "licenses" : {
