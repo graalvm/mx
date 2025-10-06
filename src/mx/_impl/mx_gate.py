@@ -196,11 +196,13 @@ class Task:
                 else:
                     _tags = self.tags if self.tags else []
                     self.skipped = not self.tag_matches(_tags)
-            if _common and Task.explicit_common:
+            if not self.skipped and _common and Task.explicit_common:
+                # if this is a common task, and we're not already skipping it for another reason (e.g. commandline arguments)
+                # decide whether to skip based on the opt_out_common_gate_tasks setting of the primary suite
                 self.skipped = True
                 if title in Task.explicit_common_tasks:
                     self.skipped = False
-                if any([t in Task.explicit_common_tags for t in self.tags]):
+                if any(t in Task.explicit_common_tags for t in self.tags):
                     self.skipped = False
         if not self.skipped:
             self.start = time.time()
