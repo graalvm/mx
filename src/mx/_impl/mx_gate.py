@@ -29,6 +29,7 @@ __all__ = [
     "Task",
     "add_gate_argument",
     "add_gate_runner",
+    "opt_out_common_gate_tasks",
     "prepend_gate_runner",
     "add_omit_clean_args",
     "gate_clean",
@@ -111,6 +112,10 @@ class Task:
     verbose = False
     startTime = None
 
+    explicit_common = False
+    explicit_common_tasks = []
+    explicit_common_tags = []
+
     def tag_matches(self, _tags):
         for t in _tags:
             assert isinstance(t, str), f'{t} is not a string and thus not a valid tag'
@@ -145,7 +150,8 @@ class Task:
                  tags=None,
                  legacyTitles=None,
                  description=None,
-                 report=None):
+                 report=None,
+                 _common=False):
         """
         :param report: if not None, then `make_test_report` is called when this task ends.
                  The component used for the report will be the name of the primary suite
@@ -190,6 +196,14 @@ class Task:
                 else:
                     _tags = self.tags if self.tags else []
                     self.skipped = not self.tag_matches(_tags)
+            if not self.skipped and _common and Task.explicit_common:
+                # if this is a common task, and we're not already skipping it for another reason (e.g. commandline arguments)
+                # decide whether to skip based on the opt_out_common_gate_tasks setting of the primary suite
+                self.skipped = True
+                if title in Task.explicit_common_tasks:
+                    self.skipped = False
+                if any(t in Task.explicit_common_tags for t in self.tags):
+                    self.skipped = False
         if not self.skipped:
             self.start = time.time()
             self.end = None
@@ -258,6 +272,7 @@ class Task:
 _gate_runners = []
 _pre_gate_runners = []
 _extra_gate_arguments = []
+_explicit_common_tasks = []
 
 def add_gate_argument(*args, **kwargs):
     """
@@ -285,6 +300,18 @@ def prepend_gate_runner(suite, runner):
     suiteRunner = (suite, runner)
     _pre_gate_runners.append(suiteRunner)
 
+def opt_out_common_gate_tasks(suite, include=None, include_tags=None):
+    """
+    Opt out of common gate tasks if this suite is the primary suite.
+
+    include: A list of common task names that should be kept.
+    include_tags: A list of common task tags that should be kept.
+
+    This only affects the common tasks defined by mx itself. The suite itself can redefine tags removed
+    with this function.
+    """
+    _explicit_common_tasks.append((suite, include, include_tags))
+
 def add_omit_clean_args(parser):
     parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
     parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
@@ -294,7 +321,7 @@ def add_omit_clean_args(parser):
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
 def gate_clean(cleanArgs, tasks, name='Clean', tags=None):
-    with Task(name, tasks, tags=tags) as t:
+    with Task(name, tasks, tags=tags, _common=True) as t:
         if t:
             mx.command_function('clean')(cleanArgs)
 
@@ -400,6 +427,15 @@ def gate(args):
             Task.tags += [Tags.always]
     elif args.x:
         mx.abort('-x option cannot be used without --task-filter, --strict-task-filter, or the --tags option')
+
+    if not args.all_suites:
+        for (s, include, include_tags) in _explicit_common_tasks:
+            if s is mx.primary_suite():
+                Task.explicit_common = True
+                if include is not None:
+                    Task.explicit_common_tasks += include
+                if include_tags is not None:
+                    Task.explicit_common_tags += include_tags
 
     if args.jacoco_zip:
         args.jacocout = 'html'
@@ -681,13 +717,13 @@ def _run_mx_suite_tests():
 
 def _run_gate(cleanArgs, args, tasks):
     global _jacoco
-    with Task('Versions', tasks, tags=[Tags.always]) as t:
+    with Task('Versions', tasks, tags=[Tags.always], _common=True) as t:
         if t:
             mx.command_function('version')(['--oneline'])
             mx.command_function('sversions')([])
             mx.log(f"Python version: {sys.version_info}")
 
-    with Task('JDKReleaseInfo', tasks, tags=[Tags.always]) as t:
+    with Task('JDKReleaseInfo', tasks, tags=[Tags.always], _common=True) as t:
         if t:
             jdkDirs = os.pathsep.join([mx.get_env('JAVA_HOME', ''), mx.get_env('EXTRA_JAVA_HOMES', '')])
             for jdkDir in jdkDirs.split(os.pathsep):
@@ -702,7 +738,7 @@ def _run_gate(cleanArgs, args, tasks):
             if t:
                 _run_mx_suite_tests()
 
-    with Task('VerifyMultiReleaseProjects', tasks, tags=[Tags.always]) as t:
+    with Task('VerifyMultiReleaseProjects', tasks, tags=[Tags.always], _common=True) as t:
         if t:
             mx.command_function('verifymultireleaseprojects')([])
 
@@ -712,12 +748,12 @@ def _run_gate(cleanArgs, args, tasks):
             runner(args, tasks)
 
     if mx.primary_suite().getMxCompatibility().gate_run_pyformat():
-        with Task("Format python code", tasks, tags=[Tags.style]) as t:
+        with Task("Format python code", tasks, tags=[Tags.style], _common=True) as t:
             if t:
                 if mx.command_function("pyformat")(["--dry-run"]) != 0:
                     mx.abort_or_warn("Python formatting tools not configured correctly", args.strict_mode)
 
-    with Task('Pylint', tasks, tags=[Tags.style]) as t:
+    with Task('Pylint', tasks, tags=[Tags.style], _common=True) as t:
         if t:
             if mx.command_function('pylint')(['--primary']) != 0:
                 mx.abort_or_warn('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
@@ -725,24 +761,24 @@ def _run_gate(cleanArgs, args, tasks):
     if not args.noClean:
         gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild, Tags.ecjbuild])
 
-    with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
+    with Task('Distribution Overlap Check', tasks, tags=[Tags.style], _common=True) as t:
         if t:
             if mx.command_function('checkoverlap')([]) != 0:
                 t.abort('Found overlapping distributions.')
 
-    with Task('Canonicalization Check', tasks, tags=[Tags.style]) as t:
+    with Task('Canonicalization Check', tasks, tags=[Tags.style], _common=True) as t:
         if t:
             mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
             if mx.command_function('canonicalizeprojects')([]) != 0:
                 t.abort('Rerun "mx canonicalizeprojects" and modify the suite.py files as suggested.')
 
-    with Task('Verify Java Sources in Project', tasks, tags=[Tags.style]) as t:
+    with Task('Verify Java Sources in Project', tasks, tags=[Tags.style], _common=True) as t:
         if t:
             mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring all Java sources are in a Java project directory...'))
             if mx.command_function('verifysourceinproject')([]) != 0:
                 t.abort('Move or delete the Java sources that are not in a Java project directory.')
 
-    with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
+    with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj'], _common=True) as t:
         if t:
             defaultBuildArgs = ['-p']
             if not args.no_warning_as_error:
@@ -754,20 +790,20 @@ def _run_gate(cleanArgs, args, tasks):
             if fullbuild:
                 gate_clean(cleanArgs + ['--keep-logs'], tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
 
-    with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
+    with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac'], _common=True) as t:
         if t:
             defaultBuildArgs = ['-p']
             if not args.no_warning_as_error:
                 defaultBuildArgs += ['--warning-as-error']
             mx.command_function('build')(defaultBuildArgs + ['--force-javac'] + args.extra_build_args)
 
-    with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
+    with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild], _common=True) as t:
         if t:
             if args.cleanIDE:
                 mx.command_function('ideclean')([])
                 mx.command_function('ideinit')([])
 
-    with Task('CodeFormatCheck', tasks, tags=[Tags.style]) as t:
+    with Task('CodeFormatCheck', tasks, tags=[Tags.style], _common=True) as t:
         if t:
             eclipse_exe = mx.get_env('ECLIPSE_EXE')
             if eclipse_exe is not None:
@@ -776,11 +812,11 @@ def _run_gate(cleanArgs, args, tasks):
             else:
                 mx.abort_or_warn('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
-    with Task('Checkstyle', tasks, tags=[Tags.style]) as t:
+    with Task('Checkstyle', tasks, tags=[Tags.style], _common=True) as t:
         if t and mx.command_function('checkstyle')(['--primary']) != 0:
             t.abort('Checkstyle warnings were found')
 
-    with Task('SpotBugs', tasks, tags=[Tags.fullbuild]) as t:
+    with Task('SpotBugs', tasks, tags=[Tags.fullbuild], _common=True) as t:
         _spotbugs_strict_mode_args = ['--strict-mode'] if args.strict_mode and mx.primary_suite().getMxCompatibility().gate_spotbugs_strict_mode() else []
         _spotbugs_primary_args = ["--primary"] if mx.primary_suite().getMxCompatibility().spotbugs_primary_support() else []
         if t and mx.command_function('spotbugs')(_spotbugs_strict_mode_args + _spotbugs_primary_args) != 0:
