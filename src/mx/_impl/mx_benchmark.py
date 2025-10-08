@@ -37,6 +37,8 @@ __all__ = [
     "add_parser",
     "get_parser",
     "VmRegistry",
+    "ForkInfo",
+    "BenchmarkExecutionContext",
     "SingleBenchmarkExecutionContext",
     "BenchmarkSuite",
     "add_bm_suite",
@@ -110,25 +112,32 @@ __all__ = [
     "gate_mx_benchmark",
     "DataPoint",
     "DataPoints",
+    "DataPointsPostProcessor",
+    "AggregateProducerDataPointsPostProcessor",
+    "AverageValueProducerDataPointsPostProcessor",
+    "DataPointsAverageProducerWithOutlierRemoval",
 ]
 
 import json
+import math
 import os.path
 import platform
 import re
 import shlex
 import shutil
 import socket
+import statistics
 import sys
 import tempfile
 import time
 import traceback
 import uuid
 import zipfile
+from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
-from collections import OrderedDict, abc
+from collections import OrderedDict, abc, defaultdict
 from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection
 from dataclasses import dataclass
 
@@ -453,18 +462,51 @@ class VmRegistry(object):
 
 
 @dataclass(frozen = True)
-class BenchmarkExecutionContext():
+class ForkInfo:
+    """Container class for fork information of a benchmark run."""
+    current_fork_index: int
+    total_fork_count: int
+
+class BenchmarkExecutionContext:
     """
     Container class for the runtime context of a benchmark suite.
     * suite: The benchmark suite to which the currently running benchmarks belong to.
     * vm: The virtual machine on which the currently running benchmarks are executing on.
     * benchmarks: The names of the currently running benchmarks.
     * bmSuiteArgs: The arguments passed to the benchmark suite for the current benchmark run.
+    * fork_info: Information about the currently running fork and total fork count of the benchmark.
     """
-    suite: BenchmarkSuite
-    virtual_machine: Vm
-    benchmarks: List[str]
-    bmSuiteArgs: List[str]
+    def __init__(self, suite: BenchmarkSuite, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None):
+        self._suite = suite
+        self._virtual_machine = vm
+        self._benchmarks = benchmarks
+        self._bmSuiteArgs = bmSuiteArgs
+        if fork_info is not None:
+            self._fork_info = fork_info
+        elif suite.execution_context is not None:
+            self._fork_info = suite.execution_context.fork_info
+        else:
+            self._fork_info = None
+
+    @property
+    def suite(self):
+        return self._suite
+
+    @property
+    def virtual_machine(self):
+        return self._virtual_machine
+
+    @property
+    def benchmarks(self):
+        return self._benchmarks
+
+    @property
+    def bmSuiteArgs(self):
+        return self._bmSuiteArgs
+
+    @property
+    def fork_info(self):
+        return self._fork_info
 
     def __enter__(self):
         self.suite.push_execution_context(self)
@@ -473,21 +515,19 @@ class BenchmarkExecutionContext():
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.suite.pop_execution_context()
 
-@dataclass(frozen = True)
 class SingleBenchmarkExecutionContext(BenchmarkExecutionContext):
     """
     Container class for the runtime context of a benchmark suite that can only run a single benchmark.
     * benchmark: The name of the currently running benchmark.
     """
-    benchmark: str
-
-    def __init__(self, suite: BenchmarkSuite, vm: Vm, benchmarks: List[str], bmSuiteArgs: List[str]):
-        super().__init__(suite, vm, benchmarks, bmSuiteArgs)
+    def __init__(self, suite: BenchmarkSuite, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None):
+        super().__init__(suite, vm, benchmarks, bmSuiteArgs, fork_info)
         self._enforce_single_benchmark(benchmarks, suite)
-        # Assigning to the 'benchmark' field directly is not possible because of @dataclass(frozen = True).
-        # If the 'frozen' attribute were to be set to false, we could assign directly here, but then assignments would
-        # be allowed at any point.
-        object.__setattr__(self, "benchmark", benchmarks[0])
+        self._benchmark = benchmarks[0]
+
+    @property
+    def benchmark(self):
+        return self._benchmark
 
     def _enforce_single_benchmark(self, benchmarks: List[str], suite: BenchmarkSuite):
         """
@@ -517,6 +557,7 @@ class BenchmarkSuite(object):
         self._command_mapper_hooks: Dict[str, MapperHook] = {}
         self._tracker = None
         self._currently_running_benchmark = None
+        # TODO: Consider extracting this field (and others) so BenchmarkSuite is stateless
         self._execution_context: List[BenchmarkExecutionContext] = []
 
     def name(self):
@@ -817,8 +858,8 @@ class BenchmarkSuite(object):
         """
         return [bmSuiteArgs]
 
-    def new_execution_context(self, vm: Vm, benchmarks: List[str], bmSuiteArgs: List[str]) -> BenchmarkExecutionContext:
-        return BenchmarkExecutionContext(self, vm, benchmarks, bmSuiteArgs)
+    def new_execution_context(self, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None) -> BenchmarkExecutionContext:
+        return BenchmarkExecutionContext(self, vm, benchmarks, bmSuiteArgs, fork_info)
 
     def pop_execution_context(self) -> BenchmarkExecutionContext:
         return self._execution_context.pop()
@@ -831,6 +872,13 @@ class BenchmarkSuite(object):
         if len(self._execution_context) == 0:
             return None
         return self._execution_context[-1]
+
+    def default_fork_count(self, benchmarks: List[str], bm_suite_args: List[str]) -> int:
+        """
+        Determines the default number of fork runs of a benchmark.
+        Can be overridden through usage of CLI options such as `--default-fork-count` or `--fork-count-file`.
+        """
+        return 1
 
 
 
@@ -1530,6 +1578,106 @@ class BenchmarkFailureError(RuntimeError):
     pass
 
 
+class DataPointsPostProcessor(ABC):
+    """Interface for post-processing datapoints. Implementing classes can modify, add or remove datapoints."""
+    @abstractmethod
+    def process_datapoints(self, datapoints: DataPoints) -> DataPoints:
+        raise NotImplementedError()
+
+
+class AggregateProducerDataPointsPostProcessor(DataPointsPostProcessor):
+    """Base class for post-processing implementations that add aggregate value datapoints."""
+    def __init__(self, selector_fn: Optional[Callable[[DataPoint], bool]], key_fn: Optional[Callable[[DataPoint], Any]], field: str, update_fn: Optional[Callable[[DataPoint], DataPoint]]):
+        """
+        :param selector_fn: Function that returns True for datapoints to include in the aggregate calculation.
+        :param key_fn: Function that returns a grouping key for each datapoint. The aggregate is calculated separately for each group.
+        :param field: Name of the field over which aggregation is performed.
+        :param update_fn: Function that updates ancillary fields of the aggregate datapoint. Called after the main aggregate value has been calculated and assigned.
+
+        Groups produced by first selecting using `selector_fn` and then grouping using `key_fn` should be composed of
+        datapoints that have common values for all dimensions, except for `field` and dimensions that will be removed or
+        updated by `update_fn`.
+        """
+        super().__init__()
+        self._selector_fn = selector_fn
+        self._key_fn = key_fn
+        self._field = field
+        self._update_fn = update_fn
+
+    def select_datapoints(self, datapoints: DataPoints) -> DataPoints:
+        """Filters datapoints by the selector function for aggregation, or returns all if no selector is set."""
+        if self._selector_fn is None:
+            return datapoints
+        return [dp for dp in datapoints if self._selector_fn(dp)]
+
+    def group_datapoints(self, datapoints: DataPoints) -> Dict[Any, DataPoints]:
+        """Groups datapoints by the key function for aggregation, or returns all in one group if no key function is set."""
+        if self._key_fn is None:
+            return {None: datapoints}
+        groups = defaultdict(list)
+        for dp in datapoints:
+            groups[self._key_fn(dp)].append(dp)
+        return dict(groups)
+
+    def process_datapoints(self, datapoints: DataPoints) -> DataPoints:
+        """Processes datapoints by selecting, grouping, aggregating, and appending results."""
+        selection = self.select_datapoints(datapoints)
+        groups = self.group_datapoints(selection)
+        new_datapoints = []
+        for group in groups.values():
+            agg_dp = self.construct_aggregate_datapoint(group)
+            new_datapoints.append(agg_dp)
+        return datapoints + new_datapoints
+
+    def construct_aggregate_datapoint(self, datapoints: DataPoints) -> DataPoint:
+        """Builds an aggregate datapoint from a group of datapoints."""
+        # Copy the first datapoint as a starting point (most fields are common)
+        aggregate_dp = datapoints[0].copy()
+        # Calculate the aggregate value
+        aggregate_dp[self._field] = self.calculate_aggregate_value(datapoints)
+        # Update the ancillary fields
+        if self._update_fn is not None:
+            aggregate_dp = self._update_fn(aggregate_dp)
+        return aggregate_dp
+
+    @abstractmethod
+    def calculate_aggregate_value(self, datapoints: DataPoints) -> Any:
+        """Computes the aggregate value for a group of datapoints (to be implemented by subclasses)."""
+        raise NotImplementedError()
+
+
+class AverageValueProducerDataPointsPostProcessor(AggregateProducerDataPointsPostProcessor):
+    """Adds average value datapoints."""
+    def calculate_aggregate_value(self, datapoints: DataPoints) -> Any:
+        """Computes the average value for a group of datapoints."""
+        return statistics.mean([dp[self._field] for dp in datapoints])
+
+
+class DataPointsAverageProducerWithOutlierRemoval(AverageValueProducerDataPointsPostProcessor):
+    """Adds datapoints representing average values, calculated after removing outliers."""
+    def __init__(self, selector_fn: Optional[Callable[[DataPoint], bool]], key_fn: Optional[Callable[[DataPoint], Any]],
+                 field: str, update_fn: Optional[Callable[[DataPoint], DataPoint]], lower_percentile: float, upper_percentile: float):
+        """
+        :param lower_percentile: Minimum percentile to keep (between 0 and 1).
+        :param upper_percentile: Maximum percentile to keep (between 0 and 1).
+        See superclass for other parameters.
+        """
+        super().__init__(selector_fn, key_fn, field, update_fn)
+        self._lower_percentile = lower_percentile
+        self._upper_percentile = upper_percentile
+
+    def calculate_aggregate_value(self, datapoints: DataPoints) -> Any:
+        """Computes the average value after removing outliers for a group of datapoints."""
+        n = len(datapoints)
+        sorted_datapoints = sorted(datapoints, key=lambda dp: dp[self._field])
+        lower_index = math.floor(n * self._lower_percentile)
+        upper_index = math.ceil(n * self._upper_percentile)
+        if lower_index >= upper_index:
+            raise ValueError(f"Not enough datapoints to remove outliers! Attempted to exclude everything outside the {int(self._lower_percentile * 100)}-{int(self._upper_percentile * 100)}% range from {n} datapoints.")
+        dps_without_outliers = sorted_datapoints[lower_index:upper_index]
+        return super().calculate_aggregate_value(dps_without_outliers)
+
+
 class StdOutBenchmarkSuite(BenchmarkSuite):
     """Convenience suite for benchmarks that need to parse standard output.
 
@@ -1545,6 +1693,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         with self.new_execution_context(None, benchmarks, bmSuiteArgs):
             retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
             datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
+            datapoints = self.post_process_datapoints(datapoints)
             return datapoints
 
     def validateStdoutWithDimensions(
@@ -1610,6 +1759,16 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                     datapoint["is-default-bench-suite-version"] = str(self.isDefaultSuiteVersion()).lower()
             datapoints.extend(parsedpoints)
 
+        return datapoints
+
+    def post_processors(self) -> List[DataPointsPostProcessor]:
+        """Returns the suite's post-processors (should be overridden by subclasses that require datapoints post-processing)."""
+        return []
+
+    def post_process_datapoints(self, datapoints: DataPoints) -> DataPoints:
+        """Post-processes datapoints obtained during a benchmark run by cycling through the post-processors defined for the bench suite."""
+        for post_processor in self.post_processors():
+            datapoints = post_processor.process_datapoints(datapoints)
         return datapoints
 
     def validateReturnCode(self, retcode):
@@ -1873,6 +2032,8 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 "guest-vm": vm.name() if host_vm else "none",
                 "guest-vm-config": self.guest_vm_config_name(host_vm, vm),
             }
+            if self.execution_context.fork_info is not None:
+                dims["metric.fork-number"] = self.execution_context.fork_info.current_fork_index
             for key, value in vm_dims.items():
                 if key in dims and value != dims[key]:
                     if value == 'none':
@@ -3852,10 +4013,6 @@ class BenchmarkExecutor(object):
             else:
                 mx.abort(f"Unknown score function '{function}'.")
 
-    def add_fork_number(self, datapoint, fork_number):
-        if 'metric.fork-number' not in datapoint:
-            datapoint['metric.fork-number'] = fork_number
-
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=0):
         start_time = time.time()
         def postProcess(results):
@@ -3869,7 +4026,6 @@ class BenchmarkExecutor(object):
                 data_point["benchmarking.start-ts"] = int(start_time)
                 data_point["benchmarking.end-ts"] = int(time.time())
                 self.applyScoreFunction(data_point)
-                self.add_fork_number(data_point, fork_number)
                 processed.append(data_point)
             return processed
 
@@ -3972,8 +4128,8 @@ class BenchmarkExecutor(object):
             "--fork-count-file", default=None,
             help="Path to the file that lists the number of re-executions for the targeted benchmarks,\nusing the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
-            "--default-fork-count", default=1, type=int,
-            help="Number of times each benchmark must be executed if no fork count file is specified\nor no value is found for a given benchmark in the file. Default: 1"
+            "--default-fork-count", default=-1, type=int,
+            help="Number of times each benchmark must be executed if no fork count file is specified\nor no value is found for a given benchmark in the file. Default: 1 (unless overridden by the benchmark suite)"
         )
         parser.add_argument(
             "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
@@ -4071,6 +4227,9 @@ class BenchmarkExecutor(object):
                 for benchnames in benchNamesList:
                     suite.validateEnvironment()
                     fork_count = mxBenchmarkArgs.default_fork_count
+                    if fork_count == -1:
+                        # delegate the fork count decision to the bench suite
+                        fork_count = suite.default_fork_count(benchnames, bmSuiteArgs)
                     if fork_count_spec and benchnames and len(benchnames) == 1:
                         fork_count = fork_count_spec.get(f"{suite.name()}:{benchnames[0]}")
                         if fork_count is None and benchnames[0] in fork_count_spec:
@@ -4085,30 +4244,32 @@ class BenchmarkExecutor(object):
                         mx.log(f"[FORKS] Skipping benchmark '{suite.name()}:{benchnames[0]}' since there is no value for it in the fork count file.")
                         skipped_benchmark_forks.append(f"{suite.name()}:{benchnames[0]}")
                     else:
-                        for fork_num in range(0, fork_count):
-                            if fork_count != 1:
-                                mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
-                            try:
-                                if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
-                                    mx.log(f"Skipping benchmark '{suite.name()}:{benchnames[0]}' since it isn't supported on the current platform/configuration.")
-                                    ignored_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
-                                else:
-                                    expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
-                                    for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
-                                        mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
-                                        results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
-                            except RuntimeError:
-                                failures_seen = True
-                                if benchnames and len(benchnames) > 0:
-                                    failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
-                                else:
-                                    failed_benchmarks.append(f"{suite.name()}")
-                                mx.log(traceback.format_exc())
-                                if mxBenchmarkArgs.fail_fast:
-                                    mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
-                            except BaseException:
-                                failures_seen = True
-                                raise
+                        with suite.new_execution_context(None, benchnames, bmSuiteArgs, None):
+                            for fork_num in range(0, fork_count):
+                                with suite.new_execution_context(None, benchnames, bmSuiteArgs, ForkInfo(fork_num, fork_count)):
+                                    if fork_count != 1:
+                                        mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
+                                    try:
+                                        if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
+                                            mx.log(f"Skipping benchmark '{suite.name()}:{benchnames[0]}' since it isn't supported on the current platform/configuration.")
+                                            ignored_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
+                                        else:
+                                            expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
+                                            for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
+                                                mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
+                                                results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
+                                    except RuntimeError:
+                                        failures_seen = True
+                                        if benchnames and len(benchnames) > 0:
+                                            failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
+                                        else:
+                                            failed_benchmarks.append(f"{suite.name()}")
+                                        mx.log(traceback.format_exc())
+                                        if mxBenchmarkArgs.fail_fast:
+                                            mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
+                                    except BaseException:
+                                        failures_seen = True
+                                        raise
                 nl_tab = '\n\t'
                 if ignored_benchmarks:
                     mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
