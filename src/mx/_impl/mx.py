@@ -10219,6 +10219,10 @@ class GitConfig(VC):
     def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False, include_tags=True):
         try:
             cmd = ['git', 'fetch']
+            if not _opts.verbose:
+                # Suppress fetch progress output which can be very
+                # noisy if there are a lot of branches on the remote
+                cmd.append('--quiet')
             if prune:
                 cmd.append('--prune')
             if not include_tags:
