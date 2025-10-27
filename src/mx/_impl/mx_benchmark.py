@@ -3851,16 +3851,24 @@ class BenchmarkExecutor(object):
         return build_name()
 
     def extras(self, mxBenchmarkArgs):
-        extras = {}
+        """
+        Combines env-provided extras using MX_BENCHMARK_EXTRAS and CLI-provided extras.
+        If a key is defined in both the env var and on the CLI, the CLI one takes precedence.
+        """
+        all_extras = []
+        if mx.get_env("MX_BENCHMARK_EXTRAS"):
+            all_extras += mx.get_env("MX_BENCHMARK_EXTRAS", default="").split(",")
         if mxBenchmarkArgs.extras:
-            for kv in mxBenchmarkArgs.extras.split(","):
-                split_kv = kv.split(":")
-                if len(split_kv) != 2:
-                    raise ValueError(f"Cannot handle extra '{kv}'. Extras key-value pairs must contain a single colon.")
-                k, v = split_kv
-                if not re.match(r"^[\w\d\._-]*$", k):
-                    raise ValueError(f"Extra key can only contain numbers, characters, underscores and dashes. Got '{k}'")
-                extras[f"extra.{k}"] = v
+            all_extras += mxBenchmarkArgs.extras.split(',')
+        extras = {}
+        for kv in all_extras:
+            split_kv = kv.split(":")
+            if len(split_kv) != 2:
+                raise ValueError(f"Cannot handle extra '{kv}'. Extras key-value pairs must contain a single colon.")
+            k, v = split_kv
+            if not re.match(r"^[\w\d\._-]*$", k):
+                raise ValueError(f"Extra key can only contain numbers, characters, underscores and dashes. Got '{k}'")
+            extras[f"extra.{k}"] = v
         return extras
 
     def checkEnvironmentVars(self):
@@ -4049,7 +4057,7 @@ class BenchmarkExecutor(object):
             "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
-            "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file.")
+            "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file. Takes precedence over the keys defined in MX_BENCHMARK_EXTRAS in case of duplicates.")
         parser.add_argument(
             '--dry-run', action='store_true', help="Only displays the resulting file without saving it.")
         parser.add_argument(
@@ -4062,7 +4070,7 @@ class BenchmarkExecutor(object):
             sys.exit(0)
 
         dims = self.dimensions(None, args, "")
-        mx.logv(f"The points will be augumented with the following fields: {json.dumps(dims, indent=4)}")
+        mx.logv(f"The points will be augmented with the following fields: {json.dumps(dims, indent=4)}")
 
         # Update the results files with populated dimensions
         if args.results_file:
@@ -4120,7 +4128,7 @@ class BenchmarkExecutor(object):
             "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
-            "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file.")
+            "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file. Takes precedence over the keys defined in MX_BENCHMARK_EXTRAS in case of duplicates.")
         parser.add_argument(
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
