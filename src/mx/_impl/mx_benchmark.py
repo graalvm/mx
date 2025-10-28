@@ -3867,7 +3867,7 @@ class BenchmarkExecutor(object):
                 raise ValueError(f"Cannot handle extra '{kv}'. Extras key-value pairs must contain a single colon.")
             k, v = split_kv
             if not re.match(r"^[\w\d\._-]*$", k):
-                raise ValueError(f"Extra key can only contain numbers, characters, underscores and dashes. Got '{k}'")
+                raise ValueError(f"Extra key can only contain numbers, characters, periods, underscores and dashes. Got '{k}'")
             extras[f"extra.{k}"] = v
         return extras
 
