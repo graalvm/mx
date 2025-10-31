@@ -255,7 +255,6 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.windows_amd64, self.primary_jdk_version).fetchjdk_test,
         with(common.linux_amd64, self.primary_jdk_version).bisect_test,
         with(common.windows_amd64, self.primary_jdk_version).gate,
-        with(common.darwin_amd64, self.primary_jdk_version, timelimit="25:00").gate,
         with(common.darwin_aarch64, self.primary_jdk_version).gate,
         with(common.linux_amd64, self.primary_jdk_version).bench_test,
         with(common.linux_amd64, self.primary_jdk_version).jmh_test,
@@ -268,7 +267,6 @@ local with(platform, java_release, timelimit="15:00") = {
 
         with(common.linux_amd64, self.secondary_jdk_version).gate,
         with(common.windows_amd64, self.secondary_jdk_version).gate,
-        with(common.darwin_amd64, self.secondary_jdk_version, timelimit="25:00").gate,
         with(common.darwin_aarch64, self.secondary_jdk_version).gate,
     ],
     builds: [remove_mx_from_packages(b) for b in builds],
