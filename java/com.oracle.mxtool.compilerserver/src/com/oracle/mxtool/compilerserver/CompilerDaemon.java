@@ -27,7 +27,9 @@ package com.oracle.mxtool.compilerserver;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -65,6 +67,8 @@ public abstract class CompilerDaemon {
     private ServerSocket serverSocket;
     private final AtomicInteger unrecognizedRequests = new AtomicInteger();
 
+    private final ThreadLocalOutputStream threadLocalOut = new ThreadLocalOutputStream(System.out);
+
     public void run(String[] args) throws Exception {
         int jobsArg = -1;
         int i = 0;
@@ -98,6 +102,9 @@ public abstract class CompilerDaemon {
         });
 
         System.out.printf("Started server on port %d [%d threads]\n", port, threadCount);
+
+        System.setOut(new PrintStream(threadLocalOut));
+
         running = true;
         while (running) {
             try {
@@ -169,6 +176,7 @@ public abstract class CompilerDaemon {
                         int result;
                         PrintWriter log = new PrintWriter(output);
                         try {
+                            threadLocalOut.set(connectionSocket.getOutputStream());
                             result = compiler.compile(args, log);
                             if (result != 0 && args.length != 0 && args[0].startsWith("GET / HTTP")) {
                                 // GR-52712
@@ -176,6 +184,7 @@ public abstract class CompilerDaemon {
                             }
                         } finally {
                             log.flush();
+                            threadLocalOut.reset();
                         }
                         logf("%sResult = %d%n", prefix, result);
 
@@ -200,6 +209,45 @@ public abstract class CompilerDaemon {
             } catch (Exception ioe) {
                 ioe.printStackTrace();
             }
+        }
+    }
+
+    private static final class ThreadLocalOutputStream extends OutputStream {
+
+        private final OutputStream global;
+        private final InheritableThreadLocal<OutputStream> perThread;
+
+        private ThreadLocalOutputStream(OutputStream global) {
+            this.global = global;
+            this.perThread = new InheritableThreadLocal<OutputStream>() {
+
+                @Override
+                protected OutputStream childValue(OutputStream parentValue) {
+                    if (parentValue == null) {
+                        return ThreadLocalOutputStream.this.global;
+                    } else {
+                        return parentValue;
+                    }
+                }
+            };
+        }
+
+        public void set(OutputStream s) {
+            perThread.set(s);
+        }
+
+        public void reset() {
+            perThread.set(global);
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            perThread.get().write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            perThread.get().write(b, off, len);
         }
     }
 
