@@ -788,7 +788,7 @@ def test_codeowners_json_output():
         ".mx_vcs_root": "",
         "unittest": {
             "mx.unittest": {
-                "suite.py": """suite = { "mxversion": "7.4.0", "name": "unittest", "ignore_suite_commit_info": True}""",
+                "suite.py": """suite = { "mxversion": "7.4.0", "name": "unittest" }""",
             },
         },
     }

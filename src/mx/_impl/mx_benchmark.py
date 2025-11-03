@@ -3934,10 +3934,24 @@ class BenchmarkExecutor(object):
 
         standard.update(commit_info("", mx.primary_suite()))
         for mxsuite in mx.suites():
-            ignored = mxBenchmarkArgs.ignore_suite_commit_info
-            if (ignored and mxsuite.name in ignored) or mxsuite.ignore_suite_commit_info or mxsuite.foreign:
+            captured = mxBenchmarkArgs.capture_suite_commit_info
+
+            if mxsuite.ignore_suite_commit_info is not None:
+                if mxsuite.ignore_suite_commit_info != mxsuite.capture_suite_commit_info:
+                    log_deprecation(
+                        f"Suite '{mxsuite.name}' uses the deprecated 'ignore_suite_commit_info' (value: {mxsuite.ignore_suite_commit_info}) configuration entry in its suite.py.\n"
+                        f"Please keep using only 'capture_suite_commit_info' (value: {mxsuite.capture_suite_commit_info})."
+                    )
+                else:
+                    mx.abort(
+                        f"Suite '{mxsuite.name}' sets both 'ignore_suite_commit_info' (deprecated, value: {mxsuite.ignore_suite_commit_info}) and 'capture_suite_commit_info' (value: {mxsuite.capture_suite_commit_info}) in its suite.py.\n"
+                        f"This is a configuration conflict. Please remove 'ignore_suite_commit_info' and keep only 'capture_suite_commit_info'."
+                    )
+
+            if mxsuite.foreign:
                 continue
-            standard.update(commit_info(mxsuite.name + ".", mxsuite))
+            if (captured and mxsuite.name in captured) or mxsuite.capture_suite_commit_info:
+                standard.update(commit_info(mxsuite.name + ".", mxsuite))
         triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
         if triggering_suite:
             mxsuite = mx.suite(triggering_suite)
@@ -4054,8 +4068,8 @@ class BenchmarkExecutor(object):
             "results_file", nargs="?", default=None,
             help="path to benchmark results json file to modify")
         parser.add_argument(
-            "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
-            help="A comma-separated list of suite dependencies whose commit info must not be included.")
+            "--capture-suite-commit-info", default=None, type=lambda s: s.split(","),
+            help="A comma-separated list of suite dependencies whose commit info must be included.")
         parser.add_argument(
             "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file. Takes precedence over the keys defined in MX_BENCHMARK_EXTRAS in case of duplicates.")
         parser.add_argument(
@@ -4125,8 +4139,8 @@ class BenchmarkExecutor(object):
             "--triggering-suite", default=None,
             help="Name of the suite that triggered this benchmark, used to extract commit info.")
         parser.add_argument(
-            "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
-            help="A comma-separated list of suite dependencies whose commit info must not be included.")
+            "--capture-suite-commit-info", default=None, type=lambda s: s.split(","),
+            help="A comma-separated list of suite dependencies whose commit info must be included.")
         parser.add_argument(
             "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file. Takes precedence over the keys defined in MX_BENCHMARK_EXTRAS in case of duplicates.")
         parser.add_argument(

@@ -86,7 +86,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     bench_test:: self.with_name("bench-test") + {
         run: [
-            [mx, "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "test"],
+            [mx, "benchmark", "--results-file", "bench-results.json", "test"],
         ],
         teardown: [
             ["bench-uploader.py", "bench-results.json"],
@@ -98,7 +98,7 @@ local with(platform, java_release, timelimit="15:00") = {
             [mx, "build"],
         ],
         run: [
-            [mx, "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
+            [mx, "benchmark", "jmh-dist:*"],
             ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
             ["python3", path("tests/jmh_filtering_tests.py")],
         ]
@@ -255,7 +255,6 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.windows_amd64, self.primary_jdk_version).fetchjdk_test,
         with(common.linux_amd64, self.primary_jdk_version).bisect_test,
         with(common.windows_amd64, self.primary_jdk_version).gate,
-        with(common.darwin_amd64, self.primary_jdk_version, timelimit="25:00").gate,
         with(common.darwin_aarch64, self.primary_jdk_version).gate,
         with(common.linux_amd64, self.primary_jdk_version).bench_test,
         with(common.linux_amd64, self.primary_jdk_version).jmh_test,
@@ -268,7 +267,6 @@ local with(platform, java_release, timelimit="15:00") = {
 
         with(common.linux_amd64, self.secondary_jdk_version).gate,
         with(common.windows_amd64, self.secondary_jdk_version).gate,
-        with(common.darwin_amd64, self.secondary_jdk_version, timelimit="25:00").gate,
         with(common.darwin_aarch64, self.secondary_jdk_version).gate,
     ],
     builds: [remove_mx_from_packages(b) for b in builds],
