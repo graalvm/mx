@@ -186,6 +186,7 @@ This section describes how to set up VSCode for development.
 VSCode is supported via the Eclipse-based [Language Support for Java](https://marketplace.visualstudio.com/items?itemName=redhat.java).
 Follow the instructions of the plugin to set it up first.
 
+First run `mx build` to ensure any annotation processor paths are created, otherwise VSCode may not pick it up properly.
 Run `mx vscodeinit` to create the project configurations.
 This generates Eclipse project configurations and a `.code-workspace` file to open in VSCode.
 It will print instructions about how to import and which workspace file to open:
@@ -209,6 +210,52 @@ Use `File` > `Open Workspace from File...` and select the `.code-workspace` file
 > After updating your sources and re-running `mx vscodeinit`, new projects may be created and old ones removed. This usually results in an error message indicating that a project is missing another required Java project. To handle this, you simply need repeat the steps above for importing projects.
 
 In order to debug with VSCode, you should launch using the `-d` global option.
+
+### Emacs
+
+The [`lsp-java`](https://emacs-lsp.github.io/lsp-java/) package uses the same language server as VSCode and can open the same projects.
+However there are a few things to watch out for.
+
+First, prepare the IDE configuration files as for VSCode: Run `mx build` and then `mx vscodeinit`.
+From you emacs session, you can use the interactive command `lsp-load-vscode-workspace` to load the code workspace file.
+
+Because mx stores `src_gen` in a sibling of the source directory, while the language server will find and index these files, Emacs' `lsp-mode` will not associate them with the right folder.
+In order to fix this, you can add the following advice:
+```
+(defun my/lsp-find-session-folder-with-mx (oldfun session file-name)
+  (or (funcall oldfun session file-name)
+      (funcall oldfun session
+               (replace-regexp-in-string
+                 "/mxbuild/\\(jdk[0-9]+/\\)?" "/"
+                 file-name))))
+(advice-add #'lsp-find-session-folder :around #'my/lsp-find-session-folder-with-mx)
+```
+
+For interactive evaluation during debugging to work, the Java LSP server needs a project name.
+You can pick any from your workspace, it does not really matter as long as it exists.
+Then register a debug template for [`dap-mode`](https://emacs-lsp.github.io/dap-mode/):
+```
+(dap-register-debug-template
+ "Java Attach to MX project"
+ (list :type "java"
+       :request "attach"
+       :hostName "localhost"
+       :projectName "com.oracle.graal.python" ;; <-- use a project from your workspace
+       :port 8000)))
+```
+
+Now, if you launch the workspace, you may find you get a lot of errors about JDK classes not being found.
+This indicates that the JDK that `mx vscodeinit` configured is not configured in your workspace.
+Check the `.code-workspace` file that you imported from: it will have a `"settings"` key with a `"java.configuration.runtimes"` nested key.
+These have to be configured for Emacs as well.
+Shut down the workspace and find the preferences file by evaluating the following snippet:
+```
+(find-file (concat lsp-java-workspace-dir "/.metadata/.plugins/org.eclipse.core.runtime/.settings/org.eclipse.jdt.launching.prefs"))
+```
+You will see one or more `vm` keys, you can just modify (and/or duplicate) these so their `name`  and `path` values match those in the `.code-workspace` file's `java.configuration.runtimes` section.
+You only need to do this once, that preferences file persists unless removed by hand.
+
+If you find yourself often switching workspaces, consider creating yourself a shortcut that changes the `lsp-java-workspace-dir`, `lsp-java-workspace-cache-dir`, and `lsp-session-file` for each so you do not overload the LSP server.
 
 #### Experimental parallel distribution building
 
