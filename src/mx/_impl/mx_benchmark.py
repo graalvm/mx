@@ -1006,8 +1006,8 @@ class BaseRule(Rule):
 
     def parse(self, text) -> Iterable[DataPoint]:
         datapoints: List[DataPoint] = []
-        capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_.]*)>")
-        varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
+        capturepat = re.compile(r"<([a-zA-Z_\(\)][0-9a-zA-Z_.\(\)]*)>")
+        varpat = re.compile(r"\$([a-zA-Z_\(\)][0-9a-zA-Z_\(\)]*)")
         for iteration, m in enumerate(self.parseResults(text)):
             datapoint = {}
             for key, value in self.replacement.items():
