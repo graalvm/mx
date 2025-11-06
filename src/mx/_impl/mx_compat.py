@@ -825,6 +825,22 @@ class MxCompatibility7580(MxCompatibility7552):
     def spotbugs_primary_support(self):
         return True
 
+class MxCompatibility7660(MxCompatibility7580):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.66.0")
+
+    def proguard_supported_jdk_version(self):
+        return 25
+
+    def proguard_libs(self):
+        return {
+            'CORE': '9_2_0',
+            'BASE': '7_8_1',
+            'RETRACE': '7_8_1',
+        }
+
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]

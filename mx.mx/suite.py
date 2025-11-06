@@ -833,6 +833,44 @@ suite = {
       "dependencies" : ["PROGUARD_BASE_7_7_0"],
     },
 
+      "PROGUARD_CORE_9_2_0" : {
+          "digest": "sha512:cdd8e87baee67079b9f21206a1fcac19056e1da17200cd514eb1c496ce83d61a58a228ae78bab812047896c6488d5f31f7de39e26eaa449a3e937cd6188bc9c9",
+          "maven" : {
+              "groupId" : "com.guardsquare",
+              "artifactId" : "proguard-core",
+              "version" : "9.2.0",
+          },
+          "dependencies" : ["LOG4J_CORE_2_24_2", "LOG4J_API_2_24_2", "JETBRAINS_JAVA_ANNOTATIONS_26_0_1"],
+      },
+
+      "PROGUARD_BASE_7_8_1" : {
+          "digest": "sha512:445b4ab05a3cfeb7f5a95c2eb6ae4c575114f134da2d75411a779326a07bdb2e79e13b70a7f113e8c8a68f1b9deb801601d0f69cbf4c4005030d5a8cf38d29d2",
+          "maven" : {
+              "groupId" : "com.guardsquare",
+              "artifactId" : "proguard-base",
+              "version" : "7.8.1",
+          },
+          "dependencies" : [
+              "PROGUARD_CORE_9_2_0",
+              "GSON_2.11.0",
+              "LOG4J_CORE_2_24_2",
+              "LOG4J_API_2_24_2",
+              "ORG_JSON_20231013"
+          ],
+      },
+
+      "PROGUARD_RETRACE_7_8_1" : {
+          "digest": "sha512:d87434d5fc7586775ad2554d71fbb6f236b10f554fd833930dc85a6789e9413fdb8590a873ab3277f60f27b311a5dfe3eea2e5e245ace172f269b2329a460558",
+          "maven" : {
+              "groupId" : "com.guardsquare",
+              "artifactId" : "proguard-retrace",
+              "version" : "7.8.1",
+          },
+          "dependencies" : ["PROGUARD_BASE_7_8_1"],
+      },
+
+
+
     "NINJA" : {
       "packedResource" : True,
       "os_arch" : {
