@@ -394,7 +394,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         if max_java_compliance > proguard_jdk_version and mx.get_opts().proguard_cp is None:
             mx.abort(f'Cannot strip {self} - ProGuard does not yet support JDK {max_java_compliance}')
         _range = f'{max_java_compliance}..{proguard_jdk_version}' if max_java_compliance != proguard_jdk_version else str(max_java_compliance)
-        jdk = mx.get_tools_jdk(_range, purpose='ProGuard')
+        jdk = mx.get_jdk(_range, purpose='ProGuard', cancel='fall back to TOOLS_JAVA_HOME') or mx.get_tools_jdk(_range, purpose='ProGuard')
 
         mx.logv(f'Stripping {self.name}...')
         jdk9_or_later = jdk.javaCompliance >= '9'
