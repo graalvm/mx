@@ -38,8 +38,15 @@ __all__ = [
     "get_parser",
     "VmRegistry",
     "ForkInfo",
+    "bm_exec_context",
     "BenchmarkExecutionContext",
     "SingleBenchmarkExecutionContext",
+    "ContextValue",
+    "BoxContextValue",
+    "ConstantContextValue",
+    "BoxContextValueManager",
+    "ConstantContextValueManager",
+    "SingleBenchmarkManager",
     "BenchmarkSuite",
     "add_bm_suite",
     "bm_suite_valid_keys",
@@ -116,8 +123,13 @@ __all__ = [
     "AggregateProducerDataPointsPostProcessor",
     "AverageValueProducerDataPointsPostProcessor",
     "DataPointsAverageProducerWithOutlierRemoval",
+    "BenchmarkDispatcher",
+    "BenchmarkDispatcherState",
+    "DefaultBenchmarkDispatcher",
+    "BenchmarkExecutionConfiguration"
 ]
 
+import contextlib
 import json
 import math
 import os.path
@@ -134,11 +146,11 @@ import traceback
 import uuid
 import zipfile
 from abc import ABC, abstractmethod
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict, abc, defaultdict
-from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection
+from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection, Generator
 from dataclasses import dataclass
 
 from .mx_util import Stage, MapperHook, FunctionHookAdapter
@@ -467,69 +479,177 @@ class ForkInfo:
     current_fork_index: int
     total_fork_count: int
 
+
+class ContextValue:
+    """Interface for a value in the benchmark execution context."""
+
+    def value(self) -> Any:
+        raise NotImplementedError()
+
+    def update(self, new_value: Any):
+        raise NotImplementedError()
+
+
+def bm_exec_context() -> BenchmarkExecutionContext:
+    """Wrapper function for fetching the benchmark execution context singleton, so expressions can be more concise."""
+    return BenchmarkExecutionContext._get_instance()
+
+
 class BenchmarkExecutionContext:
-    """
-    Container class for the runtime context of a benchmark suite.
-    * suite: The benchmark suite to which the currently running benchmarks belong to.
-    * vm: The virtual machine on which the currently running benchmarks are executing on.
-    * benchmarks: The names of the currently running benchmarks.
-    * bmSuiteArgs: The arguments passed to the benchmark suite for the current benchmark run.
-    * fork_info: Information about the currently running fork and total fork count of the benchmark.
-    """
-    def __init__(self, suite: BenchmarkSuite, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None):
-        self._suite = suite
-        self._virtual_machine = vm
-        self._benchmarks = benchmarks
-        self._bmSuiteArgs = bmSuiteArgs
-        if fork_info is not None:
-            self._fork_info = fork_info
-        elif suite.execution_context is not None:
-            self._fork_info = suite.execution_context.fork_info
-        else:
-            self._fork_info = None
+    """Singleton key-store for all runtime context information necessary for benchmark suite execution."""
+    _instance: BenchmarkExecutionContext = None
 
-    @property
-    def suite(self):
-        return self._suite
+    def __init__(self):
+        self._context_store: Dict[str, ContextValue] = {}
 
-    @property
-    def virtual_machine(self):
-        return self._virtual_machine
+    @staticmethod
+    def _get_instance() -> BenchmarkExecutionContext:
+        """Singleton instance getter. Consider using the `bm_exec_context` wrapper function."""
+        if BenchmarkExecutionContext._instance is None:
+            BenchmarkExecutionContext._instance = BenchmarkExecutionContext()
+        return BenchmarkExecutionContext._instance
 
-    @property
-    def benchmarks(self):
-        return self._benchmarks
+    def get_context_value(self, key: str) -> ContextValue:
+        """
+        Retrieves the ContextValue instance for a key, raising a ValueError if there is no value for the key.
+        You should try to use `get` or `get_opt` instead, if possible.
+        """
+        self.validate_key_in_store(key)
+        return self._context_store[key]
 
-    @property
-    def bmSuiteArgs(self):
-        return self._bmSuiteArgs
+    def get(self, key: str) -> Any:
+        """Retrieves the value for a key, raising a ValueError if there is no value for the key."""
+        return self.get_context_value(key).value()
 
-    @property
-    def fork_info(self):
-        return self._fork_info
+    def get_opt(self, key: str, default: Any = None) -> Any:
+        """Retrieves the value for a key, or default value if there is no value for the key."""
+        if self.has(key):
+            return self.get(key)
+        return default
+
+    def add_context_value(self, key: str, context_value: ContextValue):
+        """
+        Sets the ContextValue instance for a key, raising a ValueError if there is already a value for the key.
+        You should use the context manager classes, like `BoxContextValueManager` or `ConstantContextValueManager`
+        whenever possible.
+        """
+        self.validate_key_not_in_store(key)
+        self._context_store[key] = context_value
+
+    def update(self, key: str, new_value: Any):
+        """Updates the value for a key, raising a ValueError if there is no value for the key."""
+        self.validate_key_in_store(key)
+        self._context_store[key].update(new_value)
+
+    def remove(self, key: str):
+        """Removes the key and its value from the store, raising a ValueError if there is no value for the key."""
+        self.validate_key_in_store(key)
+        del self._context_store[key]
+
+    def has(self, key: str) -> bool:
+        """Returns True if the key is present in the store."""
+        return key in self._context_store
+
+    def validate_key_in_store(self, key: str):
+        """Raises a ValueError if the key is not in the store."""
+        if not self.has(key):
+            raise ValueError(f"The context store does not contain a value for key '{key}'!")
+
+    def validate_key_not_in_store(self, key: str):
+        """Raises a ValueError if the key is in the store."""
+        if self.has(key):
+            raise ValueError(f"The context store already contains a value for key '{key}'!")
+
+
+class BoxContextValue(ContextValue):
+    """Simple boxing ContextValue implementation for the execution context store."""
+    def __init__(self, value: Any):
+        self._value = value
+
+    def value(self):
+        return self._value
+
+    def update(self, new_value: Any):
+        self._value = new_value
+
+    def remove(self):
+        pass
+
+
+class ConstantContextValue(BoxContextValue):
+    """Constant boxing ContextValue implementation that prohibits value updates."""
+    def update(self, new_value: Any):
+        raise ValueError(f"Modifying the value of a {self.__class__.__name__} is not allowed!")
+
+
+class BoxContextValueManager:
+    """Context manager that defines a variable execution context entry."""
+
+    def __init__(self, name: str, initial_value: Any):
+        self._name = name
+        self._initial_value = initial_value
 
     def __enter__(self):
-        self.suite.push_execution_context(self)
-        return self
+        bm_exec_context().add_context_value(self._name, BoxContextValue(self._initial_value))
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.suite.pop_execution_context()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        bm_exec_context().remove(self._name)
 
-class SingleBenchmarkExecutionContext(BenchmarkExecutionContext):
+
+class ConstantContextValueManager:
     """
-    Container class for the runtime context of a benchmark suite that can only run a single benchmark.
-    * benchmark: The name of the currently running benchmark.
+    Context manager that defines a constant execution context entry.
+
+    Allows "same-value redefinitions": you can nest multiple `ConstantContextValueManager` instances with
+    the same `name` argument, provided all use the same `value`.
+
+    Example of allowed "same-value redefinition":
+    ```
+    def run(...):
+      with ConstantContextValueManager('foo', 'bar'):
+        nested_fun(...)
+
+    def nested_fun(...):
+      with ConstantContextValueManager('foo', 'bar'):
+        ...
+    ```
+    In this example, the `ConstantContextValueManager` in `nested_fun` is nested within the scope of another
+    with the same `name` ('foo'). This is allowed since the `value` ('bar') is the same in both cases.
+    If the `value` arguments differed, the instantiation in `nested_fun` would raise an exception.
     """
-    def __init__(self, suite: BenchmarkSuite, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None):
-        super().__init__(suite, vm, benchmarks, bmSuiteArgs, fork_info)
-        self._enforce_single_benchmark(benchmarks, suite)
-        self._benchmark = benchmarks[0]
 
-    @property
-    def benchmark(self):
-        return self._benchmark
+    def __init__(self, name: str, value: Any):
+        self._name = name
+        self._value = value
+        self._created = False
 
-    def _enforce_single_benchmark(self, benchmarks: List[str], suite: BenchmarkSuite):
+    def __enter__(self):
+        if bm_exec_context().has(self._name):
+            # Verify that the existing value is the same as the requested value
+            context_value = bm_exec_context().get_context_value(self._name)
+            if not isinstance(context_value, ConstantContextValue):
+                raise ValueError(f"Expected to redefine an instance of ConstantContextValue, instead got an instance of {context_value.__class__.__name__}!")
+            if context_value.value() != self._value:
+                raise ValueError(f"Cannot redefine with value of {self._value} as the existing value {context_value.value()} differs!")
+        else:
+            bm_exec_context().add_context_value(self._name, ConstantContextValue(self._value))
+            self._created = True
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._created:
+            bm_exec_context().remove(self._name)
+
+
+class SingleBenchmarkManager(ConstantContextValueManager):
+    """Context manager that enforces single benchmark execution and defines the 'benchmark' execution context entry."""
+
+    def __init__(self, suite: BenchmarkSuite):
+        benchmarks = bm_exec_context().get("benchmarks")
+        self._enforce_single_benchmark(suite, benchmarks)
+        super().__init__("benchmark", benchmarks[0])
+
+    @staticmethod
+    def _enforce_single_benchmark(suite: BenchmarkSuite, benchmarks: List[str]):
         """
         Asserts that a single benchmark is requested to run.
         Raises an exception if none or multiple benchmarks are requested.
@@ -542,6 +662,11 @@ class SingleBenchmarkExecutionContext(BenchmarkExecutionContext):
             raise ValueError(f"You have requested {benchmarks} to be run but {suite.__class__.__name__}"
                              f" can only run a single benchmark at a time!"
                              f" Please specify a single benchmark!")
+
+
+class SingleBenchmarkExecutionContext:
+    def __init__(self):
+        raise NotImplementedError(f"The {self.__class__.__name__} class has been deprecated!")
 
 
 class BenchmarkSuite(object):
@@ -557,8 +682,6 @@ class BenchmarkSuite(object):
         self._command_mapper_hooks: Dict[str, MapperHook] = {}
         self._tracker = None
         self._currently_running_benchmark = None
-        # TODO: Consider extracting this field (and others) so BenchmarkSuite is stateless
-        self._execution_context: List[BenchmarkExecutionContext] = []
 
     def name(self):
         """Returns the name of the suite to execute.
@@ -858,28 +981,184 @@ class BenchmarkSuite(object):
         """
         return [bmSuiteArgs]
 
-    def new_execution_context(self, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None) -> BenchmarkExecutionContext:
-        return BenchmarkExecutionContext(self, vm, benchmarks, bmSuiteArgs, fork_info)
+    @contextlib.contextmanager
+    def new_execution_context(self, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None):
+        """
+        DEVELOPER NOTE:
+        I have to keep this method to ensure that current Graal peak, without my changes, does not break for all
+        native-image benchmarks.
+        """
+        msg = ("The 'BenchmarkSuite.new_execution_context' method has been deprecated! "
+               "Please use either 'BoxContextValueManager' or 'ConstantContextValueManager` to manage execution "
+               "context values individually!")
+        log_deprecation(msg)
+        yield None
 
-    def pop_execution_context(self) -> BenchmarkExecutionContext:
-        return self._execution_context.pop()
+    def get_dispatcher(self, state: BenchmarkDispatcherState) -> BenchmarkDispatcher:
+        """Returns a dispatcher instance that is responsible for dispatching into the `BenchmarkSuite` and its `run` method."""
+        return DefaultBenchmarkDispatcher(state)
 
-    def push_execution_context(self, context: BenchmarkExecutionContext):
-        self._execution_context.append(context)
+
+@dataclass(frozen=True)
+class BenchmarkExecutionConfiguration:
+    """Record containing necessary information for dispatching a `BenchmarkSuite` instance."""
+    benchmarks: Optional[List[str]]
+    mx_benchmark_args: Namespace
+    bm_suite_args: List[str]
+    fork_info: ForkInfo
+
+
+@dataclass(frozen=True)
+class BenchmarkDispatcherState:
+    """Record containing necessary information and references for a `BenchmarkDispatcher` instance."""
+    bench_names_list: List[Optional[List[str]]]
+    suite: BenchmarkSuite
+    mx_benchmark_args: Namespace
+    bm_suite_args: List[str]
+    skipped_benchmark_forks: List[str]
+    ignored_benchmarks: List[str]
+
+
+class BenchmarkDispatcher:
+    """Responsible for determining the order and configuration of dispatching into the `BenchmarkSuite`."""
+
+    def __init__(self, state: BenchmarkDispatcherState):
+        self._state: BenchmarkDispatcherState = state
+
+    def dispatch(self) -> Generator[BenchmarkExecutionConfiguration, Any, None]:
+        """Generator method that produces dispatching information for the `BenchmarkSuite` in the appropriate order."""
+        with ConstantContextValueManager("dispatcher", self):
+            self.state.suite.validateEnvironment()
+            yield from self.validated_env_dispatch()
+
+    def validated_env_dispatch(self) -> Generator[BenchmarkExecutionConfiguration, Any, None]:
+        """Sub-generator that should be implemented by implementing dispatcher classes."""
+        raise NotImplementedError()
 
     @property
-    def execution_context(self) -> Optional[BenchmarkExecutionContext]:
-        if len(self._execution_context) == 0:
-            return None
-        return self._execution_context[-1]
+    def state(self) -> BenchmarkDispatcherState:
+        return self._state
 
-    def default_fork_count(self, benchmarks: List[str], bm_suite_args: List[str]) -> int:
-        """
-        Determines the default number of fork runs of a benchmark.
-        Can be overridden through usage of CLI options such as `--default-fork-count` or `--fork-count-file`.
-        """
-        return 1
+class DefaultBenchmarkDispatcher(BenchmarkDispatcher):
+    """
+    Default benchmark dispatcher that iterates over three levels for the benchmarking schedule:
+    * Benchmark sub-lists
+      * The dispatcher is created with a list of benchmark sub-lists (`config.bench_names_list`) and it first iterates
+        over this list. In each of the iterations it proceeds to the next level with the current sub-list of benchmarks.
+    * Forks
+      * For each benchmark sub-list the dispatcher iterates over a certain number of forks. The number of forks can be
+        specified on a per-benchmark basis in a JSON file set with the `--fork-count-file` option, or universally with
+        the `--default-fork-count` option. The dispatcher proceeds to the next level with a fork number.
+    * Variants:
+      * Multiple variants of the same fork can be requested by the benchmark suite. Each variant is defined with a list
+        of benchmark suite arguments. A list containing sub-lists of benchmark suite arguments is retrieved from the
+        benchmark suite by invoking the `expandBmSuiteArgs` method. The generator proceeds to yielding with a sub-list
+        of benchmark suite arguments.
 
+    Example:
+    Given the following values for:
+    * Benchmark sub-lists: [['a'], ['b', c']]
+    * Forks: 2
+    * Variants: [['--foo'], ['--bar']]
+    The dispatcher will yield 8 times, with the following values:
+    Benchmarks      Fork index      Benchmark suite args
+    ====================================================
+    ['a']           0               ['--foo']
+    ['a']           0               ['--bar']
+    ['a']           1               ['--foo']
+    ['a']           1               ['--bar']
+    ['b', 'c']      0               ['--foo']
+    ['b', 'c']      0               ['--bar']
+    ['b', 'c']      1               ['--foo']
+    ['b', 'c']      1               ['--bar']
+    """
+
+    def __init__(self, state: BenchmarkDispatcherState):
+        super().__init__(state)
+        self._fork_count_spec: Optional[Dict[str, int]] = None
+        self._fork_count: Optional[int] = None
+
+    def validated_env_dispatch(self) -> Generator[BenchmarkExecutionConfiguration, Any, None]:
+        """First level iteration: select a list of benchmarks from the super-list."""
+        for idx, bench_names in enumerate(self.state.bench_names_list):
+            yield from self.dispatch_bench_sublist(bench_names, idx + 1 == len(self.state.bench_names_list))
+
+    def dispatch_bench_sublist(self, bench_names: Optional[List[str]], last_bench_sublist: bool) -> Generator[BenchmarkExecutionConfiguration, Any, None]:
+        """Second level iteration: select a fork number from the required fork count."""
+        self.parse_fork_args(bench_names)
+        if self.skip_no_fork_info_benchmark(bench_names[0] if bench_names is not None else None):
+            return
+        for fork_num in range(0, self.fork_count):
+            yield from self.dispatch_fork(bench_names, fork_num, last_bench_sublist and fork_num + 1 == self.fork_count)
+
+    def dispatch_fork(self, bench_names: Optional[List[str]], fork_num: int, last_fork: bool):
+        """Third level iteration: select the benchmark suite args from a list of variants and finally yield."""
+        if self.fork_count != 1:
+            mx.log(f"Execution of fork {fork_num + 1}/{self.fork_count}")
+        if self.skip_platform_unsupported_benchmark(bench_names[0] if bench_names is not None else None):
+            return
+        expanded_bm_suite_args = self.state.suite.expandBmSuiteArgs(bench_names, self.state.bm_suite_args)
+        for variant_num, suite_args in enumerate(expanded_bm_suite_args):
+            mx.log(f"Execution of variant {variant_num + 1}/{len(expanded_bm_suite_args)} with suite args: {suite_args}")
+            last_dispatch = last_fork and variant_num + 1 == len(expanded_bm_suite_args)
+            with ConstantContextValueManager("last_dispatch", last_dispatch):
+                yield BenchmarkExecutionConfiguration(bench_names, self.state.mx_benchmark_args, suite_args, ForkInfo(fork_num, self.fork_count))
+
+    @property
+    def fork_count_spec(self) -> Optional[Dict[str, int]]:
+        return self._fork_count_spec
+
+    @property
+    def fork_count(self) -> Optional[int]:
+        return self._fork_count
+
+    def set_fork_count_spec(self, mx_benchmark_args: Namespace):
+        """Sets the `fork_count_spec` property to the JSON object located in the '--fork-count-file' file, if the option is set."""
+        # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
+        # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
+        # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
+        if self.fork_count_spec is None:
+            if mx_benchmark_args.fork_count_file:
+                with open(mx_benchmark_args.fork_count_file) as f:
+                    self._fork_count_spec = json.load(f)
+
+    def parse_fork_args(self, bench_names: Optional[List[str]]):
+        """Processes the '--fork-count-file' and '--default-fork-count' options."""
+        self.set_fork_count_spec(self.state.mx_benchmark_args)
+        fork_count = self.state.mx_benchmark_args.default_fork_count
+        if self.fork_count_spec is not None and bench_names and len(bench_names) == 1:
+            fork_count = self.fork_count_spec.get(f"{self.state.suite.name()}:{bench_names[0]}")
+            if fork_count is None and bench_names[0] in self.fork_count_spec:
+                msg = (f"[FORKS] Found a fallback entry '{bench_names[0]}' in the fork counts file. "
+                       f"Please use the full benchmark name instead: '{self.state.suite.name()}:{bench_names[0]}'")
+                mx.log(msg)
+                fork_count = self.fork_count_spec.get(bench_names[0])
+        elif self.fork_count_spec is not None and len(self.state.suite.benchmarkList(self.config.bm_suite_args)) == 1:
+            # single benchmark suites executed by providing the suite name only or a wildcard
+            fork_count = self.fork_count_spec.get(self.state.suite.name(), self.fork_count_spec.get(f"{self.state.suite.name()}:*"))
+        elif self.fork_count_spec is not None:
+            msg = ("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\n"
+                   "You might want to use: mx benchmark <options> '<benchmark-suite>:*'")
+            mx.abort(msg)
+        self._fork_count = fork_count
+
+    def skip_no_fork_info_benchmark(self, benchmark: Optional[str]):
+        """If no value exists for `benchmark` in the fork count file, records it as skipped and returns `True`."""
+        if self.fork_count_spec is not None and self.fork_count is None:
+            mx.log(f"[FORKS] Skipping benchmark '{self.state.suite.name()}:{benchmark}' since there is no value for it in the fork count file.")
+            self.state.skipped_benchmark_forks.append(f"{self.state.suite.name()}:{benchmark}")
+            return True
+        return False
+
+    def skip_platform_unsupported_benchmark(self, benchmark: Optional[str]):
+        """If `benchmark` is not supported on the current host, records it as ignored and returns `True`."""
+        supported_list = self.state.suite.benchmarkList(self.state.bm_suite_args)
+        complete_list = self.state.suite.completeBenchmarkList(self.state.bm_suite_args)
+        if benchmark not in supported_list and benchmark in complete_list:
+            mx.log(f"Skipping benchmark '{self.state.suite.name()}:{benchmark}' since it isn't supported on the current platform/configuration.")
+            self.state.ignored_benchmarks.append(f"{self.state.suite.name()}:{benchmark}")
+            return True
+        return False
 
 
 def add_bm_suite(suite, mxsuite=None):
@@ -1690,11 +1969,10 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     5. Use the parse rules on the standard output to create data points.
     """
     def run(self, benchmarks, bmSuiteArgs) -> DataPoints:
-        with self.new_execution_context(None, benchmarks, bmSuiteArgs):
-            retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-            datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
-            datapoints = self.post_process_datapoints(datapoints)
-            return datapoints
+        retcode, out, dims = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
+        datapoints = self.validateStdoutWithDimensions(out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
+        datapoints = self.post_process_datapoints(datapoints)
+        return datapoints
 
     def validateStdoutWithDimensions(
         self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None) -> DataPoints:
@@ -2014,7 +2292,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         vmArgs = self.vmArgs(bmSuiteArgs)
         vm.extract_vm_info(vmArgs)
         vm.command_mapper_hooks = [(name, func, self) for name, func in self._command_mapper_hooks.items()]
-        with self.new_execution_context(vm, benchmarks, bmSuiteArgs):
+        with ConstantContextValueManager("vm", vm):
             t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
             if len(t) == 2:
                 ret_code, out = t
@@ -2032,8 +2310,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 "guest-vm": vm.name() if host_vm else "none",
                 "guest-vm-config": self.guest_vm_config_name(host_vm, vm),
             }
-            if self.execution_context.fork_info is not None:
-                dims["metric.fork-number"] = self.execution_context.fork_info.current_fork_index
+            fork_info = bm_exec_context().get_opt("fork_info")
+            if  fork_info is not None:
+                dims["metric.fork-number"] = fork_info.current_fork_index
             for key, value in vm_dims.items():
                 if key in dims and value != dims[key]:
                     if value == 'none':
@@ -4150,8 +4429,8 @@ class BenchmarkExecutor(object):
             "--fork-count-file", default=None,
             help="Path to the file that lists the number of re-executions for the targeted benchmarks,\nusing the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
-            "--default-fork-count", default=-1, type=int,
-            help="Number of times each benchmark must be executed if no fork count file is specified\nor no value is found for a given benchmark in the file. Default: 1 (unless overridden by the benchmark suite)"
+            "--default-fork-count", default=1, type=int,
+            help="Number of times each benchmark must be executed if no fork count file is specified\nor no value is found for a given benchmark in the file. Default: 1"
         )
         parser.add_argument(
             "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
@@ -4233,65 +4512,34 @@ class BenchmarkExecutor(object):
 
             results = []
 
-            # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
-            # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
-            # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
-            fork_count_spec = None
-            if mxBenchmarkArgs.fork_count_file:
-                with open(mxBenchmarkArgs.fork_count_file) as f:
-                    fork_count_spec = json.load(f)
             failures_seen = False
             failed_benchmarks = []
             try:
                 suite.before(bmSuiteArgs)
                 skipped_benchmark_forks = []
                 ignored_benchmarks = []
-                for benchnames in benchNamesList:
-                    suite.validateEnvironment()
-                    fork_count = mxBenchmarkArgs.default_fork_count
-                    if fork_count == -1:
-                        # delegate the fork count decision to the bench suite
-                        fork_count = suite.default_fork_count(benchnames, bmSuiteArgs)
-                    if fork_count_spec and benchnames and len(benchnames) == 1:
-                        fork_count = fork_count_spec.get(f"{suite.name()}:{benchnames[0]}")
-                        if fork_count is None and benchnames[0] in fork_count_spec:
-                            mx.log(f"[FORKS] Found a fallback entry '{benchnames[0]}' in the fork counts file. Please use the full benchmark name instead: '{suite.name()}:{benchnames[0]}'")
-                            fork_count = fork_count_spec.get(benchnames[0])
-                    elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
-                        # single benchmark suites executed by providing the suite name only or a wildcard
-                        fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get(f"{suite.name()}:*"))
-                    elif fork_count_spec:
-                        mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\nYou might want to use: mx benchmark <options> '<benchmark-suite>:*'")
-                    if fork_count_spec and fork_count is None:
-                        mx.log(f"[FORKS] Skipping benchmark '{suite.name()}:{benchnames[0]}' since there is no value for it in the fork count file.")
-                        skipped_benchmark_forks.append(f"{suite.name()}:{benchnames[0]}")
-                    else:
-                        with suite.new_execution_context(None, benchnames, bmSuiteArgs, None):
-                            for fork_num in range(0, fork_count):
-                                with suite.new_execution_context(None, benchnames, bmSuiteArgs, ForkInfo(fork_num, fork_count)):
-                                    if fork_count != 1:
-                                        mx.log(f"Execution of fork {fork_num + 1}/{fork_count}")
-                                    try:
-                                        if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
-                                            mx.log(f"Skipping benchmark '{suite.name()}:{benchnames[0]}' since it isn't supported on the current platform/configuration.")
-                                            ignored_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
-                                        else:
-                                            expandedBmSuiteArgs = suite.expandBmSuiteArgs(benchnames, bmSuiteArgs)
-                                            for variant_num, suiteArgs in enumerate(expandedBmSuiteArgs):
-                                                mx.log(f"Execution of variant {variant_num + 1}/{len(expandedBmSuiteArgs)} with suite args: {suiteArgs}")
-                                                results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, suiteArgs, fork_number=fork_num))
-                                    except RuntimeError:
-                                        failures_seen = True
-                                        if benchnames and len(benchnames) > 0:
-                                            failed_benchmarks.append(f"{suite.name()}:{benchnames[0]}")
-                                        else:
-                                            failed_benchmarks.append(f"{suite.name()}")
-                                        mx.log(traceback.format_exc())
-                                        if mxBenchmarkArgs.fail_fast:
-                                            mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
-                                    except BaseException:
-                                        failures_seen = True
-                                        raise
+                dispatcher = suite.get_dispatcher(BenchmarkDispatcherState(benchNamesList, suite, mxBenchmarkArgs, bmSuiteArgs, skipped_benchmark_forks, ignored_benchmarks))
+                for config in dispatcher.dispatch():
+                    with ConstantContextValueManager("benchmarks", config.benchmarks), \
+                          ConstantContextValueManager("bm_suite_args", config.bm_suite_args), \
+                          ConstantContextValueManager("fork_info", config.fork_info):
+                        benchmarks = bm_exec_context().get("benchmarks")
+                        bm_suite_args = bm_exec_context().get("bm_suite_args")
+                        fork_index = bm_exec_context().get("fork_info").current_fork_index
+                        try:
+                            results.extend(self.execute(suite, benchmarks, config.mx_benchmark_args, bm_suite_args, fork_index))
+                        except RuntimeError:
+                            failures_seen = True
+                            if benchmarks and len(benchmarks) > 0:
+                                failed_benchmarks.append(f"{suite.name()}:{benchmarks[0]}")
+                            else:
+                                failed_benchmarks.append(f"{suite.name()}")
+                            mx.log(traceback.format_exc())
+                            if mxBenchmarkArgs.fail_fast:
+                                mx.abort("Aborting execution since a failure happened and --fail-fast is enabled")
+                        except BaseException:
+                            failures_seen = True
+                            raise
                 nl_tab = '\n\t'
                 if ignored_benchmarks:
                     mx.log(f"Benchmarks ignored since they aren't supported on the current platform/configuration:{nl_tab}{nl_tab.join(ignored_benchmarks)}")
