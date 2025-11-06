@@ -1009,7 +1009,7 @@ def _capture_eclipse_settings(logToConsole, absolutePaths):
 def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False, pythonProjects=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
-    if isinstance(s, mx.BinarySuite):
+    if isinstance(s, mx.BinarySuite) or s.foreign:
         return
 
     suite_config_dir = mx_util.ensure_dir_exists(s.get_mx_output_dir())
@@ -1310,8 +1310,9 @@ def generate_eclipse_workingsets():
     # the mx metdata directories are included in the appropriate working sets
     _add_to_working_set('MX', 'mxtool')
     for suite in mx.suites(True):
-        _add_to_working_set('MX', basename(suite.mxDir))
-        _add_to_working_set('Suite ' + suite.name, basename(suite.mxDir))
+        if not suite.foreign:
+            _add_to_working_set('MX', basename(suite.mxDir))
+            _add_to_working_set('Suite ' + suite.name, basename(suite.mxDir))
 
     if exists(wspath):
         wsdoc = _copy_workingset_xml(wspath, workingSets)
