@@ -46,6 +46,8 @@ def _max_jdk_version_supported(spotbugs_version):
     Information is derived from https://github.com/spotbugs/spotbugs/blob/master/CHANGELOG.md
     """
     v = mx.VersionSpec(spotbugs_version)
+    if v >= mx.VersionSpec('4.9.8'):
+        return 25
     if v >= mx.VersionSpec('4.7.3_JDK21_BACKPORT'):
         return 21
     if v >= mx.VersionSpec('4.7.3'):
