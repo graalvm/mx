@@ -18595,7 +18595,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.6.1")  # GR-66318: allow opening a package without any Java classes in it
+version = VersionSpec("7.54.6.2")  # GR-73403: Allow disabling spotbugs at suite level and add SpotBugs 4.9.8
 
 _mx_start_datetime = datetime.utcnow()
 

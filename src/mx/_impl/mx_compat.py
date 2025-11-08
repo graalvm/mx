@@ -810,6 +810,14 @@ class MxCompatibility733(MxCompatibility728):
     def automatically_export_jvmci_packages(self):
         return False
 
+class MxCompatibility754(MxCompatibility733):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.54.6.2")
+
+    def spotbugs_version(self):
+        return "4.9.8"
+
 def minVersion():
     _ensureCompatLoaded()
     return list(_versionsMap)[0]
