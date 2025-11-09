@@ -1908,7 +1908,8 @@ class Suite(object):
             'externalProjects',
             'groupId',
             'release',
-            'ignore_suite_commit_info'
+            'ignore_suite_commit_info',
+            'spotbugs'
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -2033,6 +2034,11 @@ class Suite(object):
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
         if isinstance(self.defaultLicense, str):
             self.defaultLicense = [self.defaultLicense]
+
+        spotbugs = suiteDict.get('spotbugs', self.getMxCompatibility().spotbugs_suite_default())
+        if spotbugs not in (None, False, True):
+            abort(f"The 'spotbugs' attribute must be None, True or False, not a {type(spotbugs)}", context=self)
+        self.spotbugs = spotbugs
 
         if scmDict:
             try:
