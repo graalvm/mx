@@ -74,26 +74,19 @@ def defaultSpotbugsArgs():
     return args
 
 def _get_spotbugs_attribute(p, suffix, default=None):
-    spotbugs_attribute_value = None
-    attributes = ['spotbugs' + suffix]
-    found = False
-    for spotbugs_attribute_name in attributes:
-        if hasattr(p, spotbugs_attribute_name):
-            if spotbugs_attribute_value is not None:
-                mx.abort(f'Spotbugs attribute "{spotbugs_attribute_name}" is redundant. Please use attribute "{attributes[0]}" instead', context=p)
-            spotbugs_attribute_value = getattr(p, spotbugs_attribute_name)
-            found = True
-    return spotbugs_attribute_value if found else default
+    return getattr(p, 'spotbugs' + suffix, default)
 
 def _should_test_project(p):
-    spotbugs_attribute_value = _get_spotbugs_attribute(p, '')
+    if not p.isJavaProject():
+        return False
+    spotbugs_attribute_value = _get_spotbugs_attribute(p, '', p.suite.spotbugs)
     if spotbugs_attribute_value is not None:
+        if isinstance(spotbugs_attribute_value, bool):
+            return spotbugs_attribute_value
         if p.isJavaProject():
             return spotbugs_attribute_value.lower() == 'true' or spotbugs_attribute_value is True
         else:
             return spotbugs_attribute_value.lower() == 'always'
-    if not p.isJavaProject():
-        return False
     if p.is_test_project():
         return False
     if p.javaCompliance >= '9':
