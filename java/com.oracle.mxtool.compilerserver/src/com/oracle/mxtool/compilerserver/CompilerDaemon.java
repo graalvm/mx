@@ -61,9 +61,8 @@ public abstract class CompilerDaemon {
         }
     }
 
-    private boolean verbose = false;
+    private volatile boolean verbose = false;
     private volatile boolean running;
-    private ThreadPoolExecutor threadPool;
     private ServerSocket serverSocket;
     private final AtomicInteger unrecognizedRequests = new AtomicInteger();
 
@@ -95,7 +94,7 @@ public abstract class CompilerDaemon {
         // Need at least 2 threads since we dedicate one to the control
         // connection waiting for the shutdown message.
         int threadCount = Math.max(2, jobsArg > 0 ? jobsArg : Runtime.getRuntime().availableProcessors());
-        threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), new ThreadFactory() {
+        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), new ThreadFactory() {
             public Thread newThread(Runnable runnable) {
                 return new Thread(runnable);
             }

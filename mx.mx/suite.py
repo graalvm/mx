@@ -1,5 +1,10 @@
 suite = {
   "name" : "mx",
+
+  # Ensure some basic testing with SpotBugs is done even
+  # if all other suites disable SpotBugs.
+  "spotbugs": True,
+
   "libraries" : {
 
     # ------------- Libraries -------------
@@ -115,6 +120,11 @@ suite = {
     "SPOTBUGS_4.7.3_JDK21_BACKPORT" : {
       "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/spotbugs-4.7.3-jdk21-backport.zip"],
       "digest": "sha512:c8f7ba8154ec40d33d2864b4fdd0c5763a1d6d8f64bb5e2d3204d841e28189d8ef6fe4a6866a72465df607318e3ad9c5d18db7f96cccc502957fd6e2dd6f0537",
+    },
+
+    "SPOTBUGS_4.9.8" : {
+      "urls" : ["https://github.com/spotbugs/spotbugs/releases/download/4.9.8/spotbugs-4.9.8.zip"],
+      "digest": "sha512:d57f3e3895bd90a45384a4d516fb25866136cb4858390d5531f4700f4af60d42571aab3b57349e4fe4893fcf117953e700eed2979869c62b7b39d00786ce23df",
     },
 
     "SIGTEST_1_2" : {

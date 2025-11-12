@@ -524,9 +524,9 @@ public class CheckCopyright {
 
     private static final String CANNOT_FOLLOW_FILE = "abort: cannot follow";
     private static volatile boolean error;
-    private static boolean verbose;
-    private static boolean veryVerbose;
-    private static VC vc;
+    private static volatile boolean verbose;
+    private static volatile boolean veryVerbose;
+    private static final VC vc = VC.create();
 
     private abstract static class VC {
         static boolean findInPath(String entry) {
@@ -542,14 +542,14 @@ public class CheckCopyright {
 
         static VC create() {
             if (findInPath(".git")) {
-                vc = new Git();
+                return new Git();
             } else if (findInPath(".hg")) {
-                vc = new Hg();
+                return new Hg();
             } else {
                 System.err.println("wd contains neither a git nor an hg repository");
                 System.exit(-1);
+                return null;
             }
-            return vc;
         }
 
         abstract String name();
@@ -703,8 +703,6 @@ public class CheckCopyright {
             return;
         }
 
-        vc = VC.create();
-
         verbose = VERBOSE.getValue();
         veryVerbose = VERY_VERBOSE.getValue();
 
@@ -750,8 +748,7 @@ public class CheckCopyright {
 
         Set<String> stagedFiles = vc.getStagedFiles();
 
-        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
-        try {
+        try (ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>())) {
             List<Future<?>> tasks = new ArrayList<>();
 
             for (String fileName : fileNames) {
@@ -767,8 +764,6 @@ public class CheckCopyright {
             for (Future<?> task : tasks) {
                 task.get();
             }
-        } finally {
-            threadPool.shutdown();
         }
     }
 
