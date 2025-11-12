@@ -1,5 +1,10 @@
 suite = {
   "name" : "mx",
+
+  # Ensure some basic testing with SpotBugs is done even
+  # if all other suites disable SpotBugs.
+  "spotbugs": True,
+
   "libraries" : {
 
     # ------------- Libraries -------------
