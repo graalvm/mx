@@ -40,6 +40,7 @@ __all__ = [
     "ForkInfo",
     "bm_exec_context",
     "BenchmarkExecutionContext",
+    "SingleBenchmarkExecutionContext",
     "ContextValue",
     "BoxContextValue",
     "ConstantContextValue",
@@ -128,6 +129,7 @@ __all__ = [
     "BenchmarkExecutionConfiguration"
 ]
 
+import contextlib
 import json
 import math
 import os.path
@@ -662,6 +664,11 @@ class SingleBenchmarkManager(ConstantContextValueManager):
                              f" Please specify a single benchmark!")
 
 
+class SingleBenchmarkExecutionContext:
+    def __init__(self):
+        raise NotImplementedError(f"The {self.__class__.__name__} class has been deprecated!")
+
+
 class BenchmarkSuite(object):
     """
     A harness for a benchmark suite.
@@ -973,6 +980,19 @@ class BenchmarkSuite(object):
 
         """
         return [bmSuiteArgs]
+
+    @contextlib.contextmanager
+    def new_execution_context(self, vm: Optional[Vm], benchmarks: List[str], bmSuiteArgs: List[str], fork_info: Optional[ForkInfo] = None):
+        """
+        DEVELOPER NOTE:
+        I have to keep this method to ensure that current Graal peak, without my changes, does not break for all
+        native-image benchmarks.
+        """
+        msg = ("The 'BenchmarkSuite.new_execution_context' method has been deprecated! "
+               "Please use either 'BoxContextValueManager' or 'ConstantContextValueManager` to manage execution "
+               "context values individually!")
+        log_deprecation(msg)
+        yield None
 
     def get_dispatcher(self, state: BenchmarkDispatcherState) -> BenchmarkDispatcher:
         """Returns a dispatcher instance that is responsible for dispatching into the `BenchmarkSuite` and its `run` method."""
