@@ -1039,6 +1039,19 @@ class BenchmarkDispatcher:
     def state(self) -> BenchmarkDispatcherState:
         return self._state
 
+    def skip_platform_unsupported_benchmark(self, benchmark: Optional[str]):
+        """
+        If `benchmark` is not supported on the current host, records it as ignored and returns `True`.
+        Dispatchers should check this method to ensure a benchmark is supported before running it.
+        """
+        supported_list = self.state.suite.benchmarkList(self.state.bm_suite_args)
+        complete_list = self.state.suite.completeBenchmarkList(self.state.bm_suite_args)
+        if benchmark not in supported_list and benchmark in complete_list:
+            mx.log(f"Skipping benchmark '{self.state.suite.name()}:{benchmark}' since it isn't supported on the current platform/configuration.")
+            self.state.ignored_benchmarks.append(f"{self.state.suite.name()}:{benchmark}")
+            return True
+        return False
+
 class DefaultBenchmarkDispatcher(BenchmarkDispatcher):
     """
     Default benchmark dispatcher that iterates over three levels for the benchmarking schedule:
@@ -1147,16 +1160,6 @@ class DefaultBenchmarkDispatcher(BenchmarkDispatcher):
         if self.fork_count_spec is not None and self.fork_count is None:
             mx.log(f"[FORKS] Skipping benchmark '{self.state.suite.name()}:{benchmark}' since there is no value for it in the fork count file.")
             self.state.skipped_benchmark_forks.append(f"{self.state.suite.name()}:{benchmark}")
-            return True
-        return False
-
-    def skip_platform_unsupported_benchmark(self, benchmark: Optional[str]):
-        """If `benchmark` is not supported on the current host, records it as ignored and returns `True`."""
-        supported_list = self.state.suite.benchmarkList(self.state.bm_suite_args)
-        complete_list = self.state.suite.completeBenchmarkList(self.state.bm_suite_args)
-        if benchmark not in supported_list and benchmark in complete_list:
-            mx.log(f"Skipping benchmark '{self.state.suite.name()}:{benchmark}' since it isn't supported on the current platform/configuration.")
-            self.state.ignored_benchmarks.append(f"{self.state.suite.name()}:{benchmark}")
             return True
         return False
 
