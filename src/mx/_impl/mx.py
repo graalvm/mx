@@ -15175,7 +15175,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
         if len(failed) > 0:
             # cancel pending build subprocesses on failure
             for t in active:
-                t.cancelSubprocs()
+                t.cancelSubprocs(failed)
 
         while len(active) > 0:
             joinTasks()

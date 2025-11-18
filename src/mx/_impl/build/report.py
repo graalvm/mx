@@ -50,6 +50,7 @@ def write_style(f):
         .header dt { font-weight: bold; }
         .success:before { content: "success"; color: green; }
         .failed:before { content: "failed"; color: red; }
+        .cancelled:before { content: "cancelled"; margin-right: 2em; color: orange; }
         .skipped:before { content: "skipped"; margin-right: 2em; color: blue; }
         .log:before { content: "build log:"; }
         .log pre { border: 1px inset; padding: 5px; max-height: 350px; overflow: auto; }

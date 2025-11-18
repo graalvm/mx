@@ -96,7 +96,8 @@ class Task(object, metaclass=ABCMeta):
 
     def abort(self, code):
         self._exitcode = code
-        self.status = "failed"
+        if self.status != "cancelled":
+            self.status = "failed"
         raise TaskAbortException(code)
 
     def log(self, msg, echo=False, log=True, important=True, replace=False):
@@ -140,7 +141,10 @@ class Task(object, metaclass=ABCMeta):
     def addSubproc(self, p):
         self.subprocs += [p]
 
-    def cancelSubprocs(self):
+    def cancelSubprocs(self, failed=None):
+        self.status = "cancelled"
+        if failed is not None:
+            self.statusInfo = f"(reason: {', '.join(str(f) for f in failed)} failed)"
         from ...support.processes import _is_process_alive, _kill_process
         from signal import SIGTERM
         for p in self.subprocs:
