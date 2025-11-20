@@ -129,7 +129,7 @@ def _print_impl(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.s
         )
 
 
-def log(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout, important=True):
+def log(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout, important=True, echo=False):
     """
     Write a message to the console.
     All script output goes through this method thus allowing a subclass
@@ -137,7 +137,7 @@ def log(msg: Optional[str] = None, end: Optional[str] = "\n", file=sys.stdout, i
     """
     task = getLogTask()
     if task is not None:
-        task.log(msg, important=important)
+        task.log(msg, important=important, echo=echo)
         return
     if vars(_opts).get("quiet"):
         return

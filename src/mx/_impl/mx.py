@@ -7979,7 +7979,6 @@ class CompilerDaemon(Daemon):
     response_done = "MX DAEMON/DONE:"
 
     def compile(self, compilerArgs):
-        logTask = getLogTask()
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             s.connect(('127.0.0.1', self.port))
@@ -7999,10 +7998,10 @@ class CompilerDaemon(Daemon):
                     break
                 if response.startswith('Note: '):
                     # Unimportant, keep them in the log but don't echo them
-                    log(response)
+                    log(response, end='')
                 else:
                     # Always show javac warnings in the terminal
-                    logTask.log(response, echo=True)
+                    log(response, end='', echo=True)
         except ConnectionError as e:
             log(f'[Exception while communicating with compiler daemon process: {e}]')
             retcode = -1
@@ -15175,7 +15174,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
         if len(failed) > 0:
             # cancel pending build subprocesses on failure
             for t in active:
-                t.cancelSubprocs()
+                t.cancelSubprocs(failed)
 
         while len(active) > 0:
             joinTasks()
