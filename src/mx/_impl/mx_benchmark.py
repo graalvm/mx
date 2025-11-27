@@ -102,12 +102,13 @@ __all__ = [
     "enable_tracker",
     "disable_tracker",
     "Tracker",
-    "RssTracker",
+    "TimeTracker",
     "PsrecordTracker",
     "PsrecordMaxrssTracker",
     "RssPercentilesTracker",
-    "RssPercentilesAndMaxTracker",
+    "RssPercentilesAndTimeTracker",
     "EnergyConsumptionTracker",
+    "get_tracker_class",
     "BenchmarkExecutor",
     "make_hwloc_bind",
     "init_benchmark_suites",
@@ -766,13 +767,35 @@ class BenchmarkSuite(object):
         else:
             raise ValueError(f"Hook must be MapperHook or callable, got {type(hook)}")
 
-
     def register_tracker(self, name, tracker_type):
         tracker = tracker_type(self)
         self._tracker = tracker
         hook = tracker.get_hook()
 
         self.register_command_mapper_hook(name, hook)
+
+    def unregister_tracker(self):
+        if self._tracker is None:
+            mx.warn("No tracker is currently registered to unregister")
+            return
+
+        tracker_type = type(self._tracker)
+        hook_name_to_remove = None
+
+        for name, registered_type in _available_trackers.items():
+            if registered_type == tracker_type:
+                hook_name_to_remove = name
+                break
+
+        if hook_name_to_remove and hook_name_to_remove in self._command_mapper_hooks:
+            del self._command_mapper_hooks[hook_name_to_remove]
+        else:
+            mx.warn("Could not find tracker's hook in registered command mapper hooks")
+
+        self._tracker = None
+
+    def tracker(self):
+        return self._tracker
 
     def version(self):
         """The suite version selected for execution which is either the :defaultSuiteVerion:
@@ -3575,27 +3598,37 @@ class Tracker(object):
     def get_hook(self) -> MapperHook:
         return DefaultTrackerHook(self)
 
-class RssTracker(Tracker):
+class TimeTracker(Tracker):
     def __init__(self, bmSuite):
         super().__init__(bmSuite)
-        log_deprecation("The 'rss' tracker is deprecated, use 'rsspercentiles' instead!")
+        self._timing_wrapper = None
+
+        if mx.get_os() != "linux":
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self._timing_wrapper = os.path.join(script_dir, "timing_wrapper.py")
+            if not os.path.exists(self._timing_wrapper):
+                mx.warn(f"Timing wrapper not found at {self._timing_wrapper}")
+                self._timing_wrapper = None
 
     def map_command(self, cmd):
         """
-        Tracks the max resident memory size used by the process using the 'time' command.
+        Tracks wall-clock time using platform-appropriate timing commands.
 
         :param list[str] cmd: the input command to modify
-        :return:
+        :return: list[str] modified command with timing prefix
         """
         if not _use_tracker:
             return cmd
+
         if mx.get_os() == "linux":
-            prefix = ["time", "-v"]
-        elif mx.get_os() == "darwin":
-            prefix = ["time", "-l"]
+            # Forces GNU time with '/usr/bin/time' instead of shell builtin with 'time'
+            prefix = ["/usr/bin/time", "-f", "Wall-clock time: %e sec"]
         else:
-            mx.log(f"Ignoring the 'rss' tracker since it is not supported on {mx.get_os()}")
-            prefix = []
+            if self._timing_wrapper and os.path.exists(self._timing_wrapper):
+                prefix = [self._timing_wrapper]
+            else:
+                raise ValueError(f"Timing wrapper not found at {self._timing_wrapper}")
+
         return prefix + cmd
 
     def get_rules(self, bmSuiteArgs):
@@ -3603,49 +3636,23 @@ class RssTracker(Tracker):
             suite_name = self.bmSuite.benchSuiteName(bmSuiteArgs)
         else:
             suite_name = self.bmSuite.benchSuiteName()
-        if mx.get_os() == "linux":
-            # Output of 'time -v' on linux contains:
-            #        Maximum resident set size (kbytes): 511336
-            rules = [
-                StdOutRule(
-                    r"Maximum resident set size \(kbytes\): (?P<rss>[0-9]+)",
-                    {
-                        "benchmark": self.bmSuite.currently_running_benchmark(),
-                        "bench-suite": suite_name,
-                        "config.vm-flags": ' '.join(self.bmSuite.vmArgs(bmSuiteArgs)),
-                        "metric.name": "max-rss",
-                        "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
-                        "metric.unit": "MB",
-                        "metric.type": "numeric",
-                        "metric.score-function": "id",
-                        "metric.better": "lower",
-                        "metric.iteration": 0
-                    }
-                )
-            ]
-        elif mx.get_os() == "darwin":
-            # Output of 'time -l' on linux contains (size in bytes):
-            #  523608064  maximum resident set size
-            rules = [
-                StdOutRule(
-                    r"(?P<rss>[0-9]+)\s+maximum resident set size",
-                    {
-                        "benchmark": self.bmSuite.currently_running_benchmark(),
-                        "bench-suite": suite_name,
-                        "config.vm-flags": ' '.join(self.bmSuite.vmArgs(bmSuiteArgs)),
-                        "metric.name": "max-rss",
-                        "metric.value": ("<rss>", lambda x: int(float(x)/(1024*1024))),
-                        "metric.unit": "MB",
-                        "metric.type": "numeric",
-                        "metric.score-function": "id",
-                        "metric.better": "lower",
-                        "metric.iteration": 0
-                    }
-                )
-            ]
-        else:
-            rules = []
-        return rules
+        return [
+            StdOutRule(
+                r"Wall-clock time:\s+(?P<time>[0-9]+\.[0-9]+) sec",
+                {
+                    "benchmark": self.bmSuite.currently_running_benchmark(),
+                    "bench-suite": suite_name,
+                    "config.vm-flags": ' '.join(self.bmSuite.vmArgs(bmSuiteArgs)),
+                    "metric.name": "time",
+                    "metric.unit": "s",
+                    "metric.value": ("<time>", float),
+                    "metric.type": "numeric",
+                    "metric.score-function": "id",
+                    "metric.better": "lower",
+                    "metric.iteration": 0
+                }
+            )
+        ]
 
 
 class PsrecordTracker(Tracker):
@@ -3727,7 +3734,7 @@ class PsrecordMaxrssTracker(Tracker):
 
     def __init__(self, bmSuite):
         super().__init__(bmSuite)
-        self.rss = RssTracker(bmSuite)
+        self.rss = TimeTracker(bmSuite)
         self.psrecord = PsrecordTracker(bmSuite)
 
     def map_command(self, cmd):
@@ -3911,22 +3918,21 @@ class RssPercentilesTracker(Tracker):
             return []
 
 
-class RssPercentilesAndMaxTracker(Tracker):
+class RssPercentilesAndTimeTracker(Tracker):
     def __init__(self, bmSuite):
         super().__init__(bmSuite)
-        self.rss_max_tracker = RssTracker(bmSuite)
+        self.time_tracker = TimeTracker(bmSuite)
         self.rss_percentiles_tracker = RssPercentilesTracker(
             bmSuite,
             skip=1,                 # skip RSS of the 'time' command
-            copy_into_max_rss=False # don't copy a percentile into max-rss, since the rss_max_tracker will generate the metric
+            copy_into_max_rss=True
         )
-        log_deprecation("The 'rsspercentiles+maxrss' tracker is deprecated, use 'rsspercentiles' instead!")
 
     def map_command(self, cmd):
-        return self.rss_percentiles_tracker.map_command(self.rss_max_tracker.map_command(cmd))
+        return self.rss_percentiles_tracker.map_command(self.time_tracker.map_command(cmd))
 
     def get_rules(self, bmSuiteArgs):
-        return self.rss_max_tracker.get_rules(bmSuiteArgs) + self.rss_percentiles_tracker.get_rules(bmSuiteArgs)
+        return self.time_tracker.get_rules(bmSuiteArgs) + self.rss_percentiles_tracker.get_rules(bmSuiteArgs)
 
 class EnergyConsumptionTracker(Tracker):
     """
@@ -4060,13 +4066,18 @@ class EnergyTrackerHook(DefaultTrackerHook):
         return stage.is_final() if stage else False
 
 _available_trackers = {
-    "rss": RssTracker,
+    "time": TimeTracker,
     "psrecord": PsrecordTracker,
     "psrecord+maxrss": PsrecordMaxrssTracker,
     "rsspercentiles": RssPercentilesTracker,
-    "rsspercentiles+maxrss": RssPercentilesAndMaxTracker,
+    "rsspercentiles+time": RssPercentilesAndTimeTracker,
     "energy": EnergyConsumptionTracker
 }
+
+def get_tracker_class(tracker_name):
+    if tracker_name not in _available_trackers:
+        raise ValueError(f"Tracker '{tracker_name}' doesn't exist! Use one of: [{', '.join(_available_trackers.keys())}]")
+    return _available_trackers[tracker_name]
 
 
 class BenchmarkExecutor(object):
