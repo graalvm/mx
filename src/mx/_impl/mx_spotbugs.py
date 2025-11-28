@@ -79,21 +79,19 @@ def _get_spotbugs_attribute(p, suffix, default=None):
 def _should_test_project(p):
     if not p.isJavaProject():
         return False
-    spotbugs_attribute_value = _get_spotbugs_attribute(p, '', p.suite.spotbugs)
+    spotbugs_attribute_value = _get_spotbugs_attribute(p, '', None)
     if spotbugs_attribute_value is not None:
         if isinstance(spotbugs_attribute_value, bool):
             return spotbugs_attribute_value
-        if p.isJavaProject():
-            return spotbugs_attribute_value.lower() == 'true' or spotbugs_attribute_value is True
-        else:
-            return spotbugs_attribute_value.lower() == 'always'
+        return spotbugs_attribute_value.lower() == 'true'
     if p.is_test_project():
         return False
     if p.javaCompliance >= '9':
         compat = p.suite.getMxCompatibility()
         if compat.spotbugs_limited_to_8():
             return False
-    return True
+    # Return the suite-level default
+    return p.suite.spotbugs
 
 
 def _warn_or_abort(msg, strict_mode):
