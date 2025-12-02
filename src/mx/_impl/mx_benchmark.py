@@ -3638,14 +3638,14 @@ class TimeTracker(Tracker):
             suite_name = self.bmSuite.benchSuiteName()
         return [
             StdOutRule(
-                r"Wall-clock time:\s+(?P<time>[0-9]+\.[0-9]+) sec",
+                r"Wall-clock time:\s+(?P<time_sec>[0-9]+\.[0-9]+) sec",
                 {
                     "benchmark": self.bmSuite.currently_running_benchmark(),
                     "bench-suite": suite_name,
                     "config.vm-flags": ' '.join(self.bmSuite.vmArgs(bmSuiteArgs)),
                     "metric.name": "time",
-                    "metric.unit": "s",
-                    "metric.value": ("<time>", float),
+                    "metric.unit": "ms",
+                    "metric.value": ("<time_sec>", lambda ms: float(ms) * 1000),
                     "metric.type": "numeric",
                     "metric.score-function": "id",
                     "metric.better": "lower",
