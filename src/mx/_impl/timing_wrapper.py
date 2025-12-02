@@ -33,32 +33,34 @@ import sys
 import subprocess
 import time
 
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python timing_wrapper.py <command> [args...]", file=sys.stderr)
         sys.exit(1)
-    
+
     cmd = sys.argv[1:]
-    
+
     start_time = time.perf_counter()
-    
+
     try:
         result = subprocess.run(cmd, check=False)
         elapsed = time.perf_counter() - start_time
-        
+
         print(f"Wall-clock time: {elapsed:.6f} sec", file=sys.stderr)
         sys.exit(result.returncode)
-    
+
     except KeyboardInterrupt:
         elapsed = time.perf_counter() - start_time
         print(f"\nWall-clock time (interrupted): {elapsed:.6f} sec", file=sys.stderr)
         sys.exit(1)
-    
-    except Exception as e:
+
+    except OSError as e:
         elapsed = time.perf_counter() - start_time
         print(f"Error running command: {e}", file=sys.stderr)
         print(f"Wall-clock time (error): {elapsed:.6f} sec", file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
