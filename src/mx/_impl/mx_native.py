@@ -683,8 +683,8 @@ class NinjaProject(MultitargetProject):
         except ImportError:
             dep = mx.library('NINJA_SYNTAX')
             deps.append(dep)
-            module_path = os.path.join(dep.get_path(False), f'ninja_syntax-{dep.version}')
-            mx_util.ensure_dir_exists(module_path)  # otherwise, import machinery will ignore it
+            module_path = os.path.join(dep.get_path(True), f'ninja_syntax-{dep.version}')
+            # note that the import machinery needs this path to exist now, otherwise it will be ignored
             sys.path.append(module_path)
 
         return deps
