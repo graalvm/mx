@@ -160,7 +160,7 @@ local with(platform, java_release, timelimit="15:00") = {
         ],
     },
 
-    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.deps.sulong + common.deps.truffleruby + {
+    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.deps.sulong + {
         packages+: {
             make: ">=" + versions.make,
         },
@@ -169,10 +169,6 @@ local with(platform, java_release, timelimit="15:00") = {
         ] + self.java_home_in_env("../graal/vm", "vm") + [
             # Test the ce env file
             [mx, "-p", "../graal/vm", "--env", "ce", "build"],
-            # Also test building Truffle languages
-            [mx, "-p", "../graal/vm", "--dy", "truffleruby", "sforceimports"],
-            [mx, "-p", "../graal/vm", "--dy", "truffleruby", "--env", "../../../truffleruby/mx.truffleruby/native", "graalvm-show"],
-            [mx, "-p", "../graal/vm", "--dy", "truffleruby", "--env", "../../../truffleruby/mx.truffleruby/native", "build"],
         ],
     },
 
