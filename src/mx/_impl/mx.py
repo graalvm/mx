@@ -15586,6 +15586,11 @@ class SafeDirectoryUpdater(object):
             old_target = join(self._workspace, 'to_delete_' + basename(self.target))
             try:
                 os.rename(self.target, old_target)
+            except OSError as e:
+                if e.errno == errno.EXDEV:  # invalid cross-device link
+                    # This can happen when building a container, when the old directory isn't in the same layer as the one we are
+                    # currently building. Assume that in this case there can be no race and just rmtree instead of atomic move.
+                    rmtree(self.target)
             except:
                 # Silently assume another process won the race to rename dst_jdk_dir
                 pass
