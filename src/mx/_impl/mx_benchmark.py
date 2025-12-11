@@ -4092,6 +4092,36 @@ def get_tracker_class(tracker_name):
     return _available_trackers[tracker_name]
 
 
+def dump_jvm_args_command(suite: BenchmarkSuite | None, bmSuiteArgs: list[str], dump_path: str):
+    """
+    Executes the command that dumps the JVM arguments used to execute every supported benchmark
+    from a suite, writing the output to a JSON file.
+
+    :param suite: the selected benchmark suite
+    :param bmSuiteArgs: the arguments to the suite
+    :param dump_path: the path to the output JSON file
+    :return: the exit status
+    """
+    if not suite:
+        mx.abort('No suite specified')
+    if not isinstance(suite, JavaBenchmarkSuite):
+        mx.abort(f'The {suite.name()} suite is not a Java benchmark suite')
+    result = {
+        'name': suite.benchSuiteName(bmSuiteArgs),
+        'version': suite.version(),
+        'benchmarks': [
+            {
+                'name': name,
+                'args': suite.createCommandLineArgs([name], bmSuiteArgs),
+            }
+            for name in suite.benchmarkList(bmSuiteArgs)
+        ],
+    }
+    with open(dump_path, 'w') as file:
+        json.dump(result, fp=file, indent=4)
+    return 0
+
+
 class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
@@ -4452,6 +4482,10 @@ class BenchmarkExecutor(object):
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
+            "--dump-jvm-args", default=None, type=str,
+            help="Dump the JVM args used to execute supported Java benchmarks from a suite to the specified JSON file."
+        )
+        parser.add_argument(
             "--fork-count-file", default=None,
             help="Path to the file that lists the number of re-executions for the targeted benchmarks,\nusing the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
@@ -4522,6 +4556,9 @@ class BenchmarkExecutor(object):
                         for name in noVmRegSuites:
                             print("  " + name)
                 return 0
+
+            if mxBenchmarkArgs.dump_jvm_args:
+                return dump_jvm_args_command(suite, bmSuiteArgs, mxBenchmarkArgs.dump_jvm_args)
 
             if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
                 parser.print_help()
