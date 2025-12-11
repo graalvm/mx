@@ -22,3 +22,5 @@ eclipse-launches
 /java/*/.factorypath
 /java/*.dist/
 /.src-rev
+timing_wrapper
+.DS_Store

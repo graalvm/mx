@@ -3598,17 +3598,8 @@ class Tracker(object):
     def get_hook(self) -> MapperHook:
         return DefaultTrackerHook(self)
 
-class TimeTracker(Tracker):
-    def __init__(self, bmSuite):
-        super().__init__(bmSuite)
-        self._timing_wrapper = None
 
-        if mx.get_os() != "linux":
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            self._timing_wrapper = os.path.join(script_dir, "timing_wrapper.py")
-            if not os.path.exists(self._timing_wrapper):
-                mx.warn(f"Timing wrapper not found at {self._timing_wrapper}")
-                self._timing_wrapper = None
+class TimeTracker(Tracker):
 
     def map_command(self, cmd):
         """
@@ -3618,16 +3609,37 @@ class TimeTracker(Tracker):
         :return: list[str] modified command with timing prefix
         """
         if not _use_tracker:
+            mx.warn(f"{self.__class__.__name__} is forcibly disabled! Timings will not be recorded for this suite.")
             return cmd
 
-        if mx.get_os() == "linux":
-            # Forces GNU time with '/usr/bin/time' instead of shell builtin with 'time'
-            prefix = ["/usr/bin/time", "-f", "Wall-clock time: %e sec"]
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+        if mx.get_os() in ("linux", "darwin"):
+            c_timer = os.path.join(script_dir, "timing_wrapper")
+            c_timer_src = os.path.join(script_dir, "timing_wrapper.c")
+            if not os.path.exists(c_timer):
+                gcc_bin = shutil.which("gcc")
+                if not gcc_bin:
+                    raise ValueError(
+                        "gcc is required to automatically build the timing wrapper, but was not found in PATH."
+                    )
+
+                gcc_cmd_line = [gcc_bin, "-O2", "-Wall"] + [c_timer_src, "-o", c_timer]
+
+                out = mx.OutputCapture()
+                mx.log("Compiling missing timing wrapper binary with:\n  " + ' '.join(gcc_cmd_line))
+                rc = mx.run(gcc_cmd_line, nonZeroIsFatal=False, out=out, err=out)
+                if rc != 0 or not os.path.exists(c_timer):
+                    raise ValueError(
+                        "Could not build the timing wrapper C binary with:\n"
+                        f"  {' '.join(gcc_cmd_line)}\n"
+                        f"Exit code: {rc}\n"
+                        f"output:\n{out.data}"
+                    )
+            prefix = [c_timer]
         else:
-            if self._timing_wrapper and os.path.exists(self._timing_wrapper):
-                prefix = [self._timing_wrapper]
-            else:
-                raise ValueError(f"Timing wrapper not found at {self._timing_wrapper}")
+            mx.warn(f"Using Python timing wrapper to measure benchmark performance on {mx.get_os()}. It may have significant overhead!")
+            prefix = [os.path.join(script_dir, "timing_wrapper.py")]
 
         return prefix + cmd
 
