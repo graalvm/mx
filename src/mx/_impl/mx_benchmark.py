@@ -3598,9 +3598,8 @@ class Tracker(object):
     def get_hook(self) -> MapperHook:
         return DefaultTrackerHook(self)
 
+
 class TimeTracker(Tracker):
-    def __init__(self, bmSuite):
-        super().__init__(bmSuite)
 
     def map_command(self, cmd):
         """
@@ -3615,7 +3614,7 @@ class TimeTracker(Tracker):
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
-        if mx.get_os() in ["linux", "darwin"]:
+        if mx.get_os() in ("linux", "darwin"):
             c_timer = os.path.join(script_dir, "timing_wrapper")
             c_timer_src = os.path.join(script_dir, "timing_wrapper.c")
             if not os.path.exists(c_timer):

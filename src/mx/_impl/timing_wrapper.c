@@ -25,7 +25,8 @@ int main(int argc, char *argv[]) {
     if (pid == 0) {
         // executing passed command in the child process
         execvp(argv[1], &argv[1]);
-		perror("execvp");
+        // we reach here only if execvp fails
+        perror("execvp");
         return 1;
     } else {
         // waiting for child process to finish, prints time and exits with same status
