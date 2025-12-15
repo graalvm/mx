@@ -6381,9 +6381,11 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
             raise ValueError("{} only produces multiple output".format(self))
         output_dir = self.get_output()
         contents = {}
-        for dirpath, _, filenames in os.walk(output_dir):
-            for filename in filenames:
-                file_path = join(dirpath, filename)
+        for dirpath, dirnames, filenames in os.walk(output_dir):
+            # Include regular files and symlinked directories from the output tree
+            names = itertools.chain(filenames, (d for d in dirnames if islink(join(dirpath, d))))
+            for name in names:
+                file_path = join(dirpath, name)
                 archive_path = relpath(file_path, output_dir) if use_relpath else basename(file_path)
                 contents[archive_path] = file_path
                 yield file_path, archive_path
@@ -6407,9 +6409,10 @@ class LayoutDirDistribution(LayoutDistribution, ClasspathDependency):
                 foreign_output = output_dir.replace(local_os_arch, platform)
                 if not isdir(foreign_output):
                     raise abort(f"Missing {platform} output directory for {self.name} ({foreign_output})")
-                for dirpath, _, filenames in os.walk(foreign_output):
-                    for filename in filenames:
-                        file_path = join(dirpath, filename)
+                for dirpath, dirnames, filenames in os.walk(foreign_output):
+                    names = itertools.chain(filenames, (d for d in dirnames if islink(join(dirpath, d))))
+                    for name in names:
+                        file_path = join(dirpath, name)
                         archive_path = relpath(file_path, foreign_output) if use_relpath else basename(file_path)
                         if archive_path in contents:
                             if _hash(file_path) != _hash(contents[archive_path]):
