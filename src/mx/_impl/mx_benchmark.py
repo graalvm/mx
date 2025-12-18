@@ -4094,8 +4094,7 @@ def get_tracker_class(tracker_name):
 
 def dump_jvm_args_command(suite: BenchmarkSuite | None, bmSuiteArgs: list[str], dump_path: str):
     """
-    Executes the command that dumps the JVM arguments used to execute every supported benchmark
-    from a suite, writing the output to a JSON file.
+    Dumps the JVM arguments used for all benchmarks in a suite into a JSON file.
 
     :param suite: the selected benchmark suite
     :param bmSuiteArgs: the arguments to the suite
