@@ -4092,13 +4092,13 @@ def get_tracker_class(tracker_name):
     return _available_trackers[tracker_name]
 
 
-def dump_jvm_args_command(suite: BenchmarkSuite | None, bmSuiteArgs: list[str], dump_path: str):
+def export_java_commands(suite: BenchmarkSuite | None, bmSuiteArgs: list[str], output_path: str):
     """
-    Dumps the JVM arguments used for all benchmarks in a suite into a JSON file.
+    Exports the Java commands (JVM arguments) that invoke benchmarks into a JSON file.
 
     :param suite: the selected benchmark suite
     :param bmSuiteArgs: the arguments to the suite
-    :param dump_path: the path to the output JSON file
+    :param output_path: the path to the output JSON file
     :return: the exit status
     """
     if not suite:
@@ -4116,8 +4116,8 @@ def dump_jvm_args_command(suite: BenchmarkSuite | None, bmSuiteArgs: list[str], 
             for name in suite.benchmarkList(bmSuiteArgs)
         ],
     }
-    with open(dump_path, 'w') as file:
-        json.dump(result, fp=file, indent=4)
+    with open(output_path, 'w') as file:
+        json.dump(result, fp=file, indent=2)
     return 0
 
 
@@ -4481,8 +4481,8 @@ class BenchmarkExecutor(object):
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
-            "--dump-jvm-args", default=None, type=str,
-            help="Dump the JVM args used to execute supported Java benchmarks from a suite to the specified JSON file."
+            "--export-java-commands", default=None, type=str,
+            help="Export the Java commands (JVM arguments) that invoke benchmarks into a JSON file."
         )
         parser.add_argument(
             "--fork-count-file", default=None,
@@ -4556,8 +4556,8 @@ class BenchmarkExecutor(object):
                             print("  " + name)
                 return 0
 
-            if mxBenchmarkArgs.dump_jvm_args:
-                return dump_jvm_args_command(suite, bmSuiteArgs, mxBenchmarkArgs.dump_jvm_args)
+            if mxBenchmarkArgs.export_java_commands:
+                return export_java_commands(suite, bmSuiteArgs, mxBenchmarkArgs.export_java_commands)
 
             if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
                 parser.print_help()
