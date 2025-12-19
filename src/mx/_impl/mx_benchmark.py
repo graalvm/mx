@@ -4482,7 +4482,7 @@ class BenchmarkExecutor(object):
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "--export-java-commands", default=None, type=str,
-            help="Export the Java commands (JVM arguments) that invoke benchmarks into a JSON file."
+            help="Export the Java commands (JVM arguments) that invoke benchmarks into a JSON file and exit without running them."
         )
         parser.add_argument(
             "--fork-count-file", default=None,
