@@ -4092,6 +4092,35 @@ def get_tracker_class(tracker_name):
     return _available_trackers[tracker_name]
 
 
+def export_java_commands(suite: BenchmarkSuite | None, bmSuiteArgs: list[str], output_path: str):
+    """
+    Exports the Java commands (JVM arguments) that invoke benchmarks into a JSON file.
+
+    :param suite: the selected benchmark suite
+    :param bmSuiteArgs: the arguments to the suite
+    :param output_path: the path to the output JSON file
+    :return: the exit status
+    """
+    if not suite:
+        mx.abort('No suite specified')
+    if not isinstance(suite, JavaBenchmarkSuite):
+        mx.abort(f'The {suite.name()} suite is not a Java benchmark suite')
+    result = {
+        'name': suite.benchSuiteName(bmSuiteArgs),
+        'version': suite.version(),
+        'benchmarks': [
+            {
+                'name': name,
+                'args': suite.createCommandLineArgs([name], bmSuiteArgs),
+            }
+            for name in suite.benchmarkList(bmSuiteArgs)
+        ],
+    }
+    with open(output_path, 'w') as file:
+        json.dump(result, fp=file, indent=2)
+    return 0
+
+
 class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
@@ -4452,6 +4481,10 @@ class BenchmarkExecutor(object):
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
+            "--export-java-commands", default=None, type=str,
+            help="Export the Java commands (JVM arguments) that invoke benchmarks into a JSON file and exit without running them."
+        )
+        parser.add_argument(
             "--fork-count-file", default=None,
             help="Path to the file that lists the number of re-executions for the targeted benchmarks,\nusing the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
@@ -4522,6 +4555,9 @@ class BenchmarkExecutor(object):
                         for name in noVmRegSuites:
                             print("  " + name)
                 return 0
+
+            if mxBenchmarkArgs.export_java_commands:
+                return export_java_commands(suite, bmSuiteArgs, mxBenchmarkArgs.export_java_commands)
 
             if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
                 parser.print_help()
