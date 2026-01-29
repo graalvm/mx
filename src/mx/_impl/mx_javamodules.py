@@ -1189,9 +1189,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                         assert not exists(extracted_dir), extracted_dir
                                         zf.extractall(dest_dir, entries)
                                         entries_dir = mx._derived_path(dest_dir, '.' + jmod_dir)
-                                        if exists(entries_dir):
-                                            shutil.rmtree(entries_dir)
-                                        os.rename(extracted_dir, entries_dir)
+                                        with mx.SafeDirectoryUpdater(entries_dir, create=False) as sdu:
+                                            # SafeDirectoryUpdater takes care of atomically removing entries_dir if it exists already
+                                            os.rename(extracted_dir, sdu.directory)
                                         jmod_args.extend([jmod_option, join(entries_dir)])
                         mx.run([default_jdk.exe_path('jmod')] + jmod_args + [jmod_path])
 
