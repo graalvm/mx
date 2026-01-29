@@ -42,7 +42,6 @@ import os
 import re
 import pickle
 import shutil
-import time
 from . import mx_javacompliance
 from os.path import join, exists, dirname, basename, isdir, islink
 from collections import defaultdict
@@ -1190,20 +1189,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                         assert not exists(extracted_dir), extracted_dir
                                         zf.extractall(dest_dir, entries)
                                         entries_dir = mx._derived_path(dest_dir, '.' + jmod_dir)
-                                        if exists(entries_dir):
-                                            shutil.rmtree(entries_dir)
-
-                                        # The rename below can fail with `PermissionError: [WinError 5] Access is denied:`
-                                        # The best guess is that this is caused by antivirus scanners on Windows.
-                                        retries = 0
-                                        while retries != 20:
-                                            try:
-                                                os.rename(extracted_dir, entries_dir)
-                                                time.sleep(0.1) # sleep for 100 ms
-                                                break
-                                            except PermissionError as e:
-                                                retries += 1
-                                                mx.warn(f"Retry {retries} after error renaming {extracted_dir} to {entries_dir}: {e}")
+                                        with mx.SafeDirectoryUpdater(entries_dir, create=False) as sdu:
+                                            # SafeDirectoryUpdater takes care of atomically removing entries_dir if it exists already
+                                            os.rename(extracted_dir, sdu.directory)
                                         jmod_args.extend([jmod_option, join(entries_dir)])
                         mx.run([default_jdk.exe_path('jmod')] + jmod_args + [jmod_path])
 
