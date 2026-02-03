@@ -283,10 +283,29 @@ def maven_local_repository():  # pylint: disable=invalid-name
 
     return _maven_local_repository
 
+_resolved_maven_repo_base_urls = False
+def _get_maven_repo_base_urls():
+    """
+    Gets the Maven repository base URLs from the MX_MAVEN_REPO_URLS environment variable.
+    If not set, returns the default Maven Central repositories.
+    The environment variable should contain a comma-separated list of URLs.
+    """
+    default_urls = [
+        "https://repo1.maven.org/maven2/",
+        "https://search.maven.org/remotecontent?filepath="
+    ]
+    global _resolved_maven_repo_base_urls
+    if _resolved_maven_repo_base_urls is False:
+        urls = mx.get_env('MX_MAVEN_REPO_URLS')
+        if urls:
+            _resolved_maven_repo_base_urls = urls.split(',')
+        else:
+            _resolved_maven_repo_base_urls = default_urls
+    return _resolved_maven_repo_base_urls
 
 def maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
     if baseURL is None:
-        baseURLs = mx._mavenRepoBaseURLs
+        baseURLs = _get_maven_repo_base_urls()
     else:
         baseURLs = [baseURL]
     classifier = f'-{classifier}' if classifier else ''

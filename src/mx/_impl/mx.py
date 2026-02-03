@@ -828,6 +828,7 @@ environment variables:
   MX_CACHE_DIR          Override the default location of the mx download cache. Defaults to `~/.mx/cache`.
   MX_GLOBAL_ENV         Override the default location of the global env file that is always loaded at startup.
                         Defaults to `~/.mx/env`. Can be disabled by setting it to an empty string.
+  MX_MAVEN_REPO_URLS    Comma-separated list of Maven repository base URLs. Defaults to Maven Central repositories.
   MX_GIT_CACHE          Use a cache for git objects during clones.
                          * Setting it to `reference` will clone repositories using the cache and let them
                            reference the cache (if the cache gets deleted these repositories will be
@@ -4566,10 +4567,6 @@ _removed_dists = {}
 _distTemplates = {}
 _licenses = {}
 _repositories = {}
-_mavenRepoBaseURLs = [
-    "https://repo1.maven.org/maven2/",
-    "https://search.maven.org/remotecontent?filepath="
-]
 
 """
 Map of the environment variables loaded by parsing the suites.
