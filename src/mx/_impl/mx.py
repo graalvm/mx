@@ -798,6 +798,7 @@ environment variables:
   MX_CACHE_DIR          Override the default location of the mx download cache. Defaults to `~/.mx/cache`.
   MX_GLOBAL_ENV         Override the default location of the global env file that is always loaded at startup.
                         Defaults to `~/.mx/env`. Can be disabled by setting it to an empty string.
+  MX_MAVEN_REPO_URLS    Comma-separated list of Maven repository base URLs. Defaults to Maven Central repositories.
   MX_GIT_CACHE          Use a cache for git objects during clones.
                          * Setting it to `reference` will clone repositories using the cache and let them
                            reference the cache (if the cache gets deleted these repositories will be
@@ -4534,10 +4535,26 @@ _removed_dists = dict()
 _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
-_mavenRepoBaseURLs = [
-    "https://repo1.maven.org/maven2/",
-    "https://search.maven.org/remotecontent?filepath="
-]
+
+_resolved_maven_repo_base_urls = False
+def _get_maven_repo_base_urls():
+    """
+    Gets the Maven repository base URLs from the MX_MAVEN_REPO_URLS environment variable.
+    If not set, returns the default Maven Central repositories.
+    The environment variable should contain a comma-separated list of URLs.
+    """
+    default_urls = [
+        "https://repo1.maven.org/maven2/",
+        "https://search.maven.org/remotecontent?filepath="
+    ]
+    global _resolved_maven_repo_base_urls
+    if _resolved_maven_repo_base_urls is False:
+        urls = get_env('MX_MAVEN_REPO_URLS')
+        if urls:
+            _resolved_maven_repo_base_urls = urls.split(',')
+        else:
+            _resolved_maven_repo_base_urls = default_urls
+    return _resolved_maven_repo_base_urls
 
 """
 Map of the environment variables loaded by parsing the suites.
@@ -11059,7 +11076,7 @@ def maven_local_repository():  # pylint: disable=invalid-name
 
 def maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
     if baseURL is None:
-        baseURLs = _mavenRepoBaseURLs
+        baseURLs = _get_maven_repo_base_urls()
     else:
         baseURLs = [baseURL]
     classifier = f'-{classifier}' if classifier else ''
