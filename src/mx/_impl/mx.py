@@ -14789,6 +14789,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
     parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored.\nIf the extension is ps, pdf, svg, png, git, or jpg, it will be rendered.', metavar='<path>', default=None)
     parser.add_argument('--dry-run', action='store_true', help='only print the build plan but don\'t build anything')
+    parser.add_argument('--download-only', action='store_true', help='only download all build dependencies into the mx cache but do not build anything')
 
     def get_default_build_logs():
         ret = get_env('MX_BUILD_LOGS')
@@ -14985,6 +14986,14 @@ def _build_with_report(cmd_args, build_report, parser=None):
             else:
                 log(str(task))
         log("-- Serialized build plan --")
+
+    if args.download_only:
+        # Ensure all downloadable dependencies are present in the mx cache so that a subsequent
+        # build can run without network access.
+        for t in sortedTasks:
+            if isinstance(t, LibraryDownloadTask):
+                t.build()
+        return
 
     if args.dry_run:
         return
