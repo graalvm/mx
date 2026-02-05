@@ -4107,12 +4107,11 @@ def _suggest_tlsv1_error(e):
 def _init_can_symlink():
     if 'symlink' in dir(os):
         try:
-            dst = join(dirname(__file__), f'.symlink_dst.{os.getpid()}')
-            while exists(dst):
-                dst = f'{dst}.{time.time()}'
-            os.symlink(__file__, dst)
-            os.remove(dst)
-            return True
+            # Use a temporary directory in case the mx directory is mounted read-only
+            with tempfile.TemporaryDirectory(prefix='mx_symlink_test.') as tmpdir:
+                dst = join(tmpdir, f'.symlink_dst')
+                os.symlink(__file__, dst)
+                return True
         except (OSError, NotImplementedError):
             pass
     return False
