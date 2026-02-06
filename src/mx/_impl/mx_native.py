@@ -374,7 +374,10 @@ class Ninja(object):
             return False, out.lines[0]
 
     def compdb(self, out):
-        self._run('-t', 'compdb', *self.targets, out=out)
+        if self.targets:
+            self._run('-t', 'compdb-targets', *self.targets, out=out)
+        else:
+            self._run('-t', 'compdb', out=out)
 
     def build(self):
         self._run(*self.targets)
