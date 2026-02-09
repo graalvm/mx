@@ -4,8 +4,9 @@ import os
 import shutil
 import sys
 import tempfile
+import unittest.mock as mock
 
-import mx_codeowners
+from mx._impl import mx_codeowners
 from mx._impl import mx
 
 # Note for future maintainer: if this is ever converted to pytest,
@@ -897,9 +898,63 @@ def test_codeowners_json_output():
         assert dicts_are_same_verbose(json_output, expected_json)
 
 
+def test_get_changed_file_paths_generate_cases():
+    yield (
+        "additions only",
+        "A\0newfile.txt\0",
+        [],
+        ["newfile.txt"],
+    )
+
+    yield (
+        "modifications only",
+        "M\0modified.txt\0",
+        [],
+        ["modified.txt"],
+    )
+
+    yield (
+        "deletions only",
+        "D\0deleted.txt\0",
+        [],
+        ["deleted.txt"],
+    )
+
+    yield (
+        "single rename",
+        "R100\0old_name.txt\0new_name.txt\0",
+        [],
+        ["old_name.txt", "new_name.txt"],
+    )
+
+    yield (
+        "mixed changes",
+        "A\0added.txt\0M\0modified.txt\0R100\0renamed_old.txt\0renamed_new.txt\0D\0deleted.txt\0",
+        [],
+        ["added.txt", "modified.txt", "renamed_old.txt", "renamed_new.txt", "deleted.txt"],
+    )
+
+    yield (
+        "with branch argument",
+        "M\0changed.txt\0",
+        ["master"],
+        ["changed.txt"],
+    )
+
+
+def test_parse_git_diff_output():
+    for test_name, git_output, extra_args, expected_relative_paths in test_get_changed_file_paths_generate_cases():
+        print("test_parse_git_diff_output('" + test_name + "')")
+
+        actual_paths = mx_codeowners.parse_git_diff_output(git_output)
+
+        assert actual_paths == expected_relative_paths, f"Expected {expected_relative_paths}, got {actual_paths}"
+
+
 def tests():
     test_owners_of()
     test_codeowners_json_output()
+    test_parse_git_diff_output()
 
 
 if __name__ == "__main__":

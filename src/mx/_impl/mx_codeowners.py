@@ -34,6 +34,7 @@ import argparse
 import fnmatch
 import json
 import os
+from typing import Optional, List
 
 from . import mx
 from . import mx_stoml
@@ -272,18 +273,54 @@ def _run_capture(args, must_succeed=True):
     cmd_rc = mx.run(args, must_succeed, cmd_stdout, cmd_stderr)
     return (cmd_rc, cmd_stdout.data, cmd_stderr.data)
 
-def _git_diff_name_only(extra_args=None):
-    args = ['git', 'diff', '--name-only', '-z']
+def parse_git_diff_output(output: str) -> List[str]:
+    """Parse git diff --name-status -z output into list of relative file paths.
+
+    For renames, includes both old and new paths.
+
+    Format:
+      Additions/Modifications/Deletions: "[A|M|D]\0<path>\0"
+      Renames: "R<similarity>\0<old>\0<new>\0"
+    """
+    entries = []
+    parts = output.split('\0')
+    i = 0
+    while i < len(parts):
+        if not parts[i]:
+            i += 1
+            continue
+        status = parts[i]
+        i += 1
+        if status.startswith('R'):
+            # Rename: status, old_path, new_path
+            old_path = parts[i]
+            i += 1
+            new_path = parts[i]
+            i += 1
+            entries.append(old_path)
+            entries.append(new_path)
+        else:
+            # A/M/D: status, path
+            path = parts[i]
+            i += 1
+            entries.append(path)
+    return [path for path in entries if path]
+
+def _get_git_diff_output(extra_args: Optional[List[str]] = None) -> str:
+    """Call git diff --name-status -z and return the raw output."""
+    args = ['git', 'diff', '--name-status', '-z']
     if extra_args:
         args.extend(extra_args)
     rc, out, _ = _run_capture(args)
     assert rc == 0
+    return out
+
+def _get_changed_file_paths(extra_args: Optional[List[str]] = None) -> List[str]:
+    output = _get_git_diff_output(extra_args)
     repo_root = _git_get_repo_root_or_cwd(False)
-    # Split the captured output (list of modified files) by the delimiter token ('\0'),
-    # filtering out any empty strings (the last delimiter is followed by nothing, or in case of no output)
-    # and then concatenating the path to the root of the repo to the relative paths of modified files. Example:
-    # 'README.md\0src/Foo.java\0' => ['README.md', 'src/Foo.java', ''] => ['README.md', 'src/Foo.java'] => ['/path/to/repo/README.md', '/path/to/repo/src/Foo.java']
-    return list(map(lambda x: os.path.join(repo_root, x), filter(lambda x: x != '', out.split('\0'))))
+    relative_paths = parse_git_diff_output(output)
+    # Convert relative paths to absolute paths
+    return [str(os.path.join(repo_root, path)) for path in relative_paths]
 
 def _git_get_repo_root_or_cwd(allow_cwd=True):
     rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'], False)
@@ -306,7 +343,7 @@ Can be executed in three modes.
 * Without any arguments at all it prints owners of currently modified
   but unstaged files (for Git). In other words, it prints possible
   reviewers for changed but uncommitted files. Internally uses
-  git diff --name-only to query list of files.
+  git diff --name-status to query list of files.
 
 * When -a or -b BRANCH is provided, it looks also for all files
   modified with comparison to given BRANCH (or to master with -a
@@ -419,10 +456,10 @@ def codeowners(args):
 
     if args.all_changes:
         # Current modifications and all changes up to the upstream branch
-        args.files = _git_diff_name_only([args.upstream_branch]) + _git_diff_name_only()
+        args.files = _get_changed_file_paths([args.upstream_branch]) + _get_changed_file_paths()
     elif not args.files:
         # No arguments, query list of currently modified files
-        args.files = _git_diff_name_only()
+        args.files = _get_changed_file_paths()
     repro_data['files'] = args.files
 
     file_owners = {f: owners.get_owners_of(os.path.abspath(f)) for f in args.files}
