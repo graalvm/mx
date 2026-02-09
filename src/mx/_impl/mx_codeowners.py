@@ -34,6 +34,7 @@ import argparse
 import fnmatch
 import json
 import os
+from typing import Optional, List
 
 from . import mx
 from . import mx_stoml
@@ -272,7 +273,7 @@ def _run_capture(args, must_succeed=True):
     cmd_rc = mx.run(args, must_succeed, cmd_stdout, cmd_stderr)
     return (cmd_rc, cmd_stdout.data, cmd_stderr.data)
 
-def parse_git_diff_output(output):
+def parse_git_diff_output(output: str) -> List[str]:
     """Parse git diff --name-status -z output into list of relative file paths.
 
     For renames, includes both old and new paths.
@@ -305,7 +306,7 @@ def parse_git_diff_output(output):
             entries.append(path)
     return [path for path in entries if path]
 
-def _get_git_diff_output(extra_args=None):
+def _get_git_diff_output(extra_args: Optional[List[str]] = None) -> str:
     """Call git diff --name-status -z and return the raw output."""
     args = ['git', 'diff', '--name-status', '-z']
     if extra_args:
@@ -314,12 +315,12 @@ def _get_git_diff_output(extra_args=None):
     assert rc == 0
     return out
 
-def _get_changed_file_paths(extra_args=None):
+def _get_changed_file_paths(extra_args: Optional[List[str]] = None) -> List[str]:
     output = _get_git_diff_output(extra_args)
     repo_root = _git_get_repo_root_or_cwd(False)
     relative_paths = parse_git_diff_output(output)
     # Convert relative paths to absolute paths
-    return [os.path.join(repo_root, path) for path in relative_paths]
+    return [str(os.path.join(repo_root, path)) for path in relative_paths]
 
 def _git_get_repo_root_or_cwd(allow_cwd=True):
     rc, out, _ = _run_capture(['git', 'rev-parse', '--show-toplevel'], False)
