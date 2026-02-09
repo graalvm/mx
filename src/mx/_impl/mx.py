@@ -4107,12 +4107,11 @@ def _suggest_tlsv1_error(e):
 def _init_can_symlink():
     if 'symlink' in dir(os):
         try:
-            dst = join(dirname(__file__), f'.symlink_dst.{os.getpid()}')
-            while exists(dst):
-                dst = f'{dst}.{time.time()}'
-            os.symlink(__file__, dst)
-            os.remove(dst)
-            return True
+            # Use a temporary directory in case the mx directory is mounted read-only
+            with tempfile.TemporaryDirectory(prefix='mx_symlink_test.') as tmpdir:
+                dst = join(tmpdir, f'.symlink_dst')
+                os.symlink(__file__, dst)
+                return True
         except (OSError, NotImplementedError):
             pass
     return False
@@ -14788,6 +14787,8 @@ def _build_with_report(cmd_args, build_report, parser=None):
     parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
     parser.add_argument('--gmake', action='store', help='path to the \'make\' executable that should be used', metavar='<path>', default=None)
     parser.add_argument('--graph-file', action='store', help='path where a DOT graph of the build plan should be stored.\nIf the extension is ps, pdf, svg, png, git, or jpg, it will be rendered.', metavar='<path>', default=None)
+    parser.add_argument('--dry-run', action='store_true', help='only print the build plan but don\'t build anything')
+    parser.add_argument('--download-only', action='store_true', help='only download all build dependencies into the mx cache but do not build anything')
 
     def get_default_build_logs():
         ret = get_env('MX_BUILD_LOGS')
@@ -14976,7 +14977,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
             with open(args.graph_file, 'wb') as f:
                 run(['dot', '-T' + ext, dot_file], out=f)
 
-    if _opts.very_verbose:
+    if _opts.very_verbose or args.dry_run:
         log("++ Serialized build plan ++")
         for task in sortedTasks:
             if task.deps:
@@ -14984,6 +14985,17 @@ def _build_with_report(cmd_args, build_report, parser=None):
             else:
                 log(str(task))
         log("-- Serialized build plan --")
+
+    if args.download_only:
+        # Ensure all downloadable dependencies are present in the mx cache so that a subsequent
+        # build can run without network access.
+        for t in sortedTasks:
+            if isinstance(t, LibraryDownloadTask):
+                t.build()
+        return
+
+    if args.dry_run:
+        return
 
     if not args.force_daemon and len(sortedTasks) == 1:
         # Spinning up a daemon for a single task doesn't make sense

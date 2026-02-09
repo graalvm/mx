@@ -41,6 +41,19 @@ Install it for example by `source`ing this script in your `~/.bashrc` file. If u
 
 [mx-honey](https://github.com/mukel/mx-honey) provides richer completions for `zsh` users.
 
+### Debugging mx
+
+If the `MX_DEBUG` environment variable is set (to any non-empty value), the `mx/mx` bash script will start `mx` with
+`debugpy` and wait for a debugger to attach. It listens on `localhost:5678`.
+
+Example:
+
+```
+MX_DEBUG=1 mx [global options] [command] [command-specific options]
+```
+
+Your python debugger should attach to `localhost` port `5678`.
+
 ### Suites
 
 The definition of a suite and its components is in a file named `suite.py` in the _mx metadata directory_ of the
