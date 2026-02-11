@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -25,7 +25,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-dir=`/bin/pwd`
+dir=$(pwd)
 
 # Resolve location of this script so that mx.py can be found in the same directory
 source="${BASH_SOURCE[0]}"
