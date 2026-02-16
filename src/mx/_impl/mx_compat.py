@@ -189,6 +189,12 @@ class MxCompatibility500(object):
         """
         return "3.0.0"
 
+    def spotbugs_suite_default(self):
+        """
+        Default spotbugs attribute value for projects in a suite.
+        """
+        return None
+
     def automatic_overlay_distribution_deps(self):
         """
         When a distribution depends on a project that has versioned overlays, are the
@@ -808,6 +814,17 @@ class MxCompatibility733(MxCompatibility728):
         return mx.VersionSpec("7.33.0")
 
     def automatically_export_jvmci_packages(self):
+        return False
+
+class MxCompatibility754(MxCompatibility733):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.54.6.2")
+
+    def spotbugs_version(self):
+        return "4.9.8"
+
+    def spotbugs_suite_default(self):
         return False
 
 def minVersion():

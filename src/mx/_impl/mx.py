@@ -1908,7 +1908,8 @@ class Suite(object):
             'externalProjects',
             'groupId',
             'release',
-            'ignore_suite_commit_info'
+            'ignore_suite_commit_info',
+            'spotbugs'
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -2033,6 +2034,11 @@ class Suite(object):
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
         if isinstance(self.defaultLicense, str):
             self.defaultLicense = [self.defaultLicense]
+
+        spotbugs = suiteDict.get('spotbugs', self.getMxCompatibility().spotbugs_suite_default())
+        if spotbugs not in (None, False, True):
+            abort(f"The 'spotbugs' attribute must be None, True or False, not a {type(spotbugs)}", context=self)
+        self.spotbugs = spotbugs
 
         if scmDict:
             try:
@@ -18595,7 +18601,7 @@ def main():
 _CACHE_DIR = get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache'))
 
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = VersionSpec("7.54.6.1")  # GR-66318: allow opening a package without any Java classes in it
+version = VersionSpec("7.54.6.2")  # GR-73403: Allow disabling spotbugs at suite level and add SpotBugs 4.9.8
 
 _mx_start_datetime = datetime.utcnow()
 
