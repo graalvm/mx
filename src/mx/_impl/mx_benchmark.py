@@ -103,6 +103,7 @@ __all__ = [
     "disable_tracker",
     "Tracker",
     "TimeTracker",
+    "PagefaultsTracker",
     "PsrecordTracker",
     "PsrecordMaxrssTracker",
     "RssPercentilesTracker",
@@ -151,6 +152,7 @@ from argparse import ArgumentParser, Namespace
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
 from collections import OrderedDict, abc, defaultdict
+from pathlib import Path
 from typing import Callable, Sequence, Iterable, Optional, Dict, Any, List, Collection, Generator
 from dataclasses import dataclass
 
@@ -172,6 +174,10 @@ def mx_benchmark_compatibility():
     """
     return mx.primary_suite().getMxCompatibility()
 
+
+def ensure_command_is_available(command: str, context: str):
+    if shutil.which(command) is None:
+        mx.abort("Aborting: please install '%s' %s" % (command, context))
 
 
 class JVMProfiler(object):
@@ -3952,7 +3958,6 @@ class EnergyConsumptionTracker(Tracker):
     """
     def __init__(self, bmSuite):
         import datetime
-        from pathlib import Path
         import atexit
 
         super().__init__(bmSuite)
@@ -4002,10 +4007,8 @@ class EnergyConsumptionTracker(Tracker):
         if mx.get_os() != "linux":
             mx.abort(f"Aborting: `powerstat` is only available on Linux.")
 
-        if shutil.which("powerstat") is None:
-            mx.abort(f"Aborting: please install 'powerstat'")
+        ensure_command_is_available("powerstat", "as it's required by the 'energy' tracker")
 
-        from pathlib import Path
         energy_poller_script_path = Path(__file__).resolve().parent / "energy_poller.py"
 
         args = [
@@ -4077,8 +4080,106 @@ class EnergyTrackerHook(DefaultTrackerHook):
     def should_apply(self, stage: Optional[Stage]) -> bool:
         return stage.is_final() if stage else False
 
+class PagefaultsTracker(Tracker):
+    """
+    Measures the page faults caused by the execution of the benchmark by wrapping the benchmark command with 'perf'
+    """
+    def get_hook(self) -> MapperHook:
+        """Returns a page-fault-tracking hook"""
+        return PagefaultsTrackerHook(self)
+
+    def map_command(self, cmd):
+        """
+        Wraps the 'cmd' with our page-fault script after checking that the OS is Linux and 'perf' is installed
+
+        Args:
+            cmd (list): the benchmark command
+
+        Returns:
+            list: the modified command containing the energy polling
+        """
+        if mx.get_os() != "linux":
+            mx.abort(f"Aborting: The 'pagefaults' tracker requires `perf` and `readelf` which are only available on Linux.")
+
+        command_context = "as it's required by the 'pagefaults' tracker"
+        ensure_command_is_available("perf", command_context)
+        ensure_command_is_available("readelf", command_context)
+
+        pagefaults_tracker_script_path = Path(__file__).resolve().parent / "pagefaults_tracker.py"
+
+        benchmarks = bm_exec_context().get("benchmarks")
+        bm_suite_args = bm_exec_context().get("bm_suite_args")
+        temp_dir = self.bmSuite.workingDirectory(benchmarks, bm_suite_args) or Path('.')
+
+        tracker_cmd = [
+            sys.executable,
+            str(pagefaults_tracker_script_path),
+            "--output-dir",
+            str(temp_dir)
+        ]
+
+        native_image_app_executable = self._get_native_image_app_executable()
+        if native_image_app_executable:
+            tracker_cmd.append("--native-image-app-executable=" + native_image_app_executable)
+
+        return tracker_cmd + cmd
+
+    def get_rules(self, bmSuiteArgs):
+        """
+        Defines the rules for parsing page fault metrics from the output.
+
+        Returns:
+            list of StdOutRule instances for page fault metrics
+        """
+        rules = []
+
+        pagefaults_patterns = {
+            "total": r"Total (?P<pagefault_type>[^ ]+) page faults caused by benchmark: (?P<total>[0-9]+)",
+            "anonymous-memory": r"(?P<pagefault_type>[^ ]+) page faults caused by anonymous memory: (?P<anonymous_memory>[0-9]+)"
+        }
+        if self._get_native_image_app_executable():
+            pagefaults_patterns["native-image"] = r"(?P<pagefault_type>[^ ]+) page faults caused by the native-image: (?P<native_image>[0-9]+)"
+            pagefaults_patterns["native-image-code"] = r"(?P<pagefault_type>[^ ]+) page faults caused by the native-image code section: (?P<native_image_code>[0-9]+)"
+            pagefaults_patterns["native-image-heap"] = r"(?P<pagefault_type>[^ ]+) page faults caused by the native-image image-heap section: (?P<native_image_heap>[0-9]+)"
+        for metric_object, pattern in pagefaults_patterns.items():
+            metric_object_name = metric_object.replace("-", "_")
+            metric_name = "page-faults" + ("" if metric_object == "total" else "-breakdown")
+            rule_dict = {
+                "benchmark": self.bmSuite.currently_running_benchmark(),
+                # metric.name must be one of: major-page-faults, major-page-faults-breakdown, minor-page-faults, minor-page-faults-breakdown
+                "metric.name": ("<pagefault_type>",
+                                lambda pagefault_type, metric_name=metric_name: pagefault_type.lower() + "-" + metric_name),
+                "metric.value": ("<" + metric_object_name + ">", int),
+                "metric.unit": "#",
+                "metric.type": "numeric",
+                "metric.better": "lower",
+                "metric.iteration": 0  # default for non-sample metrics
+            }
+            if metric_object != "total":
+                rule_dict["metric.object"] = metric_object
+            rules.append(StdOutRule(pattern, rule_dict))
+
+        return rules
+
+    def _get_native_image_app_executable(self):
+        """Retrieves the path to the app image built in the previous stage."""
+        vm = bm_exec_context().get("vm")
+        if hasattr(vm, "config") and hasattr(vm.config, "image_path") and vm.config.image_path is not None:
+            return str(vm.config.image_path)
+        return None
+
+class PagefaultsTrackerHook(DefaultTrackerHook):
+    """Hook for page faults tracking."""
+    def __init__(self, tracker: PagefaultsTracker):
+        assert isinstance(tracker, PagefaultsTracker)
+        super().__init__(tracker)
+
+    def should_apply(self, stage: Optional[Stage]) -> bool:
+        return stage and stage.is_final() and stage.is_run()
+
 _available_trackers = {
     "time": TimeTracker,
+    "pagefaults": PagefaultsTracker,
     "psrecord": PsrecordTracker,
     "psrecord+maxrss": PsrecordMaxrssTracker,
     "rsspercentiles": RssPercentilesTracker,
