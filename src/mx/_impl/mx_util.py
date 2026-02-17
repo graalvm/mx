@@ -234,6 +234,9 @@ class Stage:
     def from_string(s: str) -> Stage:
         return Stage(StageName(s))
 
+    def is_run(self) -> bool:
+        return self.stage_name.is_run()
+
     def is_image(self) -> bool:
         return self.stage_name.is_image()
 
@@ -267,6 +270,10 @@ class StageName(Enum):
 
     def __str__(self):
         return self.value
+
+    def is_run(self) -> bool:
+        """Whether this is a run stage (a stage that runs an image)"""
+        return self in [StageName.INSTRUMENT_RUN, StageName.RUN]
 
     def is_image(self) -> bool:
         """Whether this is an image stage (a stage that performs an image build)"""
