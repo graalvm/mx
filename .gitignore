@@ -24,3 +24,6 @@ eclipse-launches
 /.src-rev
 timing_wrapper
 .DS_Store
+.jdtls*
+opencode.json
+pyrightconfig.json
