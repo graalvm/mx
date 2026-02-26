@@ -4271,6 +4271,11 @@ class BenchmarkExecutor(object):
     def machineRam(self):
         return -1
 
+    def environmentConfig(self, mxBenchmarkArgs):
+        if hasattr(mxBenchmarkArgs, 'environment_config') and mxBenchmarkArgs.environment_config:
+            return mxBenchmarkArgs.environment_config
+        return mx.get_env("ENVIRONMENT_CONFIG", default="")
+
     def branch(self):
         mxsuite = mx.primary_suite()
         name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) if mxsuite.vc else '<unknown>'
@@ -4334,6 +4339,7 @@ class BenchmarkExecutor(object):
           "machine.cpu-clock": self.machineCpuClock(),
           "machine.cpu-family": self.machineCpuFamily(),
           "machine.ram": self.machineRam(),
+          "environment.config": self.environmentConfig(mxBenchmarkArgs),
           "extra.machine.platform": self.machinePlatform(),
           "branch": self.branch(),
           "build.url": self.buildUrl(),
@@ -4570,6 +4576,8 @@ class BenchmarkExecutor(object):
             "--machine-node", default=None, help="Machine node the benchmark is executed on.")
         parser.add_argument(
             "--machine-ip", default=None, help="Machine ip the benchmark is executed on.")
+        parser.add_argument(
+            "--environment-config", default=None, help="Environment configuration used for benchmark execution.")
         parser.add_argument(
             "--triggering-suite", default=None,
             help="Name of the suite that triggered this benchmark, used to extract commit info.")
