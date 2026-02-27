@@ -4339,7 +4339,7 @@ class BenchmarkExecutor(object):
           "machine.cpu-clock": self.machineCpuClock(),
           "machine.cpu-family": self.machineCpuFamily(),
           "machine.ram": self.machineRam(),
-          "environment.config": self.environmentConfig(mxBenchmarkArgs),
+          "environment-config": self.environmentConfig(mxBenchmarkArgs),
           "extra.machine.platform": self.machinePlatform(),
           "branch": self.branch(),
           "build.url": self.buildUrl(),
