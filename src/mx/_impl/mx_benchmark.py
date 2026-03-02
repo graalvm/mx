@@ -2704,9 +2704,27 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 with mx.DisableJavaDebugging():
                     vm_opts = _get_vm_options_for_config_extraction(args)
                     vm_args = vm_opts + ["-version"]
-                    mx.logv(f"Extracting vm info by calling : java {' '.join(vm_args)}")
+                    mx.logv(f"Extracting VM info by calling : java {' '.join(vm_args)}")
                     java_version_out = mx.TeeOutputCapture(mx.OutputCapture(), mx.logv)
                     code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
+                    if code == 1:
+                        server_args = vm_opts + ["-server", "-version"]
+                        mx.logv(f"Retrying VM info extraction with -server: java {' '.join(server_args)}")
+                        server_version_out = mx.TeeOutputCapture(mx.OutputCapture(), mx.logv)
+                        server_code = self.run_java(server_args, out=server_version_out, err=server_version_out, cwd=".")
+                        if server_code == 0:
+                            mx.warn(f"VM info extraction only succeeded after retrying with '-server' for VM '{self.name()}'.")
+                        java_version_out = server_version_out
+                        code = server_code
+                        if code == 1:
+                            fallback_args = ["-version"]
+                            mx.logv(f"Retrying VM info extraction without config extraction flags: java {' '.join(fallback_args)}")
+                            fallback_version_out = mx.TeeOutputCapture(mx.OutputCapture(), mx.logv)
+                            fallback_code = self.run_java(fallback_args, out=fallback_version_out, err=fallback_version_out, cwd=".")
+                            if fallback_code == 0:
+                                mx.warn(f"Extracted partial VM info since '{self.name()}' VM does not support -XX:+PrintCommandLineFlags.")
+                            java_version_out = fallback_version_out
+                            code = fallback_code
                     if code == 0:
                         command_output = java_version_out.data
                         gc, initial_heap, max_heap = _get_gc_info(command_output)
