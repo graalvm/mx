@@ -44,8 +44,6 @@ __all__ = [
 ]
 
 import json, os, re, time, zipfile, tempfile
-import urllib.request
-import urllib.parse
 
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
@@ -569,64 +567,17 @@ Note that setting MX_BUILD_EXPLODED=true can improve build times. See "Exploded 
     ''')
 
 
-def _opencode_pyright_langserver(cache_dir):
-    api = "https://api.github.com/repos/microsoft/pyright/releases/latest"
-    req = urllib.request.Request(api, headers={"Accept": "application/vnd.github+json"})
-    try:
-        with mx._urlopen(req) as fp:
-            release = json.load(fp)
-    except:
-        mx.abort("Error retrieving latest pyright release")
-    assets = release.get("assets", [])
-    urls = [
-        a.get("browser_download_url") for a in assets if a.get("name") == "pyright.tgz"
-    ]
-    urls = [u for u in urls if u]
-    if not urls:
-        mx.abort("Could not latest pyright release")
-    parsed = urllib.parse.urlparse(urls[0])
-    filename = basename(parsed.path)
-    archive_path = join(cache_dir, filename)
-    mx.download(archive_path, [urls[0]])
-
-    pyright_dir = join(cache_dir, "pyright")
-    mx_util.ensure_dir_exists(pyright_dir)
-    mx.Extractor.create(archive_path).extract(pyright_dir)
-    langserver_js = join(pyright_dir, "package", "dist", "pyright-langserver.js")
-    if not exists(langserver_js):
-        mx.abort("Could not find " + langserver_js)
-    return langserver_js
-
-
-def _opencode_jdtls_launcher(cache_dir):
-    base = "https://download.eclipse.org/jdtls/snapshots/"
-    latest_txt = base + "latest.txt"
-    try:
-        with mx._urlopen(latest_txt) as fp:
-            name = fp.read().decode("utf-8").strip()
-    except:
-        mx.abort("Error retrieving latest jdtls release")
-    if not name.endswith(".tar.gz"):
-        mx.abort("Unexpected content in " + latest_txt + ": " + name)
-    url = base + name
-    archive_path = join(cache_dir, name)
-    mx.download(archive_path, [url])
-    jdtls_dir = join(cache_dir, "jdtls")
-    mx_util.ensure_dir_exists(jdtls_dir)
-    mx.Extractor.create(archive_path).extract(jdtls_dir)
-    launcher = join(jdtls_dir, "bin", "jdtls")
-    if not exists(launcher):
-        mx.abort("Could not find " + launcher)
-    return launcher
-
-
-@mx.command(
-    "mx",
-    "opencodeinit",
-    usage_msg="Generate Eclipse project configuration and OpenCode config (opencode.json) for the primary suite.",
-)
+@mx.command("mx", "opencodeinit")
 def opencodeinit(args):
-    """(re)generate Eclipse project configurations for OpenCode and generate opencode.json + pyrightconfig.json"""
+    """Generate OpenCode configuration for the current workspace.
+
+        This command generates:
+          - opencode.json (OpenCode client config)
+          - pyrightconfig.json (Pyright project config)
+          - Java/JDTLS project configuration (via mx eclipseinit)
+        It is IDE-independent: the generated files are consumed by the OpenCode client and
+        by the automatic JDTLS and Pyright language servers.
+    """
     parser = ArgumentParser(prog="mx opencodeinit")
     parser.add_argument("--no-build", action="store_false", dest="buildProcessorJars", help="Do not build annotation processor jars.")
     parser.add_argument("-f", "--force", action="store_true", dest="force", default=False, help="Ignore timestamps when updating files.")
@@ -638,14 +589,14 @@ def opencodeinit(args):
     dists = sorted([d.get_ide_project_dir() for suite in mx.suites(True) for d in suite.dists if exists(join(getattr(d, "get_ide_project_dir", lambda: "")() or "", ".project"))])
     workspace_folders = [Path(p).absolute().as_uri() for p in projects + dists]
 
-    cache_dir = mx_util.ensure_dir_exists(join(mx._cache_dir(), "opencode-tools"))
-    pyright_langserver_js = _opencode_pyright_langserver(cache_dir)
-    jdtls_launcher = _opencode_jdtls_launcher(cache_dir)
-
     primary = mx.primary_suite()
-    opencode_path = join(primary.dir, "opencode.json")
-    jdtls_config_dir = join(primary.dir, ".jdtls", "config")
-    jdtls_data_dir = join(primary.dir, ".jdtls", "data")
+
+    out_dir = os.getcwd()
+    opencode_path = join(out_dir, "opencode.json")
+    pyrightconfig_path = join(out_dir, "pyrightconfig.json")
+
+    jdtls_config_dir = join(out_dir, ".jdtls", "config")
+    jdtls_data_dir = join(out_dir, ".jdtls", "data")
     mx_util.ensure_dir_exists(jdtls_config_dir)
     mx_util.ensure_dir_exists(jdtls_data_dir)
 
@@ -670,7 +621,7 @@ def opencodeinit(args):
             "jdtls": {"disabled": True},
             "mxjdtls": {
                 "command": [
-                    jdtls_launcher,
+                    "jdtls",
                     "-configuration",
                     "./.jdtls/config",
                     "-data",
@@ -725,11 +676,6 @@ def opencodeinit(args):
                     "workspaceFolders": workspace_folders,
                 },
             },
-            "pyright": {"disabled": True},
-            "mxpyright": {
-                "command": ["node", pyright_langserver_js, "--stdio"],
-                "extensions": [".py"],
-            },
         },
     }
 
@@ -737,7 +683,6 @@ def opencodeinit(args):
         json.dump(opencode, fp, indent=4)
         fp.write("\n")
 
-    pyrightconfig_path = join(primary.dir, "pyrightconfig.json")
     mx_pkg_dir = join(primary.dir, "mx." + primary.name)
     extra_paths = []
     if exists(mx_pkg_dir):
@@ -761,9 +706,9 @@ Generated:
   {opencode_path}
   {pyrightconfig_path}
 
-Cached tools:
-  {pyright_langserver_js}
-  {jdtls_launcher}
+Make sure you have pyright and jdtls installed an on your PATH for opencode to pick them up and take advantage of incremental builds and IDE-level tooling for Python and Java code.
+  https://github.com/microsoft/pyright
+  https://github.com/eclipse-jdtls/eclipse.jdt.ls
 ----------------------------------------------
     """)
 
