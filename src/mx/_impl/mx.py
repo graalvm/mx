@@ -15367,6 +15367,10 @@ pylint_ver_map = {
     (2, 4): {
         'rcfile': '.pylintrc24',
         'additional_options': ['--score=n']
+    },
+    (3, 2): {
+        'rcfile': '.pylintrc32',
+        'additional_options': ['--score=n']
     }
 }
 
