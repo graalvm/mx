@@ -962,6 +962,9 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
             assert jmod_version is None or jmod_version in all_versions
 
+            # module-info.class entries collected across all versions for atomic JAR finalization
+            pending_module_infos = []  # list of (arcname, bytes)
+
             for version in all_versions:
                 restore_files = {}
                 with mx.Timer('jmd@' + version, times):
@@ -1197,12 +1200,15 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
                 with mx.Timer('jar@' + version, times):
                     if not archive.exploded:
-                        # Append the module-info.class
+                        # Buffer module-info.class for atomic JAR finalization below.
+                        # Do NOT append directly to module_jar here: a non-atomic ZipFile
+                        # append is vulnerable to corruption when concurrent Eclipse async
+                        # archive builders operate on the same distribution simultaneously.
                         module_info_arc_dir = '' if version == 'common' else _versioned_prefix + version + '/'
-                        with ZipFile(module_jar, 'a') as zf:
-                            module_info_class = join(dest_dir, 'module-info.class')
-                            arcname = module_info_arc_dir + basename(module_info_class)
-                            zf.write(module_info_class, arcname)
+                        module_info_class = join(dest_dir, 'module-info.class')
+                        arcname = module_info_arc_dir + basename(module_info_class)
+                        with open(module_info_class, 'rb') as f:
+                            pending_module_infos.append((arcname, f.read()))
                         os.remove(module_info_class)
 
                 if restore_files:
@@ -1211,8 +1217,26 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         if restore is not None:
                             restore()
 
-            if files_to_remove:
-                with mx.Timer('cleanup', times), mx_util.SafeFileCreation(module_jar) as sfc:
+            if pending_module_infos:
+                if files_to_remove:
+                    # Full rewrite needed to drop versioned service entries. Use
+                    # SafeFileCreation (write-to-temp + atomic rename) for safety.
+                    with mx.Timer('finalize_jar', times), mx_util.SafeFileCreation(module_jar) as sfc:
+                        with ZipFile(module_jar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
+                            for info in inzf.infolist():
+                                if info.filename not in files_to_remove:
+                                    outzf.writestr(info, inzf.read(info))
+                            for arcname, contents in pending_module_infos:
+                                outzf.writestr(arcname, contents)
+                else:
+                    # Fast path: direct ZipFile append to the live JAR. This is safe
+                    # because make_archive holds an exclusive flock (Fix 2) that
+                    # prevents concurrent archive processes from racing on this file.
+                    with mx.Timer('finalize_jar', times), ZipFile(module_jar, 'a') as zf:
+                        for arcname, contents in pending_module_infos:
+                            zf.writestr(arcname, contents)
+            elif files_to_remove:
+                with mx.Timer('finalize_jar', times), mx_util.SafeFileCreation(module_jar) as sfc:
                     with ZipFile(module_jar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
                         for info in inzf.infolist():
                             if info.filename not in files_to_remove:
