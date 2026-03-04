@@ -569,7 +569,7 @@ Note that setting MX_BUILD_EXPLODED=true can improve build times. See "Exploded 
 
 @mx.command("mx", "opencodeinit")
 def opencodeinit(args):
-    """Generate OpenCode configuration for the current workspace.
+    """Generate an OpenCode configuration in the current working directory.
 
         This command generates:
           - opencode.json (OpenCode client config)
