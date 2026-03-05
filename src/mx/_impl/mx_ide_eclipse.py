@@ -706,7 +706,9 @@ Generated:
   {opencode_path}
   {pyrightconfig_path}
 
-Make sure you have pyright and jdtls installed an on your PATH for opencode to pick them up and take advantage of incremental builds and IDE-level tooling for Python and Java code.
+You can now run `opencode` in this directory, and it will pick up the configuration.
+
+Make sure you have `pyright-langserver` and `jdtls` on your PATH for opencode to take advantage of incremental builds and IDE-level tooling for Python and Java code.
   https://github.com/microsoft/pyright
   https://github.com/eclipse-jdtls/eclipse.jdt.ls
 ----------------------------------------------
