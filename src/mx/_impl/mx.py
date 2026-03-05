@@ -15433,7 +15433,7 @@ def pylint(args):
     timestamps_dir = None
     if suite:
         timestamps_dir = join(suite.get_mx_output_dir(), 'pylint-timestamps')
-        if args.force:
+        if args.force and exists(timestamps_dir):
             rmtree(timestamps_dir)
         ensure_dir_exists(timestamps_dir)
 
@@ -15518,7 +15518,8 @@ def _get_env_with_pythonpath():
     env = os.environ.copy()
     pythonpath = _src_path
     for suite in suites(True):
-        pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
+        if suite.mxDir:
+            pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
     env['PYTHONPATH'] = pythonpath
     return env
 

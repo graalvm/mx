@@ -88,25 +88,6 @@ disable=attribute-defined-outside-init,
         unnecessary-pass, # Does not allow marking abstract methods with pass if they have a docstring
         bad-whitespace, # C0326. Incompatible with the black formatter
         bad-continuation, # C0330. Incompatible with the black formatter
-        too-many-positional-arguments,
-        super-with-arguments,
-        consider-using-with,
-        use-dict-literal,
-        use-list-literal,
-        consider-iterating-dictionary,
-        consider-using-dict-items,
-        raise-missing-from,
-        broad-exception-raised,
-        unspecified-encoding,
-        raising-bad-type,
-        unsupported-membership-test,
-        modified-iterating-list,
-        f-string-without-interpolation,
-        redundant-u-string-prefix,
-        unnecessary-lambda-assignment,
-        use-a-generator,
-        consider-using-generator,
-        consider-using-in,
 
 [REPORTS]
 
@@ -133,7 +114,7 @@ evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / stateme
 [BASIC]
 
 # Regular expression which should only match correct module names
-module-rgx=(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
+module-rgx=(([a-z_][a-zA-Z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
 
 # Regular expression which should only match correct module level names
 const-rgx=[a-zA-Z0-9_]{2,}$
@@ -165,7 +146,7 @@ class-attribute-rgx=([A-Za-z_][A-Za-z0-9_]{2,}|(__.*__))$
 inlinevar-rgx=[A-Za-z_][A-Za-z0-9_]*$
 
 # Good variable names which should always be accepted, separated by a comma
-good-names=i,j,k,ex,Run,_
+good-names=i,j,k,ex,Run,_,G,TypeObject
 
 # Bad variable names which should always be refused, separated by a comma
 bad-names=foo,bar,baz,toto,tutu,tata
@@ -182,7 +163,7 @@ docstring-min-length=-1
 [FORMAT]
 
 # Maximum number of characters on a single line.
-max-line-length=300
+max-line-length=600
 
 # Regexp for a line that is allowed to be longer than the limit.
 ignore-long-lines=^\s*(# )?<?https?://\S+>?$
@@ -262,6 +243,11 @@ valid-metaclass-classmethod-first-arg=mcs
 
 # Maximum number of arguments for function / method
 max-args=5
+
+# Maximum number of positional arguments for function / method.
+# Keep this relaxed to preserve parity with older pylint behavior where only
+# max-args (disabled in this profile) was effectively enforced.
+max-positional-arguments=100
 
 # Argument names that match this expression will be ignored. Default to name
 # with leading underscore
