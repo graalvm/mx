@@ -44,12 +44,14 @@ __all__ = [
 ]
 
 import json, os, re, time, zipfile, tempfile
+
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
 from contextlib import ExitStack
 from os.path import join, basename, dirname, exists, isdir, abspath
+from pathlib import Path
 from io import StringIO
 
 from .ide import project_processor
@@ -563,6 +565,154 @@ The recommended next steps are:
 Note that setting MX_BUILD_EXPLODED=true can improve build times. See "Exploded builds" in the mx README.md.
 ----------------------------------------------
     ''')
+
+
+@mx.command("mx", "opencodeinit")
+def opencodeinit(args):
+    """Generate an OpenCode configuration in the current working directory.
+
+        This command generates:
+          - opencode.json (OpenCode client config)
+          - pyrightconfig.json (Pyright project config)
+          - Java/JDTLS project configuration (via mx eclipseinit)
+        It is IDE-independent: the generated files are consumed by the OpenCode client and
+        by the automatic JDTLS and Pyright language servers.
+    """
+    parser = ArgumentParser(prog="mx opencodeinit")
+    parser.add_argument("--no-build", action="store_false", dest="buildProcessorJars", help="Do not build annotation processor jars.")
+    parser.add_argument("-f", "--force", action="store_true", dest="force", default=False, help="Ignore timestamps when updating files.")
+    args = parser.parse_args(args)
+
+    eclipseinit(None, args.buildProcessorJars, logToConsole=True, force=args.force, absolutePaths=True, pythonProjects=False)
+
+    projects = sorted([p.dir for suite in mx.suites(True) for p in suite.projects if exists(join(p.dir, ".project"))])
+    dists = sorted([d.get_ide_project_dir() for suite in mx.suites(True) for d in suite.dists if exists(join(getattr(d, "get_ide_project_dir", lambda: "")() or "", ".project"))])
+    workspace_folders = [Path(p).absolute().as_uri() for p in projects + dists]
+
+    primary = mx.primary_suite()
+
+    out_dir = os.getcwd()
+    opencode_path = join(out_dir, "opencode.json")
+    pyrightconfig_path = join(out_dir, "pyrightconfig.json")
+
+    jdtls_config_dir = join(out_dir, ".jdtls", "config")
+    jdtls_data_dir = join(out_dir, ".jdtls", "data")
+    mx_util.ensure_dir_exists(jdtls_config_dir)
+    mx_util.ensure_dir_exists(jdtls_data_dir)
+
+    runtimes = []
+    if _EclipseJRESystemLibraries:
+        for idx, name in enumerate(_EclipseJRESystemLibraries):
+            def abortWithException(*args):
+                raise FileNotFoundError
+            try:
+                runtimes.append({
+                    "name": name,
+                    "path": mx.get_jdk(re.sub("[^0-9]+", "", name), abortCallback=abortWithException).home,
+                    "default": idx == 0
+                })
+            except FileNotFoundError:
+                continue
+
+    opencode = {
+        "$schema": "https://opencode.ai/config.json",
+        "share": "disabled",
+        "lsp": {
+            "jdtls": {"disabled": True},
+            "mxjdtls": {
+                "command": [
+                    "jdtls",
+                    "-configuration",
+                    "./.jdtls/config",
+                    "-data",
+                    "./.jdtls/data",
+                ],
+                "extensions": [".java"],
+                "initialization": {
+                    "settings": {
+                        "java": {
+                            "errors": {"incompleteClasspath": {"severity": "warning"}},
+                            "autobuild": {"enabled": False},
+                            "configuration": {
+                                "checkProjectSettingsExclusions": True,
+                                "updateBuildConfiguration": "automatic",
+                                "runtimes": runtimes,
+                            },
+                            "jdt": {
+                                "ls": {
+                                    "javac": {
+                                        "enabled": True,
+                                    },
+                                },
+                            },
+                            "import": {
+                                "gradle": {
+                                    "enabled": False,
+                                },
+                                "maven": {
+                                    "enabled": False,
+                                },
+                                "exclusions": [
+                                    "**/node_modules/**",
+                                    "**/.metadata/**",
+                                    "**/archetype-resources/**",
+                                    "**/META-INF/maven/**",
+                                ],
+                                "generatesMetadataFilesAtProjectRoot": False,
+                            },
+                            "eclipse": {"downloadSources": False},
+                            "project": {
+                                "resourceFilters": [
+                                    "node_modules",
+                                    ".metadata",
+                                    "archetype-resources",
+                                    "META-INF/maven",
+                                ],
+                                "importOnFirstTimeStartup": "automatic",
+                                "encoding": "ignore",
+                            },
+                        }
+                    },
+                    "workspaceFolders": workspace_folders,
+                },
+            },
+        },
+    }
+
+    with open(opencode_path, "w") as fp:
+        json.dump(opencode, fp, indent=4)
+        fp.write("\n")
+
+    mx_pkg_dir = join(primary.dir, "mx." + primary.name)
+    extra_paths = []
+    if exists(mx_pkg_dir):
+        extra_paths.append(mx._mx_suite.dir)
+    pyrightconfig = {
+        "typeCheckingMode": "basic",
+        "include": [mx_pkg_dir] if exists(mx_pkg_dir) else [],
+        "exclude": ["**/node_modules", "**/__pycache__", "**/.git", "**/.mxbuild"],
+    }
+    if extra_paths:
+        pyrightconfig["extraPaths"] = extra_paths
+    with open(pyrightconfig_path, "w") as fp:
+        json.dump(pyrightconfig, fp, indent=4)
+        fp.write("\n")
+
+    mx.log(f"""
+----------------------------------------------
+OpenCode init successfully completed.
+
+Generated:
+  {opencode_path}
+  {pyrightconfig_path}
+
+You can now run `opencode` in this directory, and it will pick up the configuration.
+
+Make sure you have `pyright-langserver` and `jdtls` on your PATH for opencode to take advantage of incremental builds and IDE-level tooling for Python and Java code.
+  https://github.com/microsoft/pyright
+  https://github.com/eclipse-jdtls/eclipse.jdt.ls
+----------------------------------------------
+    """)
 
 
 @mx.command('mx', 'eclipseinit')
