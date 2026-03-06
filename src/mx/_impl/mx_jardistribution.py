@@ -334,28 +334,49 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         bin_archive = _Archive(self, self.original_path(), exploded, zipfile.ZIP_DEFLATED if self.compress else zipfile.ZIP_STORED)
         src_archive = _Archive(self, self.sourcesPath, exploded, zipfile.ZIP_DEFLATED) if not unified else bin_archive
 
-        bin_archive.clean()
-        src_archive.clean()
+        # Acquire an advisory exclusive lock before touching the shared staging directory
+        # and JAR file. With MX_IDE_ECLIPSE_ASYNC_DISTRIBUTIONS=true, Eclipse spawns
+        # concurrent mx archive processes for the same distribution, which would otherwise
+        # race on the staging directory and corrupt the output JAR.
+        _fcntl = None
+        _lock_file = None
+        try:
+            import fcntl as _fcntl
+            _lock_file = open(self.original_path() + '.archivelock', 'w')
+            _fcntl.flock(_lock_file, _fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass  # No file locking on Windows or if it fails for any other reason
 
-        stager = _ArchiveStager(bin_archive, src_archive, exploded)
+        try:
+            bin_archive.clean()
+            src_archive.clean()
 
-        # GR-31142
-        latest_bin_archive = join(self.suite.get_output_root(False, False), "dists", os.path.basename(bin_archive.path))
-        _stage_file_impl(bin_archive.path, latest_bin_archive)
+            stager = _ArchiveStager(bin_archive, src_archive, exploded)
 
-        with mx.open(self._config_save_file(), 'w') as fp:
-            fp.write(self._config_as_json())
+            # GR-31142
+            latest_bin_archive = join(self.suite.get_output_root(False, False), "dists", os.path.basename(bin_archive.path))
+            _stage_file_impl(bin_archive.path, latest_bin_archive)
 
-        self.notify_updated()
-        compliance = self._compliance_for_build()
-        if compliance is not None and compliance >= '9':
-            jdk = mx.get_jdk(compliance)
-            jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
-            if jmd:
-                setattr(self, '.javaModule', jmd)
+            with mx.open(self._config_save_file(), 'w') as fp:
+                fp.write(self._config_as_json())
 
-        if self.is_stripped():
-            self.strip_jar()
+            self.notify_updated()
+            compliance = self._compliance_for_build()
+            if compliance is not None and compliance >= '9':
+                jdk = mx.get_jdk(compliance)
+                jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
+                if jmd:
+                    setattr(self, '.javaModule', jmd)
+
+            if self.is_stripped():
+                self.strip_jar()
+        finally:
+            if _lock_file is not None:
+                try:
+                    _fcntl.flock(_lock_file, _fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                _lock_file.close()
 
     # See https://docs.oracle.com/en/java/javase/16/docs/api/java.instrument/java/lang/instrument/package-summary.html
     _javaagent_manifest_attributes = ('Premain-Class', 'Agent-Class')
