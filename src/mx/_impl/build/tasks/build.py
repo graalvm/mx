@@ -32,7 +32,7 @@ __all__ = [
     "BuildTask"
 ]
 
-import datetime, time, os, sys
+import datetime, time, os, sys, json
 import multiprocessing.dummy as multiprocessing
 from abc import abstractmethod
 from os import path
@@ -80,33 +80,44 @@ class BuildTask(Buildable, Task):
 
     def __init__(self, subject: Dependency, args: Args, parallelism: int):
         super(BuildTask, self).__init__(subject, args, parallelism)
-        self._saved_deps_path = path.join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                          subject._extra_artifact_discriminant(), self.name)
+        self._saved_config_path = path.join(subject.suite.get_mx_output_dir(), 'savedConfig', type(subject).__name__,
+                                            subject._extra_artifact_discriminant(), self.name)
 
-    def _persist_deps(self) -> None:
+    def _get_config(self) -> dict:
         """
-        Saves the dependencies for this task's subject to a file.
+        Gets the config for this task's subject.
         """
+        config = {}
         if self.deps:
-            with SafeFileCreation(self._saved_deps_path) as sfc:
-                with open(sfc.tmpPath, 'w') as f:
-                    for d in self.deps:
-                        print(d.subject.name, file=f)
-        elif path.exists(self._saved_deps_path):
-            os.remove(self._saved_deps_path)
+            config["deps"] = [d.name for d in self.deps]
+        if hasattr(self.subject, "_orig_attrs"):
+            config.update(self.subject._orig_attrs)
+        return config or None
 
-    def _deps_changed(self) -> bool:
+    def _persist_config(self) -> None:
         """
-        Returns True if there are saved dependencies for this task's subject and
-        they have changed since the last time it was built.
+        Saves the config for this task's subject to a file.
         """
-        if path.exists(self._saved_deps_path):
-            with open(self._saved_deps_path) as f:
-                last_deps = f.read().splitlines()
+        config = self._get_config()
+        if config:
+            with SafeFileCreation(self._saved_config_path) as sfc:
+                with open(sfc.tmpPath, 'w') as f:
+                    json.dump(config, f)
+        elif path.exists(self._saved_config_path):
+            os.remove(self._saved_config_path)
+
+    def _has_config_changed(self) -> bool:
+        """
+        Returns True if there is a saved config for this task's subject,
+        and it has changed since the last time it was built.
+        """
+        if path.exists(self._saved_config_path):
+            with open(self._saved_config_path) as f:
+                old_config = json.load(f)
         else:
-            last_deps = []
-        curr_deps = [d.subject.name for d in self.deps]
-        return last_deps != curr_deps
+            old_config = None
+        new_config = self._get_config()
+        return old_config != new_config
 
     def execute(self):
         """
@@ -130,9 +141,9 @@ class BuildTask(Buildable, Task):
                     reason = f'dependency {updated[0].subject} updated'
                 else:
                     reason = 'dependencies updated: ' + ', '.join(str(u.subject) for u in updated)
-        if not buildNeeded and self._deps_changed():
+        if not buildNeeded and self._has_config_changed():
             buildNeeded = True
-            reason = 'dependencies were added, removed or re-ordered'
+            reason = 'config was changed'
         if not buildNeeded:
             newestInput = None
             newestInputDep = None
@@ -167,7 +178,7 @@ class BuildTask(Buildable, Task):
                 # In concurrent builds, this helps identify on the console which build failed
                 log(self._timestamp() + f"{self}: Failed due to error: {sys.exc_info()[1]}")
                 raise
-            self._persist_deps()
+            self._persist_config()
             # The build task is `built` if the `build()` function returns True or None (legacy)
             self.built = _built or _built is None
             self.logBuildDone(time.time() - start_time)
