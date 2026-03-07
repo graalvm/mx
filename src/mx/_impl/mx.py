@@ -8062,8 +8062,11 @@ class ECJCompiler(JavacLikeCompiler):
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
         jdtPropertiesSources = project.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
-        if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources):
-            # Try to fix a missing or out of date properties file by running eclipseinit
+        if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources + [project.suite.suite_py()]):
+            # Try to fix a missing or out of date properties file by running eclipseinit.
+            # The out-of-date check includes the suite.py file in which the project is defined
+            # to ensure any change to a project (such as changing the javaCompliance) that can
+            # impact the JDT config results in the JDT config being updated.
             project._eclipseinit()
         if not exists(jdtProperties):
             log(f'JDT properties file {jdtProperties} not found')
