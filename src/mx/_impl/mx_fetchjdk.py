@@ -57,7 +57,7 @@ def fetch_jdk_cli(args):
     fetch_jdk(args)
 
 
-def fetch_jdk(args):
+def fetch_jdk(args, force=None):
     """
     Installs a JDK based on the coordinates in `args`. See ``mx fetch-jdk --help`` for more info.
     Note that if a JDK already exists at the installation location denoted by `args`, no action is taken.
@@ -76,7 +76,7 @@ def fetch_jdk(args):
     artifact = jdk_binary._folder_name
     final_path = jdk_binary.get_final_path(jdks_dir)
     urls = [mx_urlrewrites.rewriteurl(url) for url in jdk_binary.urls()]
-    if not is_quiet():
+    if not force and not is_quiet():
         if not mx.ask_yes_no(f"Install {artifact} to {final_path}", default='y'):
             mx.abort("JDK installation canceled")
     if (not settings["digest-check"] or settings["keep-archive"]) and exists(final_path):
@@ -258,8 +258,10 @@ def _parse_args(args):
 
         The set of JDKs available for download are specified by the "jdks" field of the JSON
         object loaded by --configuration. The "jdks" field is itself is an object whose field names
-        are JDK identifiers and whose values are objects that must include "version". The JDK object
-        fields "build_id" and "extrabundles" are also specially handled. For example:
+        are JDK identifiers and whose values are objects that must include "version".
+        A JDK object can have a "default" field set to true to denote it is the default JDK to be
+        used if no other JDK is specified. There can be at most one default JDK.
+        The JDK object fields "build_id" and "extrabundles" are also specially handled. For example:
 
         {
           "jdks": {
@@ -382,7 +384,7 @@ def _parse_args(args):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
                  "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
-    jdk_binaries, jdk_defs = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
+    jdk_binaries, jdk_defs, _, _, default_jdk_ids = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
 
     settings["list"] = args.list
 
@@ -399,7 +401,7 @@ def _parse_args(args):
         if is_quiet():
             parser.print_usage()
             mx.abort('A <jdk-id> must be provided in quiet mode.')
-        settings["jdk-binary"] = _choose_jdk_binary(jdk_binaries)
+        settings["jdk-binary"] = _choose_jdk_binary(jdk_binaries, _first_default_jdk_with_binary(default_jdk_ids or [], jdk_binaries))
 
     if args.alias is not None:
         if args.alias == "-":
@@ -468,12 +470,25 @@ def _default_jdk_binaries_location():
     return default_jdk_binaries_location
 
 
-def _get_jdk_binaries(arch, binaries, configuration):
+def _get_jdk_binaries(arch=None, binaries=None, configuration=None):
+    """
+    Central helper that determines where to read JDK definitions and
+    binary location templates from, parses them, and returns structured
+    data for downstream selection/installation logic.
+    :return: a `(jdk_binaries, jdk_defs, jdk_defs_location, jdk_binaries_locations, default_jdk_id)` tuple:
+      - `jdk_binaries`: dict[str, _JdkBinary], used to list/select/install a concrete JDK binary.
+      - `jdk_defs`: ordered dict of JDK definitions from common.json.
+      - `jdk_defs_location`: the path to the ``common.json`` used.
+      - `jdk_binaries_locations`: list of ``jdk-binaries.json`` files that were merged.
+      - `default_jdk_ids`: list of the ids of the default JDKs or None if no default JDKs are specified
+    """
+    if arch is None:
+        arch = mx.get_arch()
     jdk_defs_location = _check_exists_or_None(configuration) or common_json_location()
     jdk_binaries_locations = (binaries or _default_jdk_binaries_location()).split(os.pathsep)
-    jdk_defs = _parse_jdk_defs(jdk_defs_location)
+    jdk_defs, default_jdk_ids = _parse_jdk_defs(jdk_defs_location)
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_defs, arch)
-    return jdk_binaries, jdk_defs
+    return jdk_binaries, jdk_defs, jdk_defs_location, jdk_binaries_locations, default_jdk_ids
 
 
 def default_jdks_dir():
@@ -494,24 +509,49 @@ def get_jdk_dir(to, arch):
 @command('mx', 'get-jdk-path', '[options]')
 @suite_context_free
 def get_jdk_path_cli(args):
-    print(get_jdk_path(args))
+    _, jdk_path = get_jdk_path(args)
+    print(jdk_path)
 
+def _first_default_jdk_with_binary(default_jdk_ids, jdk_binaries):
+    for jdk_id in default_jdk_ids:
+        if jdk_id in jdk_binaries:
+            return jdk_id
+    return None
 
 def get_jdk_path(args):
+    """
+    Computes and returns the local filesystem path where a given JDK id would live
+    (based on configuration), without downloading or checking the filesystem.
+    :return: a `(jdk_id, jdk_path)` tuple:
+      - `jdk_id`: the JDK id selected by args
+      - `jdk_path`: the local filesystem path for the JDK named by `jdk_id`
+    """
     parser = ArgumentParser(prog='mx get-jdk-path', description='Returns the local path to the first existing <jdk-id>')
-    parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+', help='JDK ids to lookup. The first existing is chosen.')
+    parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+',
+                        help='JDK ids to lookup. The first id for a JDK with a configured path is chosen. The reserved id "default" '
+                             'chooses the JDK with the "default" attribute set to true.')
     _add_shared_args(parser)
     parsed_args = parser.parse_args(args)
-    jdk_binaries, _ = _get_jdk_binaries(parsed_args.arch, parsed_args.jdk_binaries, parsed_args.configuration)
+    jdk_binaries, _, jdk_defs_location, jdk_binaries_locations, default_jdk_ids = _get_jdk_binaries()
+    if not jdk_binaries:
+        mx.abort(f"No JDKs defined in {jdk_defs_location}")
     to = get_jdk_dir(parsed_args.to, parsed_args.arch)
     for jdk_id in parsed_args.jdk_ids:
+        if jdk_id == "default":
+            if default_jdk_ids is None:
+                mx.abort('ERROR: No default JDKs are configured (no "default_jdks" field is present)\n'
+                        f'HINT: Add a "default_jdks" field next to the "jdks" field in {jdk_defs_location}. '
+                         'These are the fields in the "jdks" object representing the default JDKs. '
+                         'For example: "default_jdks" : ["labsjdk-ee-latest", "labsjdk-ce-latest"]')
+            jdk_id = _first_default_jdk_with_binary(default_jdk_ids, jdk_binaries)
+            if jdk_id is None:
+                location_providers = "" if len(jdk_binaries_locations) == 0 else " provided by " + ", ".join(jdk_binaries_locations)
+                mx.abort(f'ERROR: No default JDK ({", ".join(default_jdk_ids)}) has no location info{location_providers}')
         if jdk_id in jdk_binaries:
-            return jdk_binaries[jdk_id].get_final_path(to)
-    msg = f"None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) were found in common.json. Available ids are"
-    msg += "\n"
-    msg += "\n  ".join(jdk_binaries.keys())
+            return jdk_id, jdk_binaries[jdk_id].get_final_path(to)
+    available = ", ".join(jdk_binaries.keys())
+    msg = f"ERROR: None of the JDK ids ({', '.join(parsed_args.jdk_ids)}) were found in {jdk_defs_location}. Available ids are: {available}"
     mx.abort(msg)
-
 
 def _get_jdk_binary_or_abort(jdk_binaries, jdk_id, selector):
     jdk_binary = jdk_binaries.get(jdk_id)
@@ -530,22 +570,33 @@ def _parse_json(path):
             mx.abort(f'The file ({path}) does not contain legal JSON: {e}')
 
 
-def _get_json_attr(json_object, name, expect_type, source, optional=False):
-    value = json_object.get(name) or mx.abort(f'{source}: missing "{name}" attribute')
+def _get_json_attr(json_object, name, expect_type, source):
+    value = json_object.get(name) if name in json_object else mx.abort(f'{source}: missing "{name}" attribute')
     if not isinstance(value, expect_type):
         mx.abort(f'{source} -> "{name}": value ({value}) must be a {expect_type.__name__}, not a {value.__class__.__name__}')
     return value
 
 
 def _check_jdk_def(jdk_def, jdk_id, path):
+    source = f'{path} -> "jdks" -> "{jdk_id}"'
+    _get_json_attr(jdk_def, 'version', str, source)
+    return jdk_def
+
+def _check_jdk_is_default(jdk_def, jdk_id, path):
     _get_json_attr(jdk_def, 'version', str, f'{path} -> "jdks" -> "{jdk_id}"')
     return jdk_def
 
-
 def _parse_jdk_defs(path):
     obj = _parse_json(path)
-    return {jdk_id: _check_jdk_def(jdk_def, jdk_id, path)
-            for jdk_id, jdk_def in _get_json_attr(obj, 'jdks', dict, path).items()}
+    jdks_obj = _get_json_attr(obj, 'jdks', dict, path)
+    default_jdk_ids = None
+    if 'default_jdks' in obj:
+        default_jdk_ids = _get_json_attr(obj, 'default_jdks', list, path)
+        if len(default_jdk_ids) == 0:
+            mx.abort(f'ERROR: The "default_jdks" list in {path} must not be empty.')
+    jdks = {jdk_id: _check_jdk_def(jdk_def, jdk_id, path)
+            for jdk_id, jdk_def in jdks_obj.items()}
+    return jdks, default_jdk_ids
 
 
 def _parse_jdk_binaries(paths, jdk_defs, arch):
@@ -651,24 +702,32 @@ def _get_extracted_jdk_archive_root_folder(extracted_archive_path):
     return root_folders[0]
 
 
-def _choose_jdk_binary(jdk_binaries):
+def _choose_jdk_binary(jdk_binaries, default_jdk_id=None):
     index = 1
     choices = sorted(jdk_binaries.items())
+    default_choice = None
     for jdk_id, jdk_binary in choices:
         prefix = f'[{index}]'
+        if jdk_id == default_jdk_id:
+            prefix += '*'
+            default_choice = str(index)
 
         print(f"{prefix:5} {jdk_id.ljust(25)} | {jdk_binary.selector()}")
         index += 1
     print(f"{f'[{index}]':5} Other version")
+    prompt = f"Select JDK [{default_choice}]> " if default_choice is not None else "Select JDK> "
     while True:
         try:
             try:
-                choice = input("Select JDK> ")
+                choice = input(prompt)
             except SyntaxError:  # Empty line
                 choice = ""
 
             if choice == "":
-                raise IndexError('<empty>')
+                if default_choice is not None:
+                    choice = default_choice
+                else:
+                    raise IndexError('<empty>')
             try:
                 index = int(choice) - 1
             except ValueError:
