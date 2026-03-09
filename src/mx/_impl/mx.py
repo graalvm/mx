@@ -15367,6 +15367,14 @@ pylint_ver_map = {
     (2, 4): {
         'rcfile': '.pylintrc24',
         'additional_options': ['--score=n']
+    },
+    (3, 2): {
+        'rcfile': '.pylintrc32',
+        'additional_options': ['--score=n']
+    },
+    (3, 3): {
+        'rcfile': '.pylintrc33',
+        'additional_options': ['--score=n']
     }
 }
 
@@ -15425,7 +15433,7 @@ def pylint(args):
     timestamps_dir = None
     if suite:
         timestamps_dir = join(suite.get_mx_output_dir(), 'pylint-timestamps')
-        if args.force:
+        if args.force and exists(timestamps_dir):
             rmtree(timestamps_dir)
         ensure_dir_exists(timestamps_dir)
 
@@ -15510,7 +15518,8 @@ def _get_env_with_pythonpath():
     env = os.environ.copy()
     pythonpath = _src_path
     for suite in suites(True):
-        pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
+        if suite.mxDir:
+            pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
     env['PYTHONPATH'] = pythonpath
     return env
 
