@@ -2231,6 +2231,7 @@ class Suite(object):
         """:rtype : Distribution"""
         assert not '>' in name
         context = 'distribution ' + name
+        orig_attrs = deepcopy(attrs)
         fileListPurpose = attrs.pop('fileListPurpose', None)
         if fileListPurpose:
             if isinstance(fileListPurpose, str):
@@ -2316,6 +2317,7 @@ class Suite(object):
                                 javaCompliance, platformDependent, theLicense, maven=maven,
                                 stripConfigFileNames=stripConfigFileNames, stripMappingFileNames=stripMappingFileNames,
                                 testDistribution=testDistribution, manifestEntries=manifestEntries, **attrs)
+        d._orig_attrs = orig_attrs
         self.dists.append(d)
         return d
 
@@ -2784,6 +2786,7 @@ class SourceSuite(Suite):
         for name, attrs in sorted(projsMap.items()):
             try:
                 context = 'project ' + name
+                orig_attrs = deepcopy(attrs)
                 className = attrs.pop('class', None)
                 theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
                 os_arch = Suite._pop_os_arch(attrs, context)
@@ -2868,6 +2871,7 @@ class SourceSuite(Suite):
                         # due to `hasattr` if possible (e.g., for properties).
                         if k not in dir(p) and not hasattr(p, k):
                             setattr(p, k, v)
+                p._orig_attrs = orig_attrs
                 self.projects.append(p)
             except:
                 log_error(f"Error while creating project {name}")
@@ -8062,8 +8066,11 @@ class ECJCompiler(JavacLikeCompiler):
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
         jdtPropertiesSources = project.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
-        if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources):
-            # Try to fix a missing or out of date properties file by running eclipseinit
+        if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources + [project.suite.suite_py()]):
+            # Try to fix a missing or out of date properties file by running eclipseinit.
+            # The out-of-date check includes the suite.py file in which the project is defined
+            # to ensure any change to a project (such as changing the javaCompliance) that can
+            # impact the JDT config results in the JDT config being updated.
             project._eclipseinit()
         if not exists(jdtProperties):
             log(f'JDT properties file {jdtProperties} not found')
