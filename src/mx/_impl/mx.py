@@ -13259,9 +13259,9 @@ def _expand_java_home(source, home):
 
         lookup_args = lookup_spec.split(",")
         logv(f'Looking up JDK using `mx get-jdk-path {" ".join(lookup_args)}`')
-        jdk_id, jdk_path = mx_fetchjdk.get_jdk_path(lookup_args)
+        _, jdk_path = mx_fetchjdk.get_jdk_path(lookup_args)
         if not exists(jdk_path) and home == JAVA_HOME_LOOKUP_PREFIX + "default":
-            mx_fetchjdk.fetch_jdk([jdk_id], force=True)
+            mx_fetchjdk.fetch_jdk(["default"], force=True)
         if is_darwin() and not os.path.realpath(jdk_path).endswith(join('Contents', 'Home')):
             mac_jdk_path = join(jdk_path, 'Contents', 'Home')
             if exists(mac_jdk_path):
