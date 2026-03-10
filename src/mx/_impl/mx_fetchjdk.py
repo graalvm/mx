@@ -238,6 +238,18 @@ class PathList(object):
     def __repr__(self):
         return os.pathsep.join(self.paths)
 
+def _resolve_default_jdk(jdk_id, jdk_binaries, default_jdk_ids, jdk_binaries_locations, jdk_defs_location):
+    if jdk_id == "default":
+        if default_jdk_ids is None:
+            mx.abort('ERROR: No default JDKs are configured (no "default_jdks" field is present)\n'
+                     f'HINT: Add a "default_jdks" field next to the "jdks" field in {jdk_defs_location}. '
+                     'These are the fields in the "jdks" object representing the default JDKs. '
+                     'For example: "default_jdks" : ["labsjdk-ee-latest", "labsjdk-ce-latest"]')
+        jdk_id = _first_default_jdk_with_binary(default_jdk_ids, jdk_binaries)
+        if jdk_id is None:
+            location_providers = "" if len(jdk_binaries_locations) == 0 else " provided by " + ", ".join(jdk_binaries_locations)
+            mx.abort(f'ERROR: No default JDK ({", ".join(default_jdk_ids)}) has no location info{location_providers}')
+    return jdk_id
 
 def _parse_args(args):
     """
@@ -259,8 +271,10 @@ def _parse_args(args):
         The set of JDKs available for download are specified by the "jdks" field of the JSON
         object loaded by --configuration. The "jdks" field is itself is an object whose field names
         are JDK identifiers and whose values are objects that must include "version".
-        A JDK object can have a "default" field set to true to denote it is the default JDK to be
-        used if no other JDK is specified. There can be at most one default JDK.
+        The JDK identifier "default" is reserved and cannot be used. 
+        An optional "default_jdks" field lists the fields in "jdks" that are candidates
+        for selection as the default JDK. The first JDK in this list for which there is a
+        matching entry in the "jdk-binaries" object (see below) is the default JDK.
         The JDK object fields "build_id" and "extrabundles" are also specially handled. For example:
 
         {
@@ -363,7 +377,9 @@ def _parse_args(args):
 
     jdk_id_group = parser.add_mutually_exclusive_group()
     jdk_id_group.add_argument('jdk_id_pos', action='store', metavar='<jdk-id>', nargs='?', help='see --jdk-id')
-    jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
+    jdk_id_group.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>',
+                              help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8"). '
+                                   'The reserved id "default" specifies the default JDK.')
     parser.add_argument('selector', action='store', metavar='<val>', nargs='?', help=f'refine base JDK by selector <val>')
     _add_shared_args(parser)
     alias_group = parser.add_mutually_exclusive_group()
@@ -371,7 +387,7 @@ def _parse_args(args):
     alias_group.add_argument('--auto-alias', '-A', action='store_const', dest='alias', const='-', help='make the extracted JDK available via its name (e.g. via a symlink). The path will be resolved against the value of the --to option.')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
-    parser.add_argument('--list', action='store_true', help='list the available JDKs and exit')
+    parser.add_argument('--list', action='store_true', help='list the defined JDKs and exit')
     parser.add_argument('--skip-digest-check', dest='digest_check', action='store_false', help='''
         Only check for existence of the destination directory and skip verifying the digest of the downloaded archive.
         This is useful to avoid redownloading when the download cache has been deleted.
@@ -384,7 +400,7 @@ def _parse_args(args):
         mx.abort(f"JDK installation directory {settings['jdks-dir']} is not writeable." + os.linesep +
                  "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
-    jdk_binaries, jdk_defs, _, _, default_jdk_ids = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
+    jdk_binaries, jdk_defs, jdk_defs_location, jdk_binaries_locations, default_jdk_ids = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
 
     settings["list"] = args.list
 
@@ -396,6 +412,7 @@ def _parse_args(args):
     # use positional or option argument
     jdk_id = args.jdk_id_pos or args.jdk_id
     if jdk_id is not None:
+        jdk_id = _resolve_default_jdk(jdk_id, jdk_binaries, default_jdk_ids, jdk_binaries_locations, jdk_defs_location)
         settings["jdk-binary"] = _get_jdk_binary_or_abort(jdk_binaries, jdk_id, args.selector)
     else:
         if is_quiet():
@@ -475,7 +492,7 @@ def _get_jdk_binaries(arch=None, binaries=None, configuration=None):
     Central helper that determines where to read JDK definitions and
     binary location templates from, parses them, and returns structured
     data for downstream selection/installation logic.
-    :return: a `(jdk_binaries, jdk_defs, jdk_defs_location, jdk_binaries_locations, default_jdk_id)` tuple:
+    :return: a `(jdk_binaries, jdk_defs, jdk_defs_location, jdk_binaries_locations, default_jdk_ids)` tuple:
       - `jdk_binaries`: dict[str, _JdkBinary], used to list/select/install a concrete JDK binary.
       - `jdk_defs`: ordered dict of JDK definitions from common.json.
       - `jdk_defs_location`: the path to the ``common.json`` used.
@@ -529,7 +546,7 @@ def get_jdk_path(args):
     parser = ArgumentParser(prog='mx get-jdk-path', description='Returns the local path to the first existing <jdk-id>')
     parser.add_argument('jdk_ids', action='store', metavar='<jdk-id>', nargs='+',
                         help='JDK ids to lookup. The first id for a JDK with a configured path is chosen. The reserved id "default" '
-                             'chooses the JDK with the "default" attribute set to true.')
+                             'chooses the default JDK.')
     _add_shared_args(parser)
     parsed_args = parser.parse_args(args)
     jdk_binaries, _, jdk_defs_location, jdk_binaries_locations, default_jdk_ids = _get_jdk_binaries()
@@ -537,16 +554,7 @@ def get_jdk_path(args):
         mx.abort(f"No JDKs defined in {jdk_defs_location}")
     to = get_jdk_dir(parsed_args.to, parsed_args.arch)
     for jdk_id in parsed_args.jdk_ids:
-        if jdk_id == "default":
-            if default_jdk_ids is None:
-                mx.abort('ERROR: No default JDKs are configured (no "default_jdks" field is present)\n'
-                        f'HINT: Add a "default_jdks" field next to the "jdks" field in {jdk_defs_location}. '
-                         'These are the fields in the "jdks" object representing the default JDKs. '
-                         'For example: "default_jdks" : ["labsjdk-ee-latest", "labsjdk-ce-latest"]')
-            jdk_id = _first_default_jdk_with_binary(default_jdk_ids, jdk_binaries)
-            if jdk_id is None:
-                location_providers = "" if len(jdk_binaries_locations) == 0 else " provided by " + ", ".join(jdk_binaries_locations)
-                mx.abort(f'ERROR: No default JDK ({", ".join(default_jdk_ids)}) has no location info{location_providers}')
+        jdk_id = _resolve_default_jdk(jdk_id, jdk_binaries, default_jdk_ids, jdk_binaries_locations, jdk_defs_location)
         if jdk_id in jdk_binaries:
             return jdk_id, jdk_binaries[jdk_id].get_final_path(to)
     available = ", ".join(jdk_binaries.keys())
@@ -589,6 +597,8 @@ def _check_jdk_is_default(jdk_def, jdk_id, path):
 def _parse_jdk_defs(path):
     obj = _parse_json(path)
     jdks_obj = _get_json_attr(obj, 'jdks', dict, path)
+    if 'default' in jdks_obj:
+        mx.abort(f'ERROR: Invalid JDK id "default" in {path} (reserved name).')
     default_jdk_ids = None
     if 'default_jdks' in obj:
         default_jdk_ids = _get_json_attr(obj, 'default_jdks', list, path)
