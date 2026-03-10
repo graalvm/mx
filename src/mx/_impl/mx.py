@@ -12952,6 +12952,22 @@ _jdks_cache = {}
 _canceled_jdk_requests = set()
 
 
+def _jdk_not_found_error_message(option_name, versionDescription, purpose):
+    msg = 'ERROR: Could not find a JDK'
+    if versionDescription:
+        msg += ' ' + versionDescription
+    if purpose:
+        msg += ' for ' + purpose
+
+    jdk_binaries, _, jdk_defs_location, _, default_jdk_ids = mx_fetchjdk._get_jdk_binaries()
+    default_jdk_id = mx_fetchjdk._first_default_jdk_with_binary(default_jdk_ids or [], jdk_binaries)
+    if default_jdk_id:
+        msg += f"\nHINT: Specify `--{option_name}=lookup:default` to use the default JDK ({default_jdk_id}, specified in {jdk_defs_location})."
+    else:
+        jdk_ids = ", ".join(jdk_binaries.keys())
+        msg += f"\nHINT: Specify `--{option_name}=lookup:<id>` to use a JDK specified by <id> in {jdk_defs_location}. Available ids are: {jdk_ids}"
+    return msg
+
 def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, abortCallback=abort, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
@@ -13009,23 +13025,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         return None
 
     def abort_not_found():
-        msg = 'Could not find a JDK'
-        if versionDescription:
-            msg += ' ' + versionDescription
-        if purpose:
-            msg += ' for ' + purpose
-        from . import select_jdk
-        available = _filtered_jdk_configs(select_jdk.find_system_jdks(), versionCheck)
-        if available:
-            msg += '\nThe following JDKs are available:\n  ' + '\n  '.join(sorted([jdk.home for jdk in available]))
-
-        msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
-        p = _findPrimarySuiteMxDir()
-        if p:
-            msg += f"\nOr run `{_mx_home}/select_jdk.py -p {dirname(p)}` to set and persist these variables in {join(p, 'env')}."
-        else:
-            msg += f'\nOr run `{_mx_home}/select_jdk.py` to set these variables.'
-        abortCallback(msg)
+        abortCallback(_jdk_not_found_error_message("java-home", versionDescription, purpose))
 
     if defaultJdk:
         if not _default_java_home:
@@ -13080,19 +13080,7 @@ def get_tools_jdk(versionCheck=None, purpose=None, cancel=None, versionDescripti
             _versionCheck, _versionDescription = _versionCheck.as_version_check()
 
         def abort_not_found():
-            msg = 'Could not find a JDK'
-            if _versionDescription:
-                msg += ' ' + _versionDescription
-            if purpose:
-                msg += ' for ' + purpose
-            import select_jdk
-            available = _filtered_jdk_configs(select_jdk.find_system_jdks(), _versionCheck)
-            if available:
-                msg += '\nThe following JDKs are available:\n  ' + '\n  '.join(sorted([jdk.home for jdk in available]))
-
-            msg += '\nSpecify one with the --tools-java-home option or with the TOOLS_JAVA_HOME environment variable.'
-            abortCallback(msg)
-
+            abortCallback(_jdk_not_found_error_message("tools-java-home", _versionDescription, purpose))
 
         if _tools_java_home():
             # TOOLS_JAVA_HOME is set. Either it is compliant or we fail. Not looking at JAVA_HOME or EXTRA_JAVA_HOMES
@@ -13131,7 +13119,8 @@ def _java_home():
             os.environ['JAVA_HOME'] = _opts.java_home
 
         if os.environ.get('JAVA_HOME'):
-            _resolved_java_home = _expand_java_home(os.environ.get('JAVA_HOME'))
+            source = '--java-home' if _opts.java_home is not None else 'JAVA_HOME'
+            _resolved_java_home = _expand_java_home(source, os.environ.get('JAVA_HOME'))
             os.environ['JAVA_HOME'] = _resolved_java_home
         else:
             _resolved_java_home = None
@@ -13144,7 +13133,8 @@ def _extra_java_homes():
             os.environ['EXTRA_JAVA_HOMES'] = _opts.extra_java_homes
 
         if os.environ.get('EXTRA_JAVA_HOMES'):
-            _resolved_extra_java_homes = [_expand_java_home(p) for p in os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)]
+            source = '--extra-java-homes' if _opts.extra_java_homes is not None else 'EXTRA_JAVA_HOMES'
+            _resolved_extra_java_homes = [_expand_java_home(source, p) for p in os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)]
             os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join(_resolved_extra_java_homes)
         else:
             _resolved_extra_java_homes = []
@@ -13157,7 +13147,8 @@ def _tools_java_home():
             os.environ['TOOLS_JAVA_HOME'] = _opts.tools_java_home
 
         if os.environ.get('TOOLS_JAVA_HOME'):
-            _resolved_tools_java_home = _expand_java_home(os.environ.get('TOOLS_JAVA_HOME'))
+            source = '--tools-java-home' if _opts.tools_java_home is not None else 'TOOLS_JAVA_HOME'
+            _resolved_tools_java_home = _expand_java_home(source, os.environ.get('TOOLS_JAVA_HOME'))
             os.environ['TOOLS_JAVA_HOME'] = _resolved_tools_java_home
         else:
             _resolved_tools_java_home = None
@@ -13183,7 +13174,7 @@ def _find_jdk(versionCheck=None, versionDescription=None):
     source = ''
     if _java_home():
         candidateJdks.append(_java_home())
-        source = '--java-home' if _opts.java_home else 'JAVA_HOME'
+        source = '--java-home' if _opts.java_home is not None else 'JAVA_HOME'
 
     if candidateJdks:
         result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=True, source=source)
@@ -13256,30 +13247,39 @@ def is_quiet():
 
 JAVA_HOME_LOOKUP_PREFIX = "lookup:"
 
-def _expand_java_home(home):
+def _expand_java_home(source, home):
     if isabs(home):
         return home
     elif home.startswith(JAVA_HOME_LOOKUP_PREFIX):
-        lookup_args = home[len(JAVA_HOME_LOOKUP_PREFIX):].split(",")
+        lookup_spec = home[len(JAVA_HOME_LOOKUP_PREFIX):]
+        if not lookup_spec:
+            abort(f'ERROR: Invalid JDK lookup selector in {source}: "lookup:" (missing selector)\n'
+                  f'HINT: Use "{source}=lookup:default" to select the configured default JDK.\n'
+                  f'HINT: Or use "{source}=lookup:<jdk-id>" to select a specific JDK from common.json.')
+
+        lookup_args = lookup_spec.split(",")
         logv(f'Looking up JDK using `mx get-jdk-path {" ".join(lookup_args)}`')
-        jdks_dir_home = mx_fetchjdk.get_jdk_path(lookup_args)
-        if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
-            mac_jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
-            if exists(mac_jdks_dir_home):
-                return mac_jdks_dir_home
-        return jdks_dir_home
+        jdk_id, jdk_path = mx_fetchjdk.get_jdk_path(lookup_args)
+        if not exists(jdk_path) and home == JAVA_HOME_LOOKUP_PREFIX + "default":
+            mx_fetchjdk.fetch_jdk([jdk_id], force=True)
+        if is_darwin() and not os.path.realpath(jdk_path).endswith(join('Contents', 'Home')):
+            mac_jdk_path = join(jdk_path, 'Contents', 'Home')
+            if exists(mac_jdk_path):
+                return mac_jdk_path
+        return jdk_path
     elif not isdir(home):
         jdks_dir = mx_fetchjdk.default_jdks_dir()
-        jdks_dir_home = join(jdks_dir, home)
-        if is_darwin() and not os.path.realpath(jdks_dir_home).endswith(join('Contents', 'Home')):
-            mac_jdks_dir_home = join(jdks_dir_home, 'Contents', 'Home')
-            if exists(mac_jdks_dir_home):
-                jdks_dir_home = mac_jdks_dir_home
         logv(f'JDK "{home}" not found in the current directory')
-        logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir_home}')
-        if isdir(jdks_dir_home):
-            return jdks_dir_home
+        logv(f'Looking in the default `mx fetchjdk` download directory: {jdks_dir}')
+        jdk_path = join(jdks_dir, home)
+        if is_darwin() and not os.path.realpath(jdk_path).endswith(join('Contents', 'Home')):
+            mac_jdk_path = join(jdk_path, 'Contents', 'Home')
+            if exists(mac_jdk_path):
+                jdk_path = mac_jdk_path
+        if isdir(jdk_path):
+            return jdk_path
     return os.path.abspath(home)
+
 
 def _probe_JDK(home):
     res = _probed_JDKs.get(home)
