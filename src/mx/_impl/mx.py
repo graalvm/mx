@@ -13117,6 +13117,8 @@ def _java_home():
     if _resolved_java_home is False:
         if _opts.java_home is not None:
             os.environ['JAVA_HOME'] = _opts.java_home
+        elif 'JAVA_HOME' not in os.environ:
+            os.environ['JAVA_HOME'] = "lookup:default"
 
         if os.environ.get('JAVA_HOME'):
             source = '--java-home' if _opts.java_home is not None else 'JAVA_HOME'

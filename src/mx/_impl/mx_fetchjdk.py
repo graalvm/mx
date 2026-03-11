@@ -604,6 +604,9 @@ def _parse_jdk_defs(path):
         default_jdk_ids = _get_json_attr(obj, 'default_jdks', list, path)
         if len(default_jdk_ids) == 0:
             mx.abort(f'ERROR: The "default_jdks" list in {path} must not be empty.')
+        for jdk_id in default_jdk_ids:
+            if jdk_id not in jdks_obj:
+                mx.abort(f'ERROR: The entry "{jdk_id}" in the "default_jdks" list in {path} does not refer to a field in the "jdks" object.')
     jdks = {jdk_id: _check_jdk_def(jdk_def, jdk_id, path)
             for jdk_id, jdk_def in jdks_obj.items()}
     return jdks, default_jdk_ids
