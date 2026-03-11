@@ -2020,33 +2020,24 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         if extraRules is None:
             extraRules = []
 
-        def compiled(pat):
-            if isinstance(pat, str):
-                return re.compile(pat)
-            return pat
-
-        flaky_skip = False
-        for pat in self.flakySkipPatterns(benchmarks, bmSuiteArgs):
-            if compiled(pat).search(out):
-                flaky_skip = True
-        if flaky_skip:
+        if self.skip_due_to_flaky_skip_pattern(out, benchmarks, bmSuiteArgs):
             mx.warn(f"Benchmark skipped, flaky pattern found. Benchmark(s): {benchmarks}")
             return []
 
         flaky = False
         for pat in self.flakySuccessPatterns():
-            if compiled(pat).search(out):
+            if self._compiled(pat).search(out):
                 flaky = True
         if not flaky:
             if retcode is not None and not self.validateReturnCode(retcode):
                 raise BenchmarkFailureError(f"Benchmark failed, exit code: {retcode}. Benchmark(s): {benchmarks}")
             for pat in self.failurePatterns():
-                m = compiled(pat).search(out)
+                m = self._compiled(pat).search(out)
                 if m:
                     raise BenchmarkFailureError(f"Benchmark failed, failure pattern found: '{m.group()}'. Benchmark(s): {benchmarks}")
 
             success_patterns = self.successPatterns()
-            if success_patterns and not any(compiled(pat).search(out) for pat in success_patterns):
+            if success_patterns and not any(self._compiled(pat).search(out) for pat in success_patterns):
                 raise BenchmarkFailureError(f"Benchmark failed, success pattern not found. Benchmark(s): {benchmarks}")
 
         datapoints: List[DataPoint] = []
@@ -2070,6 +2061,21 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             datapoints.extend(parsedpoints)
 
         return datapoints
+
+    def _compiled(self, pat: str|re.Pattern) -> re.Pattern:
+        if isinstance(pat, str):
+            return re.compile(pat)
+        return pat
+
+    def ignore_benchmark_failure(self, out: str, benchmarks: List[str], bm_suite_args: List[str]) -> bool:
+        """Whether the benchmark failure should be ignored."""
+        return self.skip_due_to_flaky_skip_pattern(out, benchmarks, bm_suite_args)
+
+    def skip_due_to_flaky_skip_pattern(self, out: str, benchmarks: List[str], bm_suite_args: List[str]) -> bool:
+        for pat in self.flakySkipPatterns(benchmarks, bm_suite_args):
+            if self._compiled(pat).search(out):
+                return True
+        return False
 
     def post_processors(self) -> List[DataPointsPostProcessor]:
         """Returns the suite's post-processors (should be overridden by subclasses that require datapoints post-processing)."""
@@ -3606,6 +3612,7 @@ class Tracker(object):
 
 
 class TimeTracker(Tracker):
+    PARSER = "time_tracker_parser"
 
     def map_command(self, cmd):
         """
@@ -3649,7 +3656,14 @@ class TimeTracker(Tracker):
 
         return prefix + cmd
 
+    def _time_tracker_args(self, bm_suite_args: List[str]) -> Namespace:
+        vm_and_suite_args = self.bmSuite.vmAndRunArgs(bm_suite_args)[0]
+        namespace, _ = get_parser(TimeTracker.PARSER).parse_known_args(vm_and_suite_args)
+        return namespace
+
     def get_rules(self, bmSuiteArgs):
+        if self._time_tracker_args(bmSuiteArgs).disable_time_tracker_rule:
+            return []
         if mx_benchmark_compatibility().bench_suite_needs_suite_args():
             suite_name = self.bmSuite.benchSuiteName(bmSuiteArgs)
         else:
@@ -3671,6 +3685,17 @@ class TimeTracker(Tracker):
                 }
             )
         ]
+
+
+_time_tracker_parser = ParserEntry(
+    ArgumentParser(add_help=False), "Flags for the TimeTracker benchmark tracker:"
+)
+_time_tracker_parser.parser.add_argument(
+    "--disable-time-tracker-rule",
+    action="store_true",
+    help="Disable the TimeTracker's generation of the 'time' datapoint.",
+)
+add_parser(TimeTracker.PARSER, _time_tracker_parser)
 
 
 class PsrecordTracker(Tracker):
