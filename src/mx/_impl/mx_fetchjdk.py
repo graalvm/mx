@@ -549,7 +549,7 @@ def get_jdk_path(args):
                              'chooses the default JDK.')
     _add_shared_args(parser)
     parsed_args = parser.parse_args(args)
-    jdk_binaries, _, jdk_defs_location, jdk_binaries_locations, default_jdk_ids = _get_jdk_binaries()
+    jdk_binaries, _, jdk_defs_location, jdk_binaries_locations, default_jdk_ids = _get_jdk_binaries(parsed_args.arch, parsed_args.jdk_binaries, parsed_args.configuration)
     if not jdk_binaries:
         mx.abort(f"No JDKs defined in {jdk_defs_location}")
     to = get_jdk_dir(parsed_args.to, parsed_args.arch)
