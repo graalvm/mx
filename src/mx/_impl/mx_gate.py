@@ -805,12 +805,8 @@ def _run_gate(cleanArgs, args, tasks):
 
     with Task('CodeFormatCheck', tasks, tags=[Tags.style], _common=True) as t:
         if t:
-            eclipse_exe = mx.get_env('ECLIPSE_EXE')
-            if eclipse_exe is not None:
-                if mx.command_function('eclipseformat')(['-e', eclipse_exe, '--primary']) != 0:
-                    t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
-            else:
-                mx.abort_or_warn('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
+            if mx.command_function('eclipseformat')(['--primary']) != 0:
+                t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
 
     with Task('Checkstyle', tasks, tags=[Tags.style], _common=True) as t:
         if t and mx.command_function('checkstyle')(['--primary']) != 0:
