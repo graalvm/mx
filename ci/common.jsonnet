@@ -193,15 +193,8 @@ local common_json = import "../common.json";
     },
 
     eclipse: {
-      downloads+: {
-        ECLIPSE: {
-          name: "eclipse",
-          version: common_json.eclipse.version,
-          platformspecific: true,
-        }
-      },
       environment+: {
-        ECLIPSE_EXE: "$ECLIPSE/eclipse",
+        ECLIPSE_EXE: "builtin",
       },
     },
 
