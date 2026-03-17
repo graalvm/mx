@@ -148,7 +148,8 @@ def eclipseformat(args):
     The exit code 1 denotes that at least one file was modified."""
 
     parser = ArgumentParser(prog='mx eclipseformat')
-    parser.add_argument('-e', '--eclipse-exe', help='location of the Eclipse executable')
+    parser.add_argument('-e', '--eclipse-exe', help='location of the Eclipse executable. Default is the ECLIPSE_EXE environment variable, '
+                                                    'falling back to the ECLIPSE library. The special value of "builtin" will also select the ECLIPSE library.')
     parser.add_argument('-C', '--no-backup', action='store_false', dest='backup', help='do not save backup of modified files')
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
@@ -296,18 +297,44 @@ def locate_eclipse_exe(eclipse_exe):
     """
     Tries to locate an Eclipse executable starting with the given path.
     If the path is None, checks the ECLIPSE_EXE environment variable.
+    If the path is still None, downloads and uses the ECLIPSE library.
     If the path is a directory, tries to locate the eclipse executable below the directory.
     If the path is a file, ensures that the file is executable.
     Returns a path to the Eclipse executable if one could be found, None otherwise.
     """
 
+    def find_eclipse_exe_in_dir(eclipse_dir):
+        eclipse_name = mx.exe_suffix('eclipse')
+        candidates = [
+            join(eclipse_dir, eclipse_name),
+            join(eclipse_dir, 'eclipse', eclipse_name),
+            join(eclipse_dir, 'Eclipse.app', 'Contents', 'MacOS', 'eclipse'),
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+
+        fallback = None
+        for root, _, files in os.walk(eclipse_dir):
+            if eclipse_name in files:
+                candidate = join(root, eclipse_name)
+                if candidate.endswith(join('Contents', 'MacOS', 'eclipse')):
+                    return candidate
+                if fallback is None:
+                    fallback = candidate
+        return fallback
+
     if eclipse_exe is None:
         eclipse_exe = os.environ.get('ECLIPSE_EXE')
-    if eclipse_exe is None:
-        return None
+    if eclipse_exe is None or eclipse_exe == "builtin":
+        eclipse_lib = mx.library('ECLIPSE')
+        eclipse_exe = eclipse_lib.get_path(resolve=True)
     # Maybe an Eclipse installation dir was specified - look for the executable in it
     if isdir(eclipse_exe):
-        eclipse_exe = join(eclipse_exe, mx.exe_suffix('eclipse'))
+        resolved_exe = find_eclipse_exe_in_dir(eclipse_exe)
+        if resolved_exe is None:
+            mx.abort('Could not find an Eclipse executable under directory: ' + eclipse_exe)
+        eclipse_exe = resolved_exe
         mx.warn("The eclipse-exe was a directory, now using " + eclipse_exe)
     if not os.path.isfile(eclipse_exe):
         mx.abort('File does not exist: ' + eclipse_exe)

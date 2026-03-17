@@ -1002,6 +1002,45 @@ suite = {
       "license": "Apache-2.0",
     },
 
+    "ECLIPSE": {
+      "packedResource": True,
+      "os_arch": {
+        "linux": {
+          "amd64": {
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.26.0-linux-amd64.tar.gz"],
+            "digest": "sha512:ef59976152d59f20e36196c918129cd1a0cfabcb1b4f195565142aec6952503bf67eca0d616620a987caed14840f9ca86ac09fb371d462bed0a304402893a77d",
+          },
+          "aarch64": {
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.26.0-linux-aarch64.tar.gz"],
+            "digest": "sha512:28e43a059b9025e5696cc415c45ebb33717f2973260e199940136ad3258cfbff3e7740e205193026da8f62c9d3aab6b1f054ae9e7db2cbe0b395fc874a836fa6",
+          },
+          "<others>": {
+            "optional": True,
+          },
+        },
+        "darwin": {
+          "amd64": {
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.26.0-darwin-amd64.tar.gz"],
+            "digest": "sha512:3dc0ff8b3b6a608822194800d7ff5fae4a5fc4628160f9a9d5f6872358676c3beee87bc4d054f601cc6bf3773788ca85f689fb5e86c77f18ee09d7ad9cd6ef44",
+          },
+          "aarch64": {
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.26.0-darwin-aarch64.tar.gz"],
+            "digest": "sha512:2e331e0a53319fccac434d3fbae133be60f1848ce475b744761645e588ede4635ad757051b5da804ea8488608c8e99d76cf495a3b48f06ef0d241194d6aa5931",
+          },
+          "<others>": {
+            "optional": True,
+          },
+        },
+        "windows": {
+          "amd64": {
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.26.0-windows-amd64.tar.gz"],
+            "digest": "sha512:a725741fee075df56688e1aa474a49ae1437f81cf03c2810074856ac2d8c16efddef8d977a926f77fe123ce613758b407f5676d502d69e69c2b075771dcc13f2",
+          },
+        },
+      },
+      "license": "EPL-2.0",
+    },
+
     # last compatible version for JDK 8 - do not upgrade or remove
     "ECJ_3.26": {
       "digest": "sha512:ab441acf5551a7dc81c353eaccb3b3df9e89a48987294d19e39acdb83a5b640fcdff7414cee29f5b96eaa8826647f1d5323e185018fe33a64c402d69c73c9158",

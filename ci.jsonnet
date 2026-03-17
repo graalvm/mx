@@ -29,15 +29,8 @@ local with(platform, java_release, timelimit="15:00") = {
     local mx_copy_dir = path("${PWD}/../path with a space"),
     local mx = path("./mx"),
     local jdk = common.jdks["labsjdk-ee-%s" % java_release],
-    local eclipse_dep = if arch == "amd64" then common.deps.eclipse + {
-        environment+: {
-            ECLIPSE_EXE: if os == "darwin" then "$ECLIPSE/Contents/MacOS/eclipse" else exe("$ECLIPSE/eclipse")
-        }
-    } else {
-        # No CI Eclipse packages available on AArch64
-    },
 
-    local base = platform + jdk + eclipse_dep + common.deps.pylint + common.deps.sulong + common.deps.svm + {
+    local base = platform + jdk + common.deps.pylint + common.deps.sulong + common.deps.svm + {
         # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then Java version followed by OS and arch
         name: "%s-jdk-%s-%s-%s" % [self.prefix, java_release, os, arch],
         targets: ["gate"],
@@ -48,11 +41,7 @@ local with(platform, java_release, timelimit="15:00") = {
             # mx can work in that context.
             copydir("$PWD", mx_copy_dir),
             ["cd", mx_copy_dir],
-        ] + if os == "darwin" && eclipse_dep != {} then [
-            # Need to remove the com.apple.quarantine attribute from Eclipse otherwise
-            # it will fail to start on later macOS versions.
-            ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
-        ] else [],
+        ],
 
         java_home_in_env(suite_dir, suite_name):: [
             # Set JAVA_HOME *only* in <suite_dir>/mx.<suite>/env
@@ -78,8 +67,7 @@ local with(platform, java_release, timelimit="15:00") = {
             JDT: "builtin",
         },
         run: self.java_home_in_env(".", "mx") + [
-            [mx, "--strict-compliance", "gate"]
-            + (if eclipse_dep != {} then ["--strict-mode"] else [])
+            [mx, "--strict-compliance", "gate", "--strict-mode"]
             + (if os == "windows" then ["--tags", "fullbuild"] else []),
         ],
     },
