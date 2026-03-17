@@ -568,23 +568,37 @@ def get_mx_binary():
 
 def run_in_mx(args, cwd):
     # Ensure attribute existence for test
-    setattr(mx._opts, "verbose", False)
-    setattr(mx._opts, "warn", True)
-    setattr(mx._opts, "quiet", True)
-    setattr(mx._opts, "exec_log", None)
-    setattr(mx._opts, "ptimeout", 0)
+    sentinel = object()
+    option_overrides = {
+        "verbose": False,
+        "warn": True,
+        "quiet": True,
+        "exec_log": None,
+        "ptimeout": 0,
+    }
+    original_values = {}
+    try:
+        for option, value in option_overrides.items():
+            original_values[option] = getattr(mx._opts, option, sentinel)
+            setattr(mx._opts, option, value)
 
-    dev_null = mx.TeeOutputCapture(mx.OutputCapture())
-    mx_bin = get_mx_binary()
-    mx_command = [mx_bin] + args
+        dev_null = mx.TeeOutputCapture(mx.OutputCapture())
+        mx_bin = get_mx_binary()
+        mx_command = [mx_bin] + args
 
-    # print("[debug] Will run {} in {}".format(mx_command, args))
-    rc = mx.run(
-        mx_command,
-        out=dev_null,
-        cwd=cwd,
-    )
-    assert rc == 0
+        # print("[debug] Will run {} in {}".format(mx_command, args))
+        rc = mx.run(
+            mx_command,
+            out=dev_null,
+            cwd=cwd,
+        )
+        assert rc == 0
+    finally:
+        for option, original_value in original_values.items():
+            if original_value is sentinel:
+                delattr(mx._opts, option)
+            else:
+                setattr(mx._opts, option, original_value)
 
 
 def test_codeowners_json_output_generate_cases():
