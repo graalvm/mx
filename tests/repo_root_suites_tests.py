@@ -180,12 +180,12 @@ def test_show_suites_without_primary_suite():
         output = stdout.getvalue()
         assert "Suites:" not in output
         assert "Dependencies:" not in output
-        assert "> compiler > sdk" in output
-        assert "> tools > sdk" in output
-        assert "  sdk" in output
+        assert "> compiler (compiler) > sdk" in output
+        assert "> tools (tools) > sdk" in output
+        assert "  sdk (sdk)" in output
         assert "sdk -> -" not in output
-        assert "compiler > sdk" in output
-        assert "> truffle" in output
+        assert "compiler (compiler) > sdk" in output
+        assert "> truffle (truffle) > sdk" in output
     finally:
         tmpdir.cleanup()
 
@@ -197,10 +197,10 @@ def test_show_suites_without_primary_suite_from_workspace_root():
         with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
             orig_mx.show_suites([])
         output = stdout.getvalue()
-        assert "> compiler > sdk" in output
-        assert "> tools > sdk" in output
-        assert "  sdk" in output
-        assert "> truffle > sdk" in output
+        assert "> compiler (repo-a/compiler) > sdk" in output
+        assert "> tools (repo-b/tools) > sdk" in output
+        assert "  sdk (repo-a/sdk)" in output
+        assert "> truffle (repo-b/truffle) > sdk" in output
     finally:
         tmpdir.cleanup()
 
@@ -212,11 +212,11 @@ def test_show_suites_for_root_suites_only():
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_opt_patch(all_suites=False, root_suites=True, diff_suites=False, diff_branch_suites=False), redirect_stdout(stdout):
             orig_mx.show_suites([])
         output = stdout.getvalue()
-        assert "> compiler" in output
-        assert "> tools" in output
-        assert "> truffle" in output
-        assert "\n  sdk" not in output
-        assert "> compiler > sdk" not in output
+        assert "> compiler (compiler)" in output
+        assert "> tools (tools)" in output
+        assert "> truffle (truffle)" in output
+        assert "\n  sdk (sdk)" not in output
+        assert "> compiler (compiler) > sdk" not in output
     finally:
         tmpdir.cleanup()
 
@@ -233,7 +233,7 @@ def test_show_suites_diff_for_all_suites():
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False), redirect_stdout(stdout):
             orig_mx.show_suites([])
         output = stdout.getvalue()
-        assert output.strip() == "sdk"
+        assert output.strip() == "sdk (sdk)"
     finally:
         tmpdir.cleanup()
 
@@ -250,7 +250,7 @@ def test_show_suites_diff_branch_for_all_suites():
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites=True), redirect_stdout(stdout):
             orig_mx.show_suites([])
         output = stdout.getvalue()
-        assert output.strip() == "sdk"
+        assert output.strip() == "sdk (sdk)"
     finally:
         tmpdir.cleanup()
 
