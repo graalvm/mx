@@ -831,10 +831,10 @@ environment variables:
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
         repo_suites = self.add_mutually_exclusive_group()
-        repo_suites.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the repository when no primary suite is active')
-        repo_suites.add_argument('--root-suites', action='store_true', help='run selected built-in commands once for each root suite in the repository when no primary suite is active')
-        repo_suites.add_argument('--diff-suites', action='store_true', help='run selected built-in commands once for each discovered local suite touched by uncommitted changes compared to HEAD')
-        repo_suites.add_argument('--diff-branch-suites', action='store_true', help='run selected built-in commands once for each discovered local suite touched on this branch compared to master')
+        repo_suites.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree when no primary suite is active')
+        repo_suites.add_argument('--root-suites', action='store_true', help='run selected built-in commands once for each root suite in the current directory tree when no primary suite is active')
+        repo_suites.add_argument('--diff-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched by uncommitted changes compared to HEAD')
+        repo_suites.add_argument('--diff-branch-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched on this branch compared to master')
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
@@ -17843,14 +17843,19 @@ def show_suites(args):
 
     usage: mx suites [-h] [--locations] [--licenses]
 
+    When no primary suite is active, mx discovers local suites in the current
+    directory tree and prints each suite with its suite directory relative to
+    the current working directory. In that discovery mode, --locations has no
+    effect.
+
     optional arguments:
       -h, --help   show this help message and exit
-      --locations  show element locations on disk
+      --locations  show element locations on disk for the normal in-suite listing
       --class      show mx class implementing each suite component
       --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
-    parser.add_argument('-p', '--locations', action='store_true', help='show element locations on disk')
+    parser.add_argument('-p', '--locations', action='store_true', help='show element locations on disk for the normal in-suite listing')
     parser.add_argument('-l', '--licenses', action='store_true', help='show element licenses')
     parser.add_argument('-c', '--class', dest='clazz', action='store_true', help='show mx class implementing each suite component')
     parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')
