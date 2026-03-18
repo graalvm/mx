@@ -340,7 +340,7 @@ def _run_command_for_repo_suites(command, discovery):
 
     selected_suites, diff_desc, root_suites_only = _mx._select_repo_suites(discovery)
     name_counts = {}
-    for suite_info in selected_suites:
+    for suite_info in discovery.suites:
         name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
 
     def _suite_run_label(suite_info):

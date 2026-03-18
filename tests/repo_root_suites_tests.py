@@ -560,6 +560,32 @@ def test_summary_uses_suite_paths_for_duplicate_names():
         tmpdir.cleanup()
 
 
+def test_diff_summary_uses_suite_paths_for_duplicate_names():
+    tmpdir, workspace_root, _, suite_dirs = _create_workspace_with_duplicate_suite_names()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            return 0
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        def fake_get_repo_diff_paths(discovery):
+            return "uncommitted changes", [os.path.join(suite_dirs["repo-a-sdk"], "mx.sdk", "suite.py")]
+
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), argv_patch(["mx", "--diff-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
+
+        assert retcode == 0
+        assert "Diff filter (uncommitted changes) selected suites: sdk (repo-a/sdk)" in logs
+        assert "Running `build` for suite `sdk (repo-a/sdk)`" in logs
+        assert "  sdk (repo-a/sdk): OK" in logs
+    finally:
+        tmpdir.cleanup()
+
+
 def test_multi_suite_flags_rejected_with_active_primary_suite():
     expected = "`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active"
     with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False):
@@ -594,4 +620,5 @@ def tests():
     test_diff_path_selection_with_duplicate_names_selects_only_matching_suite()
     test_diff_suites_dispatches_once_per_selected_suite()
     test_summary_uses_suite_paths_for_duplicate_names()
+    test_diff_summary_uses_suite_paths_for_duplicate_names()
     test_multi_suite_flags_rejected_with_active_primary_suite()
