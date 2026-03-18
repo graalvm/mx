@@ -150,13 +150,13 @@ def test_show_suites_without_primary_suite():
 def test_build_without_primary_suite_shows_all_suites_hint():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_opt_patch(all_suites=False):
-            _assert_abort(lambda: orig_mx.build([]), "Use `mx --all-suites build` to run for all root suites")
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_opt_patch(all_suites=False, root_suites=False):
+            _assert_abort(lambda: orig_mx.build([]), "Use `mx --root-suites build` to run for root suites")
     finally:
         tmpdir.cleanup()
 
 
-def test_all_suites_dispatches_once_per_root_suite():
+def test_root_suites_dispatches_once_per_root_suite():
     tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
     try:
         discovery = orig_mx._discover_repo_suites(repo_root)
@@ -166,8 +166,8 @@ def test_all_suites_dispatches_once_per_root_suite():
             commands.append((cmd, kwargs))
             return 0
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, primary=False, specific_suites=[], primary_suite_path=None):
-            retcode = orig_mx._run_command_for_root_suites("build", discovery)
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--root-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=True, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery, root_suites_only=True)
 
         assert retcode == 0
         assert len(commands) == 3
@@ -175,6 +175,7 @@ def test_all_suites_dispatches_once_per_root_suite():
         assert invoked_primary_suites == [suite_dirs["compiler"], suite_dirs["tools"], suite_dirs["truffle"]]
         for cmd, kwargs in commands:
             assert "--all-suites" not in cmd
+            assert "--root-suites" not in cmd
             assert "build" in cmd
             assert "--dry-run" in cmd
             assert cmd.index("-p") < cmd.index("build")
@@ -183,14 +184,45 @@ def test_all_suites_dispatches_once_per_root_suite():
         tmpdir.cleanup()
 
 
-def test_all_suites_rejected_with_active_primary_suite():
-    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True):
-        _assert_abort(lambda: orig_mx.build([]), "`--all-suites` cannot be used when a primary suite is already active")
+def test_all_suites_dispatches_once_per_discovered_suite():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        commands = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery, root_suites_only=False)
+
+        assert retcode == 0
+        assert len(commands) == 4
+        invoked_primary_suites = [cmd[cmd.index("-p") + 1] for cmd, _ in commands]
+        assert invoked_primary_suites == [suite_dirs["compiler"], suite_dirs["sdk"], suite_dirs["tools"], suite_dirs["truffle"]]
+        for cmd, kwargs in commands:
+            assert "--all-suites" not in cmd
+            assert "--root-suites" not in cmd
+            assert "build" in cmd
+            assert "--dry-run" in cmd
+            assert cmd.index("-p") < cmd.index("build")
+            assert kwargs["cwd"] in invoked_primary_suites
+    finally:
+        tmpdir.cleanup()
+
+
+def test_multi_suite_flags_rejected_with_active_primary_suite():
+    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True, root_suites=False):
+        _assert_abort(lambda: orig_mx.build([]), "`--all-suites` and `--root-suites` cannot be used when a primary suite is already active")
+    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=False, root_suites=True):
+        _assert_abort(lambda: orig_mx.build([]), "`--all-suites` and `--root-suites` cannot be used when a primary suite is already active")
 
 
 def tests():
     test_discover_repo_suites()
     test_show_suites_without_primary_suite()
     test_build_without_primary_suite_shows_all_suites_hint()
-    test_all_suites_dispatches_once_per_root_suite()
-    test_all_suites_rejected_with_active_primary_suite()
+    test_root_suites_dispatches_once_per_root_suite()
+    test_all_suites_dispatches_once_per_discovered_suite()
+    test_multi_suite_flags_rejected_with_active_primary_suite()

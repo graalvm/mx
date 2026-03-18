@@ -829,7 +829,9 @@ environment variables:
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
-        self.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each root suite in the repository when no primary suite is active')
+        repo_suites = self.add_mutually_exclusive_group()
+        repo_suites.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the repository when no primary suite is active')
+        repo_suites.add_argument('--root-suites', action='store_true', help='run selected built-in commands once for each root suite in the repository when no primary suite is active')
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
@@ -3292,7 +3294,7 @@ class _RepoSuiteDiscovery(namedtuple('_RepoSuiteDiscovery', ['repo_root', 'suite
     __slots__ = ()
 
 
-_ALL_SUITES_COMMANDS = frozenset(['build', 'checkstyle', 'clean'])
+_MULTI_SUITE_COMMANDS = frozenset(['build', 'checkstyle', 'clean'])
 
 
 def _discover_repo_suites(start_dir=None):
@@ -3378,14 +3380,15 @@ def _abort_for_missing_primary_suite(command, discovery=None):
         abort(
             'No primary suite found.\n'
             f'Found {len(discovery.suites)} local suites in this repository; root suites: {root_names}.\n'
-            f'Use `mx --all-suites {command}` to run for all root suites, or `mx -p <suite> {command}` for one suite.'
+            f'Use `mx --root-suites {command}` to run for root suites, '
+            f'`mx --all-suites {command}` to run for all local suites, or `mx -p <suite> {command}` for one suite.'
         )
     abort(f'no primary suite found for {command}')
 
 
 def _recursive_mx_args_for_suite(primary_suite_path):
     forwarded_args = list(sys.argv[1:])
-    forwarded_args = [arg for arg in forwarded_args if arg != '--all-suites']
+    forwarded_args = [arg for arg in forwarded_args if arg not in ('--all-suites', '--root-suites')]
     try:
         command_index = forwarded_args.index(_argParser.initialCommandAndArgs[0])
     except (AttributeError, IndexError, ValueError):
@@ -3393,19 +3396,21 @@ def _recursive_mx_args_for_suite(primary_suite_path):
     return [sys.executable, '-u', join(_mx_home, 'mx.py')] + forwarded_args[:command_index] + ['-p', primary_suite_path] + forwarded_args[command_index:]
 
 
-def _run_command_for_root_suites(command, discovery):
+def _run_command_for_repo_suites(command, discovery, root_suites_only):
     if getattr(_opts, 'primary_suite_path', None):
-        abort('`-p/--primary-suite-path` and `--all-suites` cannot be used together.')
+        abort('`-p/--primary-suite-path` cannot be used together with `--all-suites` or `--root-suites`.')
     if getattr(_opts, 'primary', False) or getattr(_opts, 'specific_suites', []):
-        abort('`--primary`, `--suite`, and `--all-suites` cannot be used together.')
+        abort('`--primary` and `--suite` cannot be used together with `--all-suites` or `--root-suites`.')
     if primary_suite() is not None:
-        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     if not discovery or not discovery.suites:
         abort('No suites found in this repository.')
 
+    selected_suites = discovery.root_suites if root_suites_only else discovery.suites
     failures = []
-    for suite_info in discovery.root_suites:
-        log(f"Running `{command}` for root suite `{suite_info.name}`")
+    for suite_info in selected_suites:
+        suite_kind = 'root suite' if root_suites_only else 'suite'
+        log(f"Running `{command}` for {suite_kind} `{suite_info.name}`")
         retcode = run(_recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir)
         if retcode != 0:
             failures.append((suite_info.name, retcode))
@@ -3413,19 +3418,22 @@ def _run_command_for_root_suites(command, discovery):
     log('')
     log('Summary:')
     failed = dict(failures)
-    for suite_info in discovery.root_suites:
+    for suite_info in selected_suites:
         status = f'FAILED ({failed[suite_info.name]})' if suite_info.name in failed else 'OK'
         log(f'  {suite_info.name}: {status}')
     if failures:
         plural = '' if len(failures) == 1 else 's'
-        abort(f'{len(failures)} root suite command{plural} failed.')
+        suite_kind = 'root suite' if root_suites_only else 'suite'
+        abort(f'{len(failures)} {suite_kind} command{plural} failed.')
     return 0
 
 
 def _handle_missing_primary_suite_command(command):
     discovery = _discover_repo_suites()
     if getattr(_opts, 'all_suites', False):
-        return _run_command_for_root_suites(command, discovery)
+        return _run_command_for_repo_suites(command, discovery, root_suites_only=False)
+    if getattr(_opts, 'root_suites', False):
+        return _run_command_for_repo_suites(command, discovery, root_suites_only=True)
     _abort_for_missing_primary_suite(command, discovery)
 
 
@@ -4357,8 +4365,8 @@ def clean(args, parser=None):
     """
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('clean')
-    if getattr(_opts, 'all_suites', False):
-        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False):
+        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     suppliedParser = parser is not None
 
@@ -14891,8 +14899,8 @@ def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('build')
-    if getattr(_opts, 'all_suites', False):
-        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False):
+        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     with BuildReport(cmd_args) as build_report:
         _build_with_report(cmd_args, build_report=build_report, parser=parser)
 
@@ -16265,8 +16273,8 @@ def checkstyle(args):
    produced by Checkstyle result in a non-zero exit code."""
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('checkstyle')
-    if getattr(_opts, 'all_suites', False):
-        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False):
+        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     parser = ArgumentParser(prog='mx checkstyle')
 
@@ -18808,8 +18816,8 @@ def main():
         else:
             _mx_suite._complete_init()
             if not is_optional_suite_context:
-                if getattr(_opts, 'all_suites', False) and initial_command not in _ALL_SUITES_COMMANDS:
-                    abort('`--all-suites` is only supported for: build, checkstyle, clean')
+                if (getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False)) and initial_command not in _MULTI_SUITE_COMMANDS:
+                    abort('`--all-suites` and `--root-suites` are only supported for: build, checkstyle, clean')
                 abort(f'no primary suite found for {initial_command}')
 
         for envVar in _loadedEnv:
@@ -18870,8 +18878,8 @@ def main():
         else:
             abort(f"mx: command '{command}' is ambiguous\n    {' '.join(hits)}")
 
-    if getattr(_opts, 'all_suites', False) and command not in _ALL_SUITES_COMMANDS:
-        abort('`--all-suites` is only supported for: build, checkstyle, clean')
+    if (getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False)) and command not in _MULTI_SUITE_COMMANDS:
+        abort('`--all-suites` and `--root-suites` are only supported for: build, checkstyle, clean')
 
     mx_compdb.init()
 
