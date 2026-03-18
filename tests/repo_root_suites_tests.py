@@ -104,6 +104,30 @@ def _create_multi_suite_repo():
     }
 
 
+def _create_workspace_with_subrepos():
+    tmpdir = tempfile.TemporaryDirectory()
+    workspace_root = tmpdir.name
+    repo_a = os.path.join(workspace_root, "repo-a")
+    repo_b = os.path.join(workspace_root, "repo-b")
+    os.makedirs(repo_a, exist_ok=True)
+    os.makedirs(repo_b, exist_ok=True)
+    open(os.path.join(repo_a, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_b, ".mx_vcs_root"), "w").close()
+    compiler_dir = _write_suite(repo_a, "compiler", "compiler", ["sdk"])
+    sdk_dir = _write_suite(repo_a, "sdk", "sdk")
+    tools_dir = _write_suite(repo_b, "tools", "tools", ["sdk"])
+    truffle_dir = _write_suite(repo_b, "truffle", "truffle", ["sdk"])
+    return tmpdir, workspace_root, {
+        "repo-a": repo_a,
+        "repo-b": repo_b,
+    }, {
+        "compiler": compiler_dir,
+        "sdk": sdk_dir,
+        "tools": tools_dir,
+        "truffle": truffle_dir,
+    }
+
+
 def _assert_abort(func, expected_message):
     stderr = io.StringIO()
     try:
@@ -128,6 +152,25 @@ def test_discover_repo_suites():
         tmpdir.cleanup()
 
 
+def test_discover_repo_suites_from_workspace_root():
+    tmpdir, workspace_root, repo_dirs, suite_dirs = _create_workspace_with_subrepos()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        assert discovery is not None
+        assert discovery.repo_root == workspace_root
+        assert discovery.repo_roots == [os.path.realpath(repo_dirs["repo-a"]), os.path.realpath(repo_dirs["repo-b"])]
+        assert [suite.name for suite in discovery.suites] == ["compiler", "sdk", "tools", "truffle"]
+        suite_repo_roots = {suite.name: os.path.realpath(suite.repo_root) for suite in discovery.suites}
+        assert suite_repo_roots == {
+            "compiler": os.path.realpath(repo_dirs["repo-a"]),
+            "sdk": os.path.realpath(repo_dirs["repo-a"]),
+            "tools": os.path.realpath(repo_dirs["repo-b"]),
+            "truffle": os.path.realpath(repo_dirs["repo-b"]),
+        }
+    finally:
+        tmpdir.cleanup()
+
+
 def test_show_suites_without_primary_suite():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -143,6 +186,21 @@ def test_show_suites_without_primary_suite():
         assert "sdk -> -" not in output
         assert "compiler > sdk" in output
         assert "> truffle" in output
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_without_primary_suite_from_workspace_root():
+    tmpdir, workspace_root, _, _ = _create_workspace_with_subrepos()
+    try:
+        stdout = io.StringIO()
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
+            orig_mx.show_suites([])
+        output = stdout.getvalue()
+        assert "> compiler > sdk" in output
+        assert "> tools > sdk" in output
+        assert "  sdk" in output
+        assert "> truffle > sdk" in output
     finally:
         tmpdir.cleanup()
 
@@ -297,6 +355,17 @@ def test_diff_path_selection_for_repo_level_change_selects_all():
         tmpdir.cleanup()
 
 
+def test_workspace_repo_level_change_selects_only_own_repo_suites():
+    tmpdir, workspace_root, repo_dirs, _ = _create_workspace_with_subrepos()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        changed_paths = [os.path.join(repo_dirs["repo-a"], "README.md")]
+        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        assert [suite.name for suite in selected] == ["compiler", "sdk"]
+    finally:
+        tmpdir.cleanup()
+
+
 def test_diff_suites_dispatches_once_per_selected_suite():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -337,7 +406,9 @@ def test_multi_suite_flags_rejected_with_active_primary_suite():
 
 def tests():
     test_discover_repo_suites()
+    test_discover_repo_suites_from_workspace_root()
     test_show_suites_without_primary_suite()
+    test_show_suites_without_primary_suite_from_workspace_root()
     test_show_suites_for_root_suites_only()
     test_show_suites_diff_for_all_suites()
     test_show_suites_diff_branch_for_all_suites()
@@ -347,5 +418,6 @@ def tests():
     test_diff_path_selection_for_all_suites()
     test_diff_path_selection_for_root_suites()
     test_diff_path_selection_for_repo_level_change_selects_all()
+    test_workspace_repo_level_change_selects_only_own_repo_suites()
     test_diff_suites_dispatches_once_per_selected_suite()
     test_multi_suite_flags_rejected_with_active_primary_suite()
