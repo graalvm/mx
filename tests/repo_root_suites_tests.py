@@ -327,6 +327,50 @@ def test_show_suites_diff_branch_for_all_suites():
         tmpdir.cleanup()
 
 
+def test_get_repo_diff_paths_ignores_non_git_repos():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+
+        def fake_get_vc(path, abortOnError=True):
+            return None
+
+        with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False):
+            diff_desc, changed_paths = orig_mx._get_repo_diff_paths(discovery)
+
+        assert diff_desc == "uncommitted changes"
+        assert changed_paths == []
+    finally:
+        tmpdir.cleanup()
+
+
+def test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace():
+    tmpdir, workspace_root, repo_dirs, _ = _create_workspace_with_subrepos()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+
+        class FakeGit(object):
+            kind = "git"
+
+        def fake_get_vc(path, abortOnError=True):
+            if os.path.realpath(path) == os.path.realpath(repo_dirs["repo-a"]):
+                return FakeGit()
+            return None
+
+        def fake_git_diff_name_status_z(vc_dir, extra_args):
+            assert os.path.realpath(vc_dir) == os.path.realpath(repo_dirs["repo-a"])
+            assert extra_args == ["HEAD"]
+            return "M\0compiler/mx.compiler/suite.py\0"
+
+        with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_monkeypatch("_git_diff_name_status_z", fake_git_diff_name_status_z), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False):
+            diff_desc, changed_paths = orig_mx._get_repo_diff_paths(discovery)
+
+        assert diff_desc == "uncommitted changes"
+        assert changed_paths == [os.path.realpath(os.path.join(repo_dirs["repo-a"], "compiler", "mx.compiler", "suite.py"))]
+    finally:
+        tmpdir.cleanup()
+
+
 def test_build_without_primary_suite_shows_all_suites_hint():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -528,6 +572,8 @@ def tests():
     test_show_suites_for_root_suites_only()
     test_show_suites_diff_for_all_suites()
     test_show_suites_diff_branch_for_all_suites()
+    test_get_repo_diff_paths_ignores_non_git_repos()
+    test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace()
     test_build_without_primary_suite_shows_all_suites_hint()
     test_root_suites_dispatches_once_per_root_suite()
     test_all_suites_dispatches_once_per_discovered_suite()

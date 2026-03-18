@@ -833,8 +833,8 @@ environment variables:
         repo_suites = self.add_mutually_exclusive_group()
         repo_suites.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree when no primary suite is active')
         repo_suites.add_argument('--root-suites', action='store_true', help='run selected built-in commands once for each root suite in the current directory tree when no primary suite is active')
-        repo_suites.add_argument('--diff-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched by uncommitted changes compared to HEAD')
-        repo_suites.add_argument('--diff-branch-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched on this branch compared to master')
+        repo_suites.add_argument('--diff-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched by uncommitted Git changes compared to HEAD')
+        repo_suites.add_argument('--diff-branch-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched by Git changes on this branch compared to master')
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874

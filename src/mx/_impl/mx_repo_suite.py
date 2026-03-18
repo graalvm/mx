@@ -161,7 +161,7 @@ def _abort_for_missing_primary_suite(command, discovery=None):
             f'Found {len(discovery.suites)} local suites in this directory tree; root suites: {root_names}.\n'
             f'Use `mx --root-suites {command}` to run for root suites, '
             f'`mx --all-suites {command}` to run for all local suites, '
-            f'`mx --diff-suites {command}` to run only local suites with uncommitted changes, or `mx -p <suite> {command}` for one suite.'
+            f'`mx --diff-suites {command}` to run only local suites with uncommitted changes in Git repositories, or `mx -p <suite> {command}` for one suite.'
         )
     _mx.abort(f'no primary suite found for {command}')
 
@@ -200,28 +200,34 @@ def _parse_git_diff_name_status_z(output):
 
 def _get_repo_diff_paths(discovery):
     _mx = _mx_module()
-    git = _mx.GitConfig()
-    git.check_for_git()
     repo_roots = discovery.repo_roots if discovery.repo_roots else [discovery.repo_root]
+    git_repo_roots = []
+    for repo_root in repo_roots:
+        vc = _mx.VC.get_vc(repo_root, abortOnError=False)
+        if vc is not None and vc.kind == 'git':
+            git_repo_roots.append(repo_root)
     changed_paths = []
     if getattr(_mx._opts, 'diff_suites', False):
         diff_desc = 'uncommitted changes'
-        for repo_root in repo_roots:
+        for repo_root in git_repo_roots:
             relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, ['HEAD']))
             changed_paths.extend(realpath(join(repo_root, path)) for path in relative_paths)
     else:
         assert getattr(_mx._opts, 'diff_branch_suites', False)
         base = 'master'
+        git = _mx.GitConfig()
+        if git_repo_roots:
+            git.check_for_git()
         merge_bases = []
-        for repo_root in repo_roots:
+        for repo_root in git_repo_roots:
             merge_base = git.git_command(repo_root, ['merge-base', 'HEAD', base], abortOnError=True).strip()
             merge_bases.append(merge_base)
             relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, [f'{merge_base}..HEAD']))
             changed_paths.extend(realpath(join(repo_root, path)) for path in relative_paths)
-        if len(repo_roots) == 1:
+        if len(git_repo_roots) == 1:
             diff_desc = f'{merge_bases[0]}..HEAD'
         else:
-            diff_desc = f'branch changes against {base} across {len(repo_roots)} repositories'
+            diff_desc = f'branch changes against {base} across {len(git_repo_roots)} git repositories'
     return diff_desc, changed_paths
 
 
