@@ -147,6 +147,56 @@ def test_show_suites_without_primary_suite():
         tmpdir.cleanup()
 
 
+def test_show_suites_for_root_suites_only():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        stdout = io.StringIO()
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_opt_patch(all_suites=False, root_suites=True, diff_suites=False, diff_branch_suites=False), redirect_stdout(stdout):
+            orig_mx.show_suites([])
+        output = stdout.getvalue()
+        assert "> compiler" in output
+        assert "> tools" in output
+        assert "> truffle" in output
+        assert "\n  sdk" not in output
+        assert "> compiler > sdk" not in output
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_diff_for_all_suites():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        stdout = io.StringIO()
+        changed_paths = [os.path.join(suite_dirs["sdk"], "mx.sdk", "suite.py")]
+
+        def fake_get_repo_diff_paths(discovery):
+            return "uncommitted changes", changed_paths
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False), redirect_stdout(stdout):
+            orig_mx.show_suites([])
+        output = stdout.getvalue()
+        assert output.strip() == "sdk"
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_diff_branch_for_all_suites():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        stdout = io.StringIO()
+        changed_paths = [os.path.join(suite_dirs["sdk"], "mx.sdk", "suite.py")]
+
+        def fake_get_repo_diff_paths(discovery):
+            return "uncommitted changes", changed_paths
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites=True), redirect_stdout(stdout):
+            orig_mx.show_suites([])
+        output = stdout.getvalue()
+        assert output.strip() == "sdk"
+    finally:
+        tmpdir.cleanup()
+
+
 def test_build_without_primary_suite_shows_all_suites_hint():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -166,8 +216,8 @@ def test_root_suites_dispatches_once_per_root_suite():
             commands.append((cmd, kwargs))
             return 0
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--root-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=True, primary=False, specific_suites=[], primary_suite_path=None):
-            retcode = orig_mx._run_command_for_repo_suites("build", discovery, root_suites_only=True)
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--root-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=True, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
         assert len(commands) == 3
@@ -194,8 +244,8 @@ def test_all_suites_dispatches_once_per_discovered_suite():
             commands.append((cmd, kwargs))
             return 0
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
-            retcode = orig_mx._run_command_for_repo_suites("build", discovery, root_suites_only=False)
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
         assert len(commands) == 4
@@ -212,17 +262,90 @@ def test_all_suites_dispatches_once_per_discovered_suite():
         tmpdir.cleanup()
 
 
+def test_diff_path_selection_for_all_suites():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        changed_paths = [os.path.join(suite_dirs["sdk"], "mx.sdk", "suite.py")]
+        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        assert [suite.name for suite in selected] == ["sdk"]
+    finally:
+        tmpdir.cleanup()
+
+
+def test_diff_path_selection_for_root_suites():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        changed_paths = [os.path.join(suite_dirs["sdk"], "mx.sdk", "suite.py")]
+        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=True)
+        assert [suite.name for suite in selected] == ["compiler", "tools", "truffle"]
+    finally:
+        tmpdir.cleanup()
+
+
+def test_diff_path_selection_for_repo_level_change_selects_all():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        changed_paths = [os.path.join(repo_root, "mx.py")]
+        selected_all = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        assert [suite.name for suite in selected_all] == ["compiler", "sdk", "tools", "truffle"]
+        selected_roots = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=True)
+        assert [suite.name for suite in selected_roots] == ["compiler", "tools", "truffle"]
+    finally:
+        tmpdir.cleanup()
+
+
+def test_diff_suites_dispatches_once_per_selected_suite():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        commands = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        def fake_get_repo_diff_paths(discovery):
+            return "uncommitted changes", [os.path.join(repo_root, "sdk", "mx.sdk", "suite.py")]
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), argv_patch(["mx", "--diff-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
+
+        assert retcode == 0
+        assert len(commands) == 1
+        cmd, kwargs = commands[0]
+        assert cmd[cmd.index("-p") + 1] == os.path.join(repo_root, "sdk")
+        assert "--diff-suites" not in cmd
+        assert "build" in cmd
+        assert "--dry-run" in cmd
+        assert kwargs["cwd"] == os.path.join(repo_root, "sdk")
+    finally:
+        tmpdir.cleanup()
+
+
 def test_multi_suite_flags_rejected_with_active_primary_suite():
-    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True, root_suites=False):
-        _assert_abort(lambda: orig_mx.build([]), "`--all-suites` and `--root-suites` cannot be used when a primary suite is already active")
-    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=False, root_suites=True):
-        _assert_abort(lambda: orig_mx.build([]), "`--all-suites` and `--root-suites` cannot be used when a primary suite is already active")
+    expected = "`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active"
+    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False):
+        _assert_abort(lambda: orig_mx.build([]), expected)
+    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=False, root_suites=True, diff_suites=False, diff_branch_suites=False):
+        _assert_abort(lambda: orig_mx.build([]), expected)
+    with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False):
+        _assert_abort(lambda: orig_mx.build([]), expected)
 
 
 def tests():
     test_discover_repo_suites()
     test_show_suites_without_primary_suite()
+    test_show_suites_for_root_suites_only()
+    test_show_suites_diff_for_all_suites()
+    test_show_suites_diff_branch_for_all_suites()
     test_build_without_primary_suite_shows_all_suites_hint()
     test_root_suites_dispatches_once_per_root_suite()
     test_all_suites_dispatches_once_per_discovered_suite()
+    test_diff_path_selection_for_all_suites()
+    test_diff_path_selection_for_root_suites()
+    test_diff_path_selection_for_repo_level_change_selects_all()
+    test_diff_suites_dispatches_once_per_selected_suite()
     test_multi_suite_flags_rejected_with_active_primary_suite()

@@ -832,6 +832,8 @@ environment variables:
         repo_suites = self.add_mutually_exclusive_group()
         repo_suites.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the repository when no primary suite is active')
         repo_suites.add_argument('--root-suites', action='store_true', help='run selected built-in commands once for each root suite in the repository when no primary suite is active')
+        repo_suites.add_argument('--diff-suites', action='store_true', help='run selected built-in commands once for each discovered local suite touched by uncommitted changes compared to HEAD')
+        repo_suites.add_argument('--diff-branch-suites', action='store_true', help='run selected built-in commands once for each discovered local suite touched on this branch compared to master')
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
@@ -3294,7 +3296,7 @@ class _RepoSuiteDiscovery(namedtuple('_RepoSuiteDiscovery', ['repo_root', 'suite
     __slots__ = ()
 
 
-_MULTI_SUITE_COMMANDS = frozenset(['build', 'checkstyle', 'clean'])
+_MULTI_SUITE_COMMANDS = frozenset(['build', 'checkstyle', 'clean', 'suites'])
 
 
 def _discover_repo_suites(start_dir=None):
@@ -3381,14 +3383,142 @@ def _abort_for_missing_primary_suite(command, discovery=None):
             'No primary suite found.\n'
             f'Found {len(discovery.suites)} local suites in this repository; root suites: {root_names}.\n'
             f'Use `mx --root-suites {command}` to run for root suites, '
-            f'`mx --all-suites {command}` to run for all local suites, or `mx -p <suite> {command}` for one suite.'
+            f'`mx --all-suites {command}` to run for all local suites, '
+            f'`mx --diff-suites {command}` to run only local suites with uncommitted changes, or `mx -p <suite> {command}` for one suite.'
         )
     abort(f'no primary suite found for {command}')
 
 
+def _git_diff_name_status_z(vc_dir, extra_args):
+    git = GitConfig()
+    output = git.git_command(vc_dir, ['diff', '--name-status', '-z'] + extra_args, abortOnError=True)
+    assert output is not None
+    return output
+
+
+def _parse_git_diff_name_status_z(output):
+    entries = []
+    parts = output.split('\0')
+    i = 0
+    while i < len(parts):
+        if not parts[i]:
+            i += 1
+            continue
+        status = parts[i]
+        i += 1
+        if status.startswith('R'):
+            old_path = parts[i]
+            i += 1
+            new_path = parts[i]
+            i += 1
+            entries.append(old_path)
+            entries.append(new_path)
+        else:
+            path = parts[i]
+            i += 1
+            entries.append(path)
+    return [path for path in entries if path]
+
+
+def _get_repo_diff_paths(discovery):
+    git = GitConfig()
+    git.check_for_git()
+    repo_root = discovery.repo_root
+    if getattr(_opts, 'diff_suites', False):
+        diff_desc = 'uncommitted changes'
+        relative_paths = _parse_git_diff_name_status_z(_git_diff_name_status_z(repo_root, ['HEAD']))
+    else:
+        assert getattr(_opts, 'diff_branch_suites', False)
+        base = 'master'
+        merge_base = git.git_command(repo_root, ['merge-base', 'HEAD', base], abortOnError=True).strip()
+        diff_desc = f'{merge_base}..HEAD'
+        relative_paths = _parse_git_diff_name_status_z(_git_diff_name_status_z(repo_root, [f'{merge_base}..HEAD']))
+    return diff_desc, [realpath(join(repo_root, path)) for path in relative_paths]
+
+
+def _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only):
+    repo_root = realpath(discovery.repo_root)
+    suite_roots = sorted(((suite_info, realpath(suite_info.suite_dir)) for suite_info in discovery.suites), key=lambda item: len(item[1]), reverse=True)
+    touched_names = set()
+    touches_repo_level = False
+
+    for changed_path in changed_paths:
+        changed_path = realpath(changed_path)
+        if os.path.commonpath([repo_root, changed_path]) != repo_root:
+            continue
+        matched_suite = None
+        for suite_info, suite_root in suite_roots:
+            if os.path.commonpath([suite_root, changed_path]) == suite_root:
+                matched_suite = suite_info
+                break
+        if matched_suite is None:
+            touches_repo_level = True
+            break
+        touched_names.add(matched_suite.name)
+
+    if touches_repo_level:
+        touched_names = {suite_info.name for suite_info in discovery.suites}
+
+    if not root_suites_only:
+        return [suite_info for suite_info in discovery.suites if suite_info.name in touched_names]
+
+    reverse_edges = {}
+    for importer, imported in discovery.local_edges:
+        reverse_edges.setdefault(imported, set()).add(importer)
+    affected = set(touched_names)
+    worklist = deque(touched_names)
+    while worklist:
+        suite_name = worklist.popleft()
+        for importer in reverse_edges.get(suite_name, ()):
+            if importer not in affected:
+                affected.add(importer)
+                worklist.append(importer)
+    root_names = {suite_info.name for suite_info in discovery.root_suites}
+    return [suite_info for suite_info in discovery.root_suites if suite_info.name in affected]
+
+
+def _repo_suite_selection_mode():
+    if getattr(_opts, 'all_suites', False):
+        return 'all'
+    if getattr(_opts, 'root_suites', False):
+        return 'root'
+    if getattr(_opts, 'diff_suites', False):
+        return 'diff'
+    if getattr(_opts, 'diff_branch_suites', False):
+        return 'diff-branch'
+    return None
+
+
+def _repo_suite_selection_requested():
+    return _repo_suite_selection_mode() is not None
+
+
+def _select_repo_suites(discovery, default_all=False):
+    selection_mode = _repo_suite_selection_mode()
+    if selection_mode is None:
+        if default_all:
+            return discovery.suites, None, False
+        return None, None, False
+
+    if selection_mode == 'all':
+        return discovery.suites, None, False
+    if selection_mode == 'root':
+        return discovery.root_suites, None, True
+
+    root_suites_only = False
+    if selection_mode in ('diff', 'diff-branch'):
+        diff_desc, changed_paths = _get_repo_diff_paths(discovery)
+        return _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only), diff_desc, root_suites_only
+
+    abort(f'Unexpected repo suite selection mode: {selection_mode}')
+
+
 def _recursive_mx_args_for_suite(primary_suite_path):
-    forwarded_args = list(sys.argv[1:])
-    forwarded_args = [arg for arg in forwarded_args if arg not in ('--all-suites', '--root-suites')]
+    forwarded_args = []
+    for arg in sys.argv[1:]:
+        if arg in ('--all-suites', '--root-suites', '--diff-suites', '--diff-branch-suites'):
+            continue
+        forwarded_args.append(arg)
     try:
         command_index = forwarded_args.index(_argParser.initialCommandAndArgs[0])
     except (AttributeError, IndexError, ValueError):
@@ -3396,17 +3526,21 @@ def _recursive_mx_args_for_suite(primary_suite_path):
     return [sys.executable, '-u', join(_mx_home, 'mx.py')] + forwarded_args[:command_index] + ['-p', primary_suite_path] + forwarded_args[command_index:]
 
 
-def _run_command_for_repo_suites(command, discovery, root_suites_only):
+def _run_command_for_repo_suites(command, discovery):
     if getattr(_opts, 'primary_suite_path', None):
         abort('`-p/--primary-suite-path` cannot be used together with `--all-suites` or `--root-suites`.')
     if getattr(_opts, 'primary', False) or getattr(_opts, 'specific_suites', []):
         abort('`--primary` and `--suite` cannot be used together with `--all-suites` or `--root-suites`.')
     if primary_suite() is not None:
-        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     if not discovery or not discovery.suites:
         abort('No suites found in this repository.')
 
-    selected_suites = discovery.root_suites if root_suites_only else discovery.suites
+    selected_suites, diff_desc, root_suites_only = _select_repo_suites(discovery)
+    if diff_desc is not None:
+        suite_kind = 'root suites' if root_suites_only else 'suites'
+        selected_names = ', '.join(suite_info.name for suite_info in selected_suites) if selected_suites else '<none>'
+        log(f'Diff filter ({diff_desc}) selected {suite_kind}: {selected_names}')
     failures = []
     for suite_info in selected_suites:
         suite_kind = 'root suite' if root_suites_only else 'suite'
@@ -3430,10 +3564,8 @@ def _run_command_for_repo_suites(command, discovery, root_suites_only):
 
 def _handle_missing_primary_suite_command(command):
     discovery = _discover_repo_suites()
-    if getattr(_opts, 'all_suites', False):
-        return _run_command_for_repo_suites(command, discovery, root_suites_only=False)
-    if getattr(_opts, 'root_suites', False):
-        return _run_command_for_repo_suites(command, discovery, root_suites_only=True)
+    if _repo_suite_selection_requested():
+        return _run_command_for_repo_suites(command, discovery)
     _abort_for_missing_primary_suite(command, discovery)
 
 
@@ -4365,8 +4497,8 @@ def clean(args, parser=None):
     """
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('clean')
-    if getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False):
-        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if _repo_suite_selection_requested():
+        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     suppliedParser = parser is not None
 
@@ -14899,8 +15031,8 @@ def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('build')
-    if getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False):
-        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if _repo_suite_selection_requested():
+        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     with BuildReport(cmd_args) as build_report:
         _build_with_report(cmd_args, build_report=build_report, parser=parser)
 
@@ -16273,8 +16405,8 @@ def checkstyle(args):
    produced by Checkstyle result in a non-zero exit code."""
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('checkstyle')
-    if getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False):
-        abort('`--all-suites` and `--root-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if _repo_suite_selection_requested():
+        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     parser = ArgumentParser(prog='mx checkstyle')
 
@@ -18008,7 +18140,21 @@ def show_suites(args):
         discovery = _discover_repo_suites()
         if not discovery or not discovery.suites:
             abort('No suites found in this repository.')
-        print(_format_repo_suite_discovery(discovery, show_locations=args.locations))
+        selected_suites, _, _ = _select_repo_suites(discovery, default_all=True)
+        selected_names = {suite_info.name for suite_info in selected_suites}
+        filtered_root_suites = [suite_info for suite_info in discovery.root_suites if suite_info.name in selected_names]
+        filtered_edges = [(importer, imported) for importer, imported in discovery.local_edges if importer in selected_names and imported in selected_names]
+        filtered_external_imports = {
+            suite_name: imports for suite_name, imports in discovery.external_imports.items() if suite_name in selected_names
+        }
+        filtered_discovery = _RepoSuiteDiscovery(
+            discovery.repo_root,
+            selected_suites,
+            filtered_edges,
+            filtered_root_suites,
+            filtered_external_imports,
+        )
+        print(_format_repo_suite_discovery(filtered_discovery, show_locations=args.locations))
         return
 
     def _location(e):
@@ -18816,8 +18962,8 @@ def main():
         else:
             _mx_suite._complete_init()
             if not is_optional_suite_context:
-                if (getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False)) and initial_command not in _MULTI_SUITE_COMMANDS:
-                    abort('`--all-suites` and `--root-suites` are only supported for: build, checkstyle, clean')
+                if _repo_suite_selection_requested() and initial_command not in _MULTI_SUITE_COMMANDS:
+                    abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` are only supported for: build, checkstyle, clean, suites')
                 abort(f'no primary suite found for {initial_command}')
 
         for envVar in _loadedEnv:
@@ -18878,8 +19024,8 @@ def main():
         else:
             abort(f"mx: command '{command}' is ambiguous\n    {' '.join(hits)}")
 
-    if (getattr(_opts, 'all_suites', False) or getattr(_opts, 'root_suites', False)) and command not in _MULTI_SUITE_COMMANDS:
-        abort('`--all-suites` and `--root-suites` are only supported for: build, checkstyle, clean')
+    if _repo_suite_selection_requested() and command not in _MULTI_SUITE_COMMANDS:
+        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` are only supported for: build, checkstyle, clean, suites')
 
     mx_compdb.init()
 
