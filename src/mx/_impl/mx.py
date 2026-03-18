@@ -17846,7 +17846,8 @@ def show_suites(args):
     When no primary suite is active, mx discovers local suites in the current
     directory tree and prints each suite with its suite directory relative to
     the current working directory. In that discovery mode, --locations switches
-    the suite directory display to absolute paths.
+    the suite directory display to absolute paths. The --licenses, --class, and
+    --archived-deps options require an active primary suite.
 
     optional arguments:
       -h, --help   show this help message and exit
@@ -17862,6 +17863,15 @@ def show_suites(args):
     args = parser.parse_args(args)
 
     if primary_suite() is None:
+        unsupported = []
+        if args.licenses:
+            unsupported.append('--licenses')
+        if args.clazz:
+            unsupported.append('--class')
+        if args.archived_deps:
+            unsupported.append('--archived-deps')
+        if unsupported:
+            abort(f"{', '.join(unsupported)} require an active primary suite when running `mx suites`.")
         discovery = _discover_repo_suites()
         if not discovery or not discovery.suites:
             abort('No suites found in this directory tree.')

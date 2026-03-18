@@ -248,6 +248,15 @@ def test_show_suites_without_primary_suite_with_locations():
         tmpdir.cleanup()
 
 
+def test_show_suites_without_primary_suite_rejects_detailed_flags():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None):
+            _assert_abort(lambda: orig_mx.show_suites(["--licenses"]), "--licenses require an active primary suite when running `mx suites`.")
+    finally:
+        tmpdir.cleanup()
+
+
 def test_discover_repo_suites_with_duplicate_names_from_workspace_root():
     tmpdir, workspace_root, _, suite_dirs = _create_workspace_with_duplicate_suite_names()
     try:
@@ -567,6 +576,7 @@ def tests():
     test_show_suites_without_primary_suite()
     test_show_suites_without_primary_suite_from_workspace_root()
     test_show_suites_without_primary_suite_with_locations()
+    test_show_suites_without_primary_suite_rejects_detailed_flags()
     test_discover_repo_suites_with_duplicate_names_from_workspace_root()
     test_show_suites_with_duplicate_names_disambiguates_dependencies()
     test_show_suites_for_root_suites_only()
