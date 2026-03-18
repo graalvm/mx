@@ -829,6 +829,7 @@ environment variables:
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
+        self.add_argument('--all-suites', action='store_true', help='run selected built-in commands once for each root suite in the repository when no primary suite is active')
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
@@ -1123,7 +1124,7 @@ def suite_context_free(func):
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
 # This cannot be used outside of mx because of implementation restrictions
-_optional_suite_context = ['help', 'paths']
+_optional_suite_context = ['help', 'paths', 'suites', 'build', 'checkstyle', 'clean']
 
 
 def optional_suite_context(func):
@@ -3283,6 +3284,153 @@ def _findPrimarySuiteMxDir():
     return None
 
 
+class _RepoSuiteInfo(namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'suite_py'])):
+    __slots__ = ()
+
+
+class _RepoSuiteDiscovery(namedtuple('_RepoSuiteDiscovery', ['repo_root', 'suites', 'local_edges', 'root_suites', 'external_imports'])):
+    __slots__ = ()
+
+
+_ALL_SUITES_COMMANDS = frozenset(['build', 'checkstyle', 'clean'])
+
+
+def _discover_repo_suites(start_dir=None):
+    if start_dir is None:
+        start_dir = os.getcwd()
+    _, repo_root = SuiteModel.get_vc(os.path.abspath(start_dir))
+    if not repo_root or not exists(repo_root):
+        return None
+
+    discovered = []
+    skip_dirs = {'.git', '.hg', '.svn', '__pycache__', 'mxbuild'}
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        mx_dir_name = basename(dirpath)
+        if 'suite.py' not in filenames or not (mx_dir_name.startswith('mx.') or mx_dir_name.startswith('.mx.')):
+            continue
+        suite_dir = dirname(dirpath)
+        discovered.append(_RepoSuiteInfo(_suitename(dirpath), suite_dir, dirpath, join(dirpath, 'suite.py')))
+        dirnames[:] = []
+
+    if not discovered:
+        return _RepoSuiteDiscovery(repo_root, [], [], [], {})
+
+    discovered.sort(key=lambda s: s.name)
+    suites_by_name = {s.name: s for s in discovered}
+    incoming_edges = {s.name: 0 for s in discovered}
+    local_edges = []
+    external_imports = {}
+    repo_root_real = realpath(repo_root)
+
+    for repo_suite in discovered:
+        suite_obj = SourceSuite(repo_suite.mx_dir, primary=True, load=False)
+        for suite_import in suite_obj.suite_imports:
+            import_name = suite_import.name
+            import_path = realpath(suite_import.suite_dir) if suite_import.suite_dir else None
+            is_local_import = (
+                import_name in suites_by_name and
+                (suite_import.in_subdir or (import_path is not None and os.path.commonpath([repo_root_real, import_path]) == repo_root_real))
+            )
+            if is_local_import:
+                local_edges.append((repo_suite.name, import_name))
+                incoming_edges[import_name] += 1
+            else:
+                external_imports.setdefault(repo_suite.name, []).append(import_name)
+
+    for imports in external_imports.values():
+        imports.sort()
+    local_edges.sort()
+    root_suites = [suite for suite in discovered if incoming_edges[suite.name] == 0]
+    return _RepoSuiteDiscovery(repo_root, discovered, local_edges, root_suites, external_imports)
+
+
+def _format_repo_suite_discovery(discovery, show_locations=False):
+    lines = [f'Found {len(discovery.suites)} local suites in this repository:']
+    root_names = {suite.name for suite in discovery.root_suites}
+    for suite_info in discovery.suites:
+        suite_name = suite_info.name + (' [root]' if suite_info.name in root_names else '')
+        if show_locations:
+            lines.append(f'  {suite_name} ({suite_info.mx_dir})')
+        else:
+            lines.append(f'  {suite_name}')
+    if discovery.local_edges:
+        lines.append('')
+        lines.append('Local dependencies:')
+        for importer, imported in discovery.local_edges:
+            lines.append(f'  {importer} -> {imported}')
+    if discovery.external_imports:
+        lines.append('')
+        lines.append('External dependencies:')
+        for suite_name in sorted(discovery.external_imports):
+            for imported in discovery.external_imports[suite_name]:
+                lines.append(f'  {suite_name} -> {imported}')
+    lines.append('')
+    lines.append('Root suites:')
+    for suite_info in discovery.root_suites:
+        lines.append(f'  {suite_info.name}')
+    return '\n'.join(lines)
+
+
+def _abort_for_missing_primary_suite(command, discovery=None):
+    if discovery is None:
+        discovery = _discover_repo_suites()
+    if discovery and discovery.suites:
+        root_names = ', '.join(suite_info.name for suite_info in discovery.root_suites)
+        abort(
+            'No primary suite found.\n'
+            f'Found {len(discovery.suites)} local suites in this repository; root suites: {root_names}.\n'
+            f'Use `mx --all-suites {command}` to run for all root suites, or `mx -p <suite> {command}` for one suite.'
+        )
+    abort(f'no primary suite found for {command}')
+
+
+def _recursive_mx_args_for_suite(primary_suite_path):
+    forwarded_args = list(sys.argv[1:])
+    forwarded_args = [arg for arg in forwarded_args if arg != '--all-suites']
+    try:
+        command_index = forwarded_args.index(_argParser.initialCommandAndArgs[0])
+    except (AttributeError, IndexError, ValueError):
+        command_index = len(forwarded_args)
+    return [sys.executable, '-u', join(_mx_home, 'mx.py')] + forwarded_args[:command_index] + ['-p', primary_suite_path] + forwarded_args[command_index:]
+
+
+def _run_command_for_root_suites(command, discovery):
+    if getattr(_opts, 'primary_suite_path', None):
+        abort('`-p/--primary-suite-path` and `--all-suites` cannot be used together.')
+    if getattr(_opts, 'primary', False) or getattr(_opts, 'specific_suites', []):
+        abort('`--primary`, `--suite`, and `--all-suites` cannot be used together.')
+    if primary_suite() is not None:
+        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
+    if not discovery or not discovery.suites:
+        abort('No suites found in this repository.')
+
+    failures = []
+    for suite_info in discovery.root_suites:
+        log(f"Running `{command}` for root suite `{suite_info.name}`")
+        retcode = run(_recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir)
+        if retcode != 0:
+            failures.append((suite_info.name, retcode))
+
+    log('')
+    log('Summary:')
+    failed = dict(failures)
+    for suite_info in discovery.root_suites:
+        status = f'FAILED ({failed[suite_info.name]})' if suite_info.name in failed else 'OK'
+        log(f'  {suite_info.name}: {status}')
+    if failures:
+        plural = '' if len(failures) == 1 else 's'
+        abort(f'{len(failures)} root suite command{plural} failed.')
+    return 0
+
+
+def _handle_missing_primary_suite_command(command):
+    discovery = _discover_repo_suites()
+    if getattr(_opts, 'all_suites', False):
+        return _run_command_for_root_suites(command, discovery)
+    _abort_for_missing_primary_suite(command, discovery)
+
+
 def _register_suite(s):
     assert s.name not in _suites, s.name
     _suites[s.name] = s
@@ -4209,6 +4357,10 @@ def clean(args, parser=None):
     Removes all files created by a build, including Java class files, executables, and
     generated images.
     """
+    if primary_suite() is None:
+        return _handle_missing_primary_suite_command('clean')
+    if getattr(_opts, 'all_suites', False):
+        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     suppliedParser = parser is not None
 
@@ -14739,6 +14891,10 @@ def resolve_targets(names):
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
+    if primary_suite() is None:
+        return _handle_missing_primary_suite_command('build')
+    if getattr(_opts, 'all_suites', False):
+        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     with BuildReport(cmd_args) as build_report:
         _build_with_report(cmd_args, build_report=build_report, parser=parser)
 
@@ -16109,6 +16265,10 @@ def checkstyle(args):
 
    Run Checkstyle over the Java sources. Any errors or warnings
    produced by Checkstyle result in a non-zero exit code."""
+    if primary_suite() is None:
+        return _handle_missing_primary_suite_command('checkstyle')
+    if getattr(_opts, 'all_suites', False):
+        abort('`--all-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     parser = ArgumentParser(prog='mx checkstyle')
 
@@ -17838,6 +17998,13 @@ def show_suites(args):
     parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')
     args = parser.parse_args(args)
 
+    if primary_suite() is None:
+        discovery = _discover_repo_suites()
+        if not discovery or not discovery.suites:
+            abort('No suites found in this repository.')
+        print(_format_repo_suite_discovery(discovery, show_locations=args.locations))
+        return
+
     def _location(e):
         if args.locations:
             if isinstance(e, Suite):
@@ -18643,6 +18810,8 @@ def main():
         else:
             _mx_suite._complete_init()
             if not is_optional_suite_context:
+                if getattr(_opts, 'all_suites', False) and initial_command not in _ALL_SUITES_COMMANDS:
+                    abort('`--all-suites` is only supported for: build, checkstyle, clean')
                 abort(f'no primary suite found for {initial_command}')
 
         for envVar in _loadedEnv:
@@ -18702,6 +18871,9 @@ def main():
             abort(f'mx: unknown command \'{command}\'\n{_format_commands()}use "mx help" for more options')
         else:
             abort(f"mx: command '{command}' is ambiguous\n    {' '.join(hits)}")
+
+    if getattr(_opts, 'all_suites', False) and command not in _ALL_SUITES_COMMANDS:
+        abort('`--all-suites` is only supported for: build, checkstyle, clean')
 
     mx_compdb.init()
 
