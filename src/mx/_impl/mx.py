@@ -3346,29 +3346,27 @@ def _discover_repo_suites(start_dir=None):
 
 
 def _format_repo_suite_discovery(discovery, show_locations=False):
-    lines = [f'Found {len(discovery.suites)} local suites in this repository:']
+    local_deps = {}
+    for importer, imported in discovery.local_edges:
+        local_deps.setdefault(importer, []).append(imported)
+
+    def _suite_label(suite_info):
+        return f'{suite_info.name} ({suite_info.mx_dir})' if show_locations else suite_info.name
+
     root_names = {suite.name for suite in discovery.root_suites}
+    lines = []
     for suite_info in discovery.suites:
-        suite_name = suite_info.name + (' [root]' if suite_info.name in root_names else '')
-        if show_locations:
-            lines.append(f'  {suite_name} ({suite_info.mx_dir})')
+        prefix = '> ' if suite_info.name in root_names else '  '
+        imported = local_deps.get(suite_info.name)
+        if imported:
+            lines.append(f"{prefix}{_suite_label(suite_info)} > {', '.join(imported)}")
         else:
-            lines.append(f'  {suite_name}')
-    if discovery.local_edges:
-        lines.append('')
-        lines.append('Local dependencies:')
-        for importer, imported in discovery.local_edges:
-            lines.append(f'  {importer} -> {imported}')
+            lines.append(f'{prefix}{_suite_label(suite_info)}')
     if discovery.external_imports:
         lines.append('')
         lines.append('External dependencies:')
         for suite_name in sorted(discovery.external_imports):
-            for imported in discovery.external_imports[suite_name]:
-                lines.append(f'  {suite_name} -> {imported}')
-    lines.append('')
-    lines.append('Root suites:')
-    for suite_info in discovery.root_suites:
-        lines.append(f'  {suite_info.name}')
+            lines.append(f"  {suite_name} > {', '.join(discovery.external_imports[suite_name])}")
     return '\n'.join(lines)
 
 

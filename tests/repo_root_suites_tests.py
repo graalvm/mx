@@ -135,11 +135,14 @@ def test_show_suites_without_primary_suite():
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
             orig_mx.show_suites([])
         output = stdout.getvalue()
-        assert "Found 4 local suites in this repository:" in output
-        assert "compiler [root]" in output
-        assert "compiler -> sdk" in output
-        assert "Root suites:" in output
-        assert "  truffle" in output
+        assert "Suites:" not in output
+        assert "Dependencies:" not in output
+        assert "> compiler > sdk" in output
+        assert "> tools > sdk" in output
+        assert "  sdk" in output
+        assert "sdk -> -" not in output
+        assert "compiler > sdk" in output
+        assert "> truffle" in output
     finally:
         tmpdir.cleanup()
 
