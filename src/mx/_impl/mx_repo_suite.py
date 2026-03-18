@@ -108,8 +108,8 @@ def _format_repo_suite_discovery(discovery, show_locations=False):
         local_deps.setdefault(importer, []).append(imported)
 
     def _suite_label(suite_info):
-        relative_suite_dir = os.path.relpath(suite_info.suite_dir, os.getcwd())
-        return f'{suite_info.name} ({relative_suite_dir})'
+        suite_dir = suite_info.suite_dir if show_locations else os.path.relpath(suite_info.suite_dir, os.getcwd())
+        return f'{suite_info.name} ({suite_dir})'
 
     root_names = {suite.name for suite in discovery.root_suites}
     lines = []

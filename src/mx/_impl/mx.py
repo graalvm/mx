@@ -17845,17 +17845,17 @@ def show_suites(args):
 
     When no primary suite is active, mx discovers local suites in the current
     directory tree and prints each suite with its suite directory relative to
-    the current working directory. In that discovery mode, --locations has no
-    effect.
+    the current working directory. In that discovery mode, --locations switches
+    the suite directory display to absolute paths.
 
     optional arguments:
       -h, --help   show this help message and exit
-      --locations  show element locations on disk for the normal in-suite listing
+      --locations  show absolute element locations on disk
       --class      show mx class implementing each suite component
       --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
-    parser.add_argument('-p', '--locations', action='store_true', help='show element locations on disk for the normal in-suite listing')
+    parser.add_argument('-p', '--locations', action='store_true', help='show absolute element locations on disk')
     parser.add_argument('-l', '--licenses', action='store_true', help='show element licenses')
     parser.add_argument('-c', '--class', dest='clazz', action='store_true', help='show mx class implementing each suite component')
     parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')

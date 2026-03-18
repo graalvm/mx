@@ -205,6 +205,20 @@ def test_show_suites_without_primary_suite_from_workspace_root():
         tmpdir.cleanup()
 
 
+def test_show_suites_without_primary_suite_with_locations():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        stdout = io.StringIO()
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
+            orig_mx.show_suites(["--locations"])
+        output = stdout.getvalue()
+        assert f"> compiler ({suite_dirs['compiler']}) > sdk" in output
+        assert f"  sdk ({suite_dirs['sdk']})" in output
+        assert f"> tools ({suite_dirs['tools']}) > sdk" in output
+    finally:
+        tmpdir.cleanup()
+
+
 def test_show_suites_for_root_suites_only():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -409,6 +423,7 @@ def tests():
     test_discover_repo_suites_from_workspace_root()
     test_show_suites_without_primary_suite()
     test_show_suites_without_primary_suite_from_workspace_root()
+    test_show_suites_without_primary_suite_with_locations()
     test_show_suites_for_root_suites_only()
     test_show_suites_diff_for_all_suites()
     test_show_suites_diff_branch_for_all_suites()
