@@ -17866,11 +17866,11 @@ def show_suites(args):
         if not discovery or not discovery.suites:
             abort('No suites found in this directory tree.')
         selected_suites, _, _ = _select_repo_suites(discovery, default_all=True)
-        selected_names = {suite_info.name for suite_info in selected_suites}
-        filtered_root_suites = [suite_info for suite_info in discovery.root_suites if suite_info.name in selected_names]
-        filtered_edges = [(importer, imported) for importer, imported in discovery.local_edges if importer in selected_names and imported in selected_names]
+        selected_keys = {suite_info.suite_key for suite_info in selected_suites}
+        filtered_root_suites = [suite_info for suite_info in discovery.root_suites if suite_info.suite_key in selected_keys]
+        filtered_edges = [(importer, imported) for importer, imported in discovery.local_edges if importer in selected_keys and imported in selected_keys]
         filtered_external_imports = {
-            suite_name: imports for suite_name, imports in discovery.external_imports.items() if suite_name in selected_names
+            suite_key: imports for suite_key, imports in discovery.external_imports.items() if suite_key in selected_keys
         }
         filtered_discovery = _RepoSuiteDiscovery(
             discovery.repo_root,

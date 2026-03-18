@@ -128,6 +128,35 @@ def _create_workspace_with_subrepos():
     }
 
 
+def _create_workspace_with_duplicate_suite_names():
+    tmpdir = tempfile.TemporaryDirectory()
+    workspace_root = tmpdir.name
+    repo_a = os.path.join(workspace_root, "repo-a")
+    repo_b = os.path.join(workspace_root, "repo-b")
+    os.makedirs(repo_a, exist_ok=True)
+    os.makedirs(repo_b, exist_ok=True)
+    open(os.path.join(repo_a, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_b, ".mx_vcs_root"), "w").close()
+    compiler_dir = _write_suite(repo_a, "compiler", "compiler", ["sdk"])
+    sdk_a_dir = _write_suite(repo_a, "sdk", "sdk")
+    tools_dir = _write_suite(repo_b, "tools", "tools", ["sdk"])
+    sdk_b_dir = _write_suite(repo_b, "sdk", "sdk")
+    return tmpdir, workspace_root, {
+        "repo-a": repo_a,
+        "repo-b": repo_b,
+    }, {
+        "compiler": compiler_dir,
+        "repo-a-sdk": sdk_a_dir,
+        "tools": tools_dir,
+        "repo-b-sdk": sdk_b_dir,
+    }
+
+
+def _edge_name_pairs(discovery):
+    suites_by_key = {suite.suite_key: suite for suite in discovery.suites}
+    return [(suites_by_key[importer].name, suites_by_key[imported].name) for importer, imported in discovery.local_edges]
+
+
 def _assert_abort(func, expected_message):
     stderr = io.StringIO()
     try:
@@ -146,7 +175,7 @@ def test_discover_repo_suites():
         discovery = orig_mx._discover_repo_suites(repo_root)
         assert discovery is not None
         assert [suite.name for suite in discovery.suites] == ["compiler", "sdk", "tools", "truffle"]
-        assert discovery.local_edges == [("compiler", "sdk"), ("tools", "sdk"), ("truffle", "sdk")]
+        assert _edge_name_pairs(discovery) == [("compiler", "sdk"), ("tools", "sdk"), ("truffle", "sdk")]
         assert [suite.name for suite in discovery.root_suites] == ["compiler", "tools", "truffle"]
     finally:
         tmpdir.cleanup()
@@ -215,6 +244,35 @@ def test_show_suites_without_primary_suite_with_locations():
         assert f"> compiler ({suite_dirs['compiler']}) > sdk" in output
         assert f"  sdk ({suite_dirs['sdk']})" in output
         assert f"> tools ({suite_dirs['tools']}) > sdk" in output
+    finally:
+        tmpdir.cleanup()
+
+
+def test_discover_repo_suites_with_duplicate_names_from_workspace_root():
+    tmpdir, workspace_root, _, suite_dirs = _create_workspace_with_duplicate_suite_names()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        assert [suite.name for suite in discovery.suites] == ["compiler", "sdk", "sdk", "tools"]
+        assert [suite.name for suite in discovery.root_suites] == ["compiler", "tools"]
+        assert discovery.local_edges == [
+            (os.path.realpath(suite_dirs["compiler"]), os.path.realpath(suite_dirs["repo-a-sdk"])),
+            (os.path.realpath(suite_dirs["tools"]), os.path.realpath(suite_dirs["repo-b-sdk"])),
+        ]
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_with_duplicate_names_disambiguates_dependencies():
+    tmpdir, workspace_root, _, _ = _create_workspace_with_duplicate_suite_names()
+    try:
+        stdout = io.StringIO()
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
+            orig_mx.show_suites([])
+        output = stdout.getvalue()
+        assert "> compiler (repo-a/compiler) > sdk (repo-a/sdk)" in output
+        assert "  sdk (repo-a/sdk)" in output
+        assert "  sdk (repo-b/sdk)" in output
+        assert "> tools (repo-b/tools) > sdk (repo-b/sdk)" in output
     finally:
         tmpdir.cleanup()
 
@@ -380,6 +438,17 @@ def test_workspace_repo_level_change_selects_only_own_repo_suites():
         tmpdir.cleanup()
 
 
+def test_diff_path_selection_with_duplicate_names_selects_only_matching_suite():
+    tmpdir, workspace_root, _, suite_dirs = _create_workspace_with_duplicate_suite_names()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        changed_paths = [os.path.join(suite_dirs["repo-a-sdk"], "mx.sdk", "suite.py")]
+        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        assert [suite.suite_dir for suite in selected] == [suite_dirs["repo-a-sdk"]]
+    finally:
+        tmpdir.cleanup()
+
+
 def test_diff_suites_dispatches_once_per_selected_suite():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -408,6 +477,36 @@ def test_diff_suites_dispatches_once_per_selected_suite():
         tmpdir.cleanup()
 
 
+def test_summary_uses_suite_paths_for_duplicate_names():
+    tmpdir, workspace_root, _, suite_dirs = _create_workspace_with_duplicate_suite_names()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            if cmd[cmd.index("-p") + 1] == suite_dirs["repo-a-sdk"]:
+                return 1
+            return 0
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        def fake_abort(msg):
+            raise RuntimeError(msg)
+
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("abort", fake_abort), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            try:
+                orig_mx._run_command_for_repo_suites("build", discovery)
+                assert False, "expected abort for failed suite command"
+            except RuntimeError as exc:
+                assert str(exc) == "1 suite command failed."
+
+        assert "  sdk (repo-a/sdk): FAILED (1)" in logs
+        assert "  sdk (repo-b/sdk): OK" in logs
+    finally:
+        tmpdir.cleanup()
+
+
 def test_multi_suite_flags_rejected_with_active_primary_suite():
     expected = "`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active"
     with mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False):
@@ -424,6 +523,8 @@ def tests():
     test_show_suites_without_primary_suite()
     test_show_suites_without_primary_suite_from_workspace_root()
     test_show_suites_without_primary_suite_with_locations()
+    test_discover_repo_suites_with_duplicate_names_from_workspace_root()
+    test_show_suites_with_duplicate_names_disambiguates_dependencies()
     test_show_suites_for_root_suites_only()
     test_show_suites_diff_for_all_suites()
     test_show_suites_diff_branch_for_all_suites()
@@ -434,5 +535,7 @@ def tests():
     test_diff_path_selection_for_root_suites()
     test_diff_path_selection_for_repo_level_change_selects_all()
     test_workspace_repo_level_change_selects_only_own_repo_suites()
+    test_diff_path_selection_with_duplicate_names_selects_only_matching_suite()
     test_diff_suites_dispatches_once_per_selected_suite()
+    test_summary_uses_suite_paths_for_duplicate_names()
     test_multi_suite_flags_rejected_with_active_primary_suite()

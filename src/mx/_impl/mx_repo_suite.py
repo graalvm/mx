@@ -36,7 +36,7 @@ def _mx_module():
     return _mx
 
 
-class _RepoSuiteInfo(namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'suite_py', 'repo_root'])):
+class _RepoSuiteInfo(namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'suite_py', 'repo_root', 'suite_key'])):
     __slots__ = ()
 
 
@@ -66,16 +66,20 @@ def _discover_repo_suites(start_dir=None):
         suite_dir = dirname(dirpath)
         _, suite_repo_root = _mx.SuiteModel.get_vc(os.path.abspath(suite_dir))
         suite_repo_root = suite_repo_root if suite_repo_root and exists(suite_repo_root) else repo_root
-        discovered.append(_RepoSuiteInfo(_mx._suitename(dirpath), suite_dir, dirpath, join(dirpath, 'suite.py'), suite_repo_root))
+        suite_key = realpath(suite_dir)
+        discovered.append(_RepoSuiteInfo(_mx._suitename(dirpath), suite_dir, dirpath, join(dirpath, 'suite.py'), suite_repo_root, suite_key))
         discovered_repo_roots.add(realpath(suite_repo_root))
         dirnames[:] = []
 
     if not discovered:
         return _RepoSuiteDiscovery(repo_root, [], [], [], [], {})
 
-    discovered.sort(key=lambda s: s.name)
-    suites_by_name = {s.name: s for s in discovered}
-    incoming_edges = {s.name: 0 for s in discovered}
+    discovered.sort(key=lambda s: (s.name, s.suite_key))
+    suites_by_key = {s.suite_key: s for s in discovered}
+    suites_by_name = {}
+    for suite_info in discovered:
+        suites_by_name.setdefault(suite_info.name, []).append(suite_info)
+    incoming_edges = {s.suite_key: 0 for s in discovered}
     local_edges = []
     external_imports = {}
     repo_root_real = realpath(repo_root)
@@ -84,47 +88,65 @@ def _discover_repo_suites(start_dir=None):
         suite_obj = _mx.SourceSuite(repo_suite.mx_dir, primary=True, load=False)
         for suite_import in suite_obj.suite_imports:
             import_name = suite_import.name
-            import_path = realpath(suite_import.suite_dir) if suite_import.suite_dir else None
-            is_local_import = (
-                import_name in suites_by_name and
-                (suite_import.in_subdir or (import_path is not None and os.path.commonpath([repo_root_real, import_path]) == repo_root_real))
-            )
-            if is_local_import:
-                local_edges.append((repo_suite.name, import_name))
-                incoming_edges[import_name] += 1
+            name_matches = suites_by_name.get(import_name, ())
+            imported_suite = None
+            if suite_import.suite_dir:
+                imported_suite = suites_by_key.get(realpath(suite_import.suite_dir))
+                if imported_suite is None and suite_import.in_subdir and len(name_matches) == 1:
+                    imported_suite = name_matches[0]
+            elif suite_import.in_subdir:
+                imported_suite = suites_by_key.get(realpath(join(repo_suite.repo_root, import_name)))
+                if imported_suite is None and len(name_matches) == 1:
+                    imported_suite = name_matches[0]
+            if imported_suite is not None and os.path.commonpath([repo_root_real, imported_suite.suite_key]) == repo_root_real:
+                local_edges.append((repo_suite.suite_key, imported_suite.suite_key))
+                incoming_edges[imported_suite.suite_key] += 1
             else:
-                external_imports.setdefault(repo_suite.name, []).append(import_name)
+                external_imports.setdefault(repo_suite.suite_key, []).append(import_name)
 
     for imports in external_imports.values():
         imports.sort()
     local_edges.sort()
-    root_suites = [suite for suite in discovered if incoming_edges[suite.name] == 0]
+    root_suites = [suite for suite in discovered if incoming_edges[suite.suite_key] == 0]
     return _RepoSuiteDiscovery(repo_root, sorted(discovered_repo_roots), discovered, local_edges, root_suites, external_imports)
 
 
+def _suite_label(suite_info, show_locations=False):
+    suite_dir = suite_info.suite_dir if show_locations else os.path.relpath(suite_info.suite_dir, os.getcwd())
+    return f'{suite_info.name} ({suite_dir})'
+
+
 def _format_repo_suite_discovery(discovery, show_locations=False):
+    suites_by_key = {suite.suite_key: suite for suite in discovery.suites}
+    name_counts = {}
+    for suite_info in discovery.suites:
+        name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
+
     local_deps = {}
-    for importer, imported in discovery.local_edges:
-        local_deps.setdefault(importer, []).append(imported)
+    for importer_key, imported_key in discovery.local_edges:
+        local_deps.setdefault(importer_key, []).append(suites_by_key[imported_key])
 
-    def _suite_label(suite_info):
-        suite_dir = suite_info.suite_dir if show_locations else os.path.relpath(suite_info.suite_dir, os.getcwd())
-        return f'{suite_info.name} ({suite_dir})'
+    def _suite_reference_label(suite_info):
+        if name_counts.get(suite_info.name, 0) > 1:
+            return _suite_label(suite_info, show_locations=show_locations)
+        return suite_info.name
 
-    root_names = {suite.name for suite in discovery.root_suites}
+    root_keys = {suite.suite_key for suite in discovery.root_suites}
     lines = []
     for suite_info in discovery.suites:
-        prefix = '> ' if suite_info.name in root_names else '  '
-        imported = local_deps.get(suite_info.name)
+        prefix = '> ' if suite_info.suite_key in root_keys else '  '
+        imported = local_deps.get(suite_info.suite_key)
         if imported:
-            lines.append(f"{prefix}{_suite_label(suite_info)} > {', '.join(imported)}")
+            lines.append(f"{prefix}{_suite_label(suite_info, show_locations=show_locations)} > {', '.join(_suite_reference_label(dep) for dep in imported)}")
         else:
-            lines.append(f'{prefix}{_suite_label(suite_info)}')
+            lines.append(f'{prefix}{_suite_label(suite_info, show_locations=show_locations)}')
     if discovery.external_imports:
         lines.append('')
         lines.append('External dependencies:')
-        for suite_name in sorted(discovery.external_imports):
-            lines.append(f"  {suite_name} > {', '.join(discovery.external_imports[suite_name])}")
+        for suite_info in discovery.suites:
+            imports = discovery.external_imports.get(suite_info.suite_key)
+            if imports:
+                lines.append(f"  {_suite_reference_label(suite_info)} > {', '.join(imports)}")
     return '\n'.join(lines)
 
 
@@ -133,7 +155,7 @@ def _abort_for_missing_primary_suite(command, discovery=None):
     if discovery is None:
         discovery = _mx._discover_repo_suites()
     if discovery and discovery.suites:
-        root_names = ', '.join(suite_info.name for suite_info in discovery.root_suites)
+        root_names = ', '.join(_suite_label(suite_info) for suite_info in discovery.root_suites)
         _mx.abort(
             'No primary suite found.\n'
             f'Found {len(discovery.suites)} local suites in this directory tree; root suites: {root_names}.\n'
@@ -210,7 +232,7 @@ def _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only):
     suites_by_repo_root = {}
     for suite_info in discovery.suites:
         suites_by_repo_root.setdefault(realpath(suite_info.repo_root), []).append(suite_info)
-    touched_names = set()
+    touched_suite_keys = set()
 
     for changed_path in changed_paths:
         changed_path = realpath(changed_path)
@@ -222,28 +244,28 @@ def _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only):
                 matched_suite = suite_info
                 break
         if matched_suite is not None:
-            touched_names.add(matched_suite.name)
+            touched_suite_keys.add(matched_suite.suite_key)
             continue
         for suite_repo_root in repo_roots:
             if os.path.commonpath([suite_repo_root, changed_path]) == suite_repo_root:
-                touched_names.update(suite_info.name for suite_info in suites_by_repo_root.get(suite_repo_root, ()))
+                touched_suite_keys.update(suite_info.suite_key for suite_info in suites_by_repo_root.get(suite_repo_root, ()))
                 break
 
     if not root_suites_only:
-        return [suite_info for suite_info in discovery.suites if suite_info.name in touched_names]
+        return [suite_info for suite_info in discovery.suites if suite_info.suite_key in touched_suite_keys]
 
     reverse_edges = {}
     for importer, imported in discovery.local_edges:
         reverse_edges.setdefault(imported, set()).add(importer)
-    affected = set(touched_names)
-    worklist = deque(touched_names)
+    affected = set(touched_suite_keys)
+    worklist = deque(touched_suite_keys)
     while worklist:
-        suite_name = worklist.popleft()
-        for importer in reverse_edges.get(suite_name, ()):
+        suite_key = worklist.popleft()
+        for importer in reverse_edges.get(suite_key, ()):
             if importer not in affected:
                 affected.add(importer)
                 worklist.append(importer)
-    return [suite_info for suite_info in discovery.root_suites if suite_info.name in affected]
+    return [suite_info for suite_info in discovery.root_suites if suite_info.suite_key in affected]
 
 
 def _repo_suite_selection_mode():
@@ -311,24 +333,33 @@ def _run_command_for_repo_suites(command, discovery):
         _mx.abort('No suites found in this directory tree.')
 
     selected_suites, diff_desc, root_suites_only = _mx._select_repo_suites(discovery)
+    name_counts = {}
+    for suite_info in selected_suites:
+        name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
+
+    def _suite_run_label(suite_info):
+        if name_counts.get(suite_info.name, 0) > 1:
+            return _suite_label(suite_info)
+        return suite_info.name
+
     if diff_desc is not None:
         suite_kind = 'root suites' if root_suites_only else 'suites'
-        selected_names = ', '.join(suite_info.name for suite_info in selected_suites) if selected_suites else '<none>'
+        selected_names = ', '.join(_suite_run_label(suite_info) for suite_info in selected_suites) if selected_suites else '<none>'
         _mx.log(f'Diff filter ({diff_desc}) selected {suite_kind}: {selected_names}')
     failures = []
     for suite_info in selected_suites:
         suite_kind = 'root suite' if root_suites_only else 'suite'
-        _mx.log(f"Running `{command}` for {suite_kind} `{suite_info.name}`")
+        _mx.log(f"Running `{command}` for {suite_kind} `{_suite_run_label(suite_info)}`")
         retcode = _mx.run(_mx._recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir)
         if retcode != 0:
-            failures.append((suite_info.name, retcode))
+            failures.append((suite_info.suite_key, retcode))
 
     _mx.log('')
     _mx.log('Summary:')
     failed = dict(failures)
     for suite_info in selected_suites:
-        status = f'FAILED ({failed[suite_info.name]})' if suite_info.name in failed else 'OK'
-        _mx.log(f'  {suite_info.name}: {status}')
+        status = f'FAILED ({failed[suite_info.suite_key]})' if suite_info.suite_key in failed else 'OK'
+        _mx.log(f'  {_suite_run_label(suite_info)}: {status}')
     if failures:
         plural = '' if len(failures) == 1 else 's'
         suite_kind = 'root suite' if root_suites_only else 'suite'
