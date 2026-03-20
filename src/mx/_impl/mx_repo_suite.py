@@ -44,9 +44,6 @@ class _RepoSuiteDiscovery(namedtuple('_RepoSuiteDiscovery', ['repo_root', 'repo_
     __slots__ = ()
 
 
-_MULTI_SUITE_COMMANDS = frozenset(['build', 'checkstyle', 'clean', 'suites'])
-
-
 def _discover_repo_suites(start_dir=None):
     _mx = _mx_module()
     if start_dir is None:
@@ -132,21 +129,33 @@ def _format_repo_suite_discovery(discovery, show_locations=False):
         return suite_info.name
 
     root_keys = {suite.suite_key for suite in discovery.root_suites}
+    other_suites = [suite_info for suite_info in discovery.suites if suite_info.suite_key not in root_keys]
     lines = []
-    for suite_info in discovery.suites:
-        prefix = '> ' if suite_info.suite_key in root_keys else '  '
-        imported = local_deps.get(suite_info.suite_key)
-        if imported:
-            lines.append(f"{prefix}{_suite_label(suite_info, show_locations=show_locations)} > {', '.join(_suite_reference_label(dep) for dep in imported)}")
-        else:
-            lines.append(f'{prefix}{_suite_label(suite_info, show_locations=show_locations)}')
+
+    def _append_section(title, suites):
+        if not suites:
+            return
+        if lines:
+            lines.append('')
+        lines.append(f'{title}:')
+        for suite_info in suites:
+            line = f'  {_suite_label(suite_info, show_locations=show_locations)}'
+            imported = local_deps.get(suite_info.suite_key)
+            if imported:
+                line += f" -> {', '.join(_suite_reference_label(dep) for dep in imported)}"
+            lines.append(line)
+
+    _append_section('Roots', discovery.root_suites)
+    _append_section('Others', other_suites)
+
     if discovery.external_imports:
-        lines.append('')
+        if lines:
+            lines.append('')
         lines.append('External dependencies:')
         for suite_info in discovery.suites:
             imports = discovery.external_imports.get(suite_info.suite_key)
             if imports:
-                lines.append(f"  {_suite_reference_label(suite_info)} > {', '.join(imports)}")
+                lines.append(f"  {_suite_reference_label(suite_info)} -> {', '.join(imports)}")
     return '\n'.join(lines)
 
 
@@ -333,12 +342,11 @@ def _run_command_for_repo_suites(command, discovery):
         _mx.abort('`-p/--primary-suite-path` cannot be used together with `--all-suites`, `--root-suites`, `--diff-suites`, or `--diff-branch-suites`.')
     if getattr(_mx._opts, 'primary', False) or getattr(_mx._opts, 'specific_suites', []):
         _mx.abort('`--primary` and `--suite` cannot be used together with `--all-suites`, `--root-suites`, `--diff-suites`, or `--diff-branch-suites`.')
-    if _mx.primary_suite() is not None:
-        _mx.abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     if not discovery or not discovery.suites:
         _mx.abort('No suites found in this directory tree.')
 
     selected_suites, diff_desc, root_suites_only = _mx._select_repo_suites(discovery)
+    selection_mode = _mx._repo_suite_selection_mode()
     name_counts = {}
     for suite_info in discovery.suites:
         name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
@@ -348,10 +356,14 @@ def _run_command_for_repo_suites(command, discovery):
             return _suite_label(suite_info)
         return suite_info.name
 
+    suite_kind = 'root suites' if root_suites_only else 'suites'
+    selected_names = ', '.join(_suite_run_label(suite_info) for suite_info in selected_suites) if selected_suites else '<none>'
     if diff_desc is not None:
-        suite_kind = 'root suites' if root_suites_only else 'suites'
-        selected_names = ', '.join(_suite_run_label(suite_info) for suite_info in selected_suites) if selected_suites else '<none>'
         _mx.log(f'Diff filter ({diff_desc}) selected {suite_kind}: {selected_names}')
+    elif selection_mode == 'root':
+        _mx.log(f'Selected root suites: {selected_names}')
+    else:
+        _mx.log(f'Selected suites: {selected_names}')
     failures = []
     for suite_info in selected_suites:
         suite_kind = 'root suite' if root_suites_only else 'suite'
@@ -360,16 +372,18 @@ def _run_command_for_repo_suites(command, discovery):
         if retcode != 0:
             failures.append((suite_info.suite_key, retcode))
 
-    _mx.log('')
-    _mx.log('Summary:')
-    failed = dict(failures)
-    for suite_info in selected_suites:
-        status = f'FAILED ({failed[suite_info.suite_key]})' if suite_info.suite_key in failed else 'OK'
-        _mx.log(f'  {_suite_run_label(suite_info)}: {status}')
     if failures:
+        _mx.log('')
+        _mx.log('Summary:')
+        failed = dict(failures)
+        for suite_info in selected_suites:
+            status = f'FAILED ({failed[suite_info.suite_key]})' if suite_info.suite_key in failed else 'OK'
+            _mx.log(f'  {_suite_run_label(suite_info)}: {status}')
         plural = '' if len(failures) == 1 else 's'
         suite_kind = 'root suite' if root_suites_only else 'suite'
         _mx.abort(f'{len(failures)} {suite_kind} command{plural} failed.')
+    plural = '' if len(selected_suites) == 1 else 's'
+    _mx.log(f'{len(selected_suites)} command{plural} executed successfully')
     return 0
 
 

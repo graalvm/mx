@@ -379,7 +379,7 @@ from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
 from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
 from .support.timestampfile import TimeStampFile
-from .mx_repo_suite import _MULTI_SUITE_COMMANDS, _RepoSuiteDiscovery, _RepoSuiteInfo, _abort_for_missing_primary_suite, _discover_repo_suites, _format_repo_suite_discovery, _get_repo_diff_paths, _git_diff_name_status_z, _handle_missing_primary_suite_command, _parse_git_diff_name_status_z, _recursive_mx_args_for_suite, _repo_suite_selection_mode, _repo_suite_selection_requested, _run_command_for_repo_suites, _select_repo_suites, _select_repo_suites_by_paths
+from .mx_repo_suite import _RepoSuiteDiscovery, _RepoSuiteInfo, _abort_for_missing_primary_suite, _discover_repo_suites, _format_repo_suite_discovery, _get_repo_diff_paths, _git_diff_name_status_z, _handle_missing_primary_suite_command, _parse_git_diff_name_status_z, _recursive_mx_args_for_suite, _repo_suite_selection_mode, _repo_suite_selection_requested, _run_command_for_repo_suites, _select_repo_suites, _select_repo_suites_by_paths
 
 _mx_commands = MxCommands("mx")
 
@@ -4217,8 +4217,6 @@ def clean(args, parser=None):
     """
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('clean')
-    if _repo_suite_selection_requested():
-        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     suppliedParser = parser is not None
 
@@ -14751,8 +14749,6 @@ def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('build')
-    if _repo_suite_selection_requested():
-        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
     with BuildReport(cmd_args) as build_report:
         _build_with_report(cmd_args, build_report=build_report, parser=parser)
 
@@ -16125,8 +16121,6 @@ def checkstyle(args):
    produced by Checkstyle result in a non-zero exit code."""
     if primary_suite() is None:
         return _handle_missing_primary_suite_command('checkstyle')
-    if _repo_suite_selection_requested():
-        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` cannot be used when a primary suite is already active. Run from the repository root instead.')
 
     parser = ArgumentParser(prog='mx checkstyle')
 
@@ -18697,9 +18691,7 @@ def main():
             _primary_suite_init(primary)
         else:
             _mx_suite._complete_init()
-            if not is_optional_suite_context:
-                if _repo_suite_selection_requested() and initial_command not in _MULTI_SUITE_COMMANDS:
-                    abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` are only supported for: build, checkstyle, clean, suites')
+            if not is_optional_suite_context and not _repo_suite_selection_requested():
                 abort(f'no primary suite found for {initial_command}')
 
         for envVar in _loadedEnv:
@@ -18721,6 +18713,10 @@ def main():
     if len(commandAndArgs) == 0:
         print_simple_help()
         return
+
+    command = commandAndArgs[0]
+    if _repo_suite_selection_requested():
+        return _run_command_for_repo_suites(command, _discover_repo_suites())
 
     # add JMH archive participants
     def _has_jmh_dep(dist):
@@ -18744,7 +18740,6 @@ def main():
             if d.isJARDistribution() and _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
-    command = commandAndArgs[0]
     global _mx_command_and_args
     _mx_command_and_args = commandAndArgs
     global _mx_args
@@ -18759,9 +18754,6 @@ def main():
             abort(f'mx: unknown command \'{command}\'\n{_format_commands()}use "mx help" for more options')
         else:
             abort(f"mx: command '{command}' is ambiguous\n    {' '.join(hits)}")
-
-    if _repo_suite_selection_requested() and command not in _MULTI_SUITE_COMMANDS:
-        abort('`--all-suites`, `--root-suites`, `--diff-suites`, and `--diff-branch-suites` are only supported for: build, checkstyle, clean, suites')
 
     mx_compdb.init()
 
