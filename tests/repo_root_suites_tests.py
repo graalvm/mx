@@ -62,6 +62,20 @@ def argv_patch(args):
             orig_mx._argParser.initialCommandAndArgs = previous_initial
 
 
+@contextmanager
+def sys_module_patch(name):
+    sentinel = object()
+    previous = sys.modules.get(name, sentinel)
+    sys.modules.pop(name, None)
+    try:
+        yield
+    finally:
+        if previous is sentinel:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+
+
 def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None, import_entries=None):
     imported_suites = imported_suites or []
     suite_dir = os.path.join(repo_root, suite_relpath)
@@ -252,12 +266,12 @@ def test_show_suites_without_primary_suite():
         assert "Dependencies:" not in output
         assert "Roots:\n" in output
         assert "Others:\n" in output
-        assert "  compiler (compiler) -> sdk" in output
-        assert "  tools (tools) -> sdk" in output
+        assert "  compiler (compiler): depends on: sdk" in output
+        assert "  tools (tools): depends on: sdk" in output
         assert "  sdk (sdk)" in output
-        assert "sdk -> -" not in output
-        assert "compiler (compiler) -> sdk" in output
-        assert "  truffle (truffle) -> sdk" in output
+        assert "sdk: depends on: -" not in output
+        assert "compiler (compiler): depends on: sdk" in output
+        assert "  truffle (truffle): depends on: sdk" in output
         assert "> compiler" not in output
     finally:
         tmpdir.cleanup()
@@ -272,10 +286,10 @@ def test_show_suites_without_primary_suite_from_workspace_root():
         output = stdout.getvalue()
         assert "Roots:\n" in output
         assert "Others:\n" in output
-        assert "  compiler (repo-a/compiler) -> sdk" in output
-        assert "  tools (repo-b/tools) -> sdk" in output
+        assert "  compiler (repo-a/compiler): depends on: sdk" in output
+        assert "  tools (repo-b/tools): depends on: sdk" in output
         assert "  sdk (repo-a/sdk)" in output
-        assert "  truffle (repo-b/truffle) -> sdk" in output
+        assert "  truffle (repo-b/truffle): depends on: sdk" in output
     finally:
         tmpdir.cleanup()
 
@@ -289,9 +303,9 @@ def test_show_suites_without_primary_suite_with_locations():
         output = stdout.getvalue()
         assert "Roots:\n" in output
         assert "Others:\n" in output
-        assert f"  compiler ({suite_dirs['compiler']}) -> sdk" in output
+        assert f"  compiler ({suite_dirs['compiler']}): depends on: sdk" in output
         assert f"  sdk ({suite_dirs['sdk']})" in output
-        assert f"  tools ({suite_dirs['tools']}) -> sdk" in output
+        assert f"  tools ({suite_dirs['tools']}): depends on: sdk" in output
     finally:
         tmpdir.cleanup()
 
@@ -328,10 +342,10 @@ def test_show_suites_with_duplicate_names_disambiguates_dependencies():
         output = stdout.getvalue()
         assert "Roots:\n" in output
         assert "Others:\n" in output
-        assert "  compiler (repo-a/compiler) -> sdk (repo-a/sdk)" in output
+        assert "  compiler (repo-a/compiler): depends on: sdk (repo-a/sdk)" in output
         assert "  sdk (repo-a/sdk)" in output
         assert "  sdk (repo-b/sdk)" in output
-        assert "  tools (repo-b/tools) -> sdk (repo-b/sdk)" in output
+        assert "  tools (repo-b/tools): depends on: sdk (repo-b/sdk)" in output
     finally:
         tmpdir.cleanup()
 
@@ -349,7 +363,7 @@ def test_show_suites_for_root_suites_only():
         assert "  tools (tools)" in output
         assert "  truffle (truffle)" in output
         assert "\n  sdk (sdk)" not in output
-        assert "compiler (compiler) -> sdk" not in output
+        assert "compiler (compiler): depends on: sdk" not in output
     finally:
         tmpdir.cleanup()
 
@@ -455,7 +469,7 @@ def test_root_suites_dispatches_once_per_root_suite():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--root-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=True, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--root-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=True, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
             retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
@@ -490,7 +504,7 @@ def test_all_suites_dispatches_once_per_discovered_suite():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
             retcode = orig_mx._run_command_for_repo_suites("custom-command", discovery)
 
         assert retcode == 0
@@ -511,6 +525,57 @@ def test_all_suites_dispatches_once_per_discovered_suite():
         tmpdir.cleanup()
 
 
+def test_bulk_suite_run_preserves_live_command_output():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        commands = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("custom-command", discovery)
+
+        assert retcode == 0
+        assert len(commands) == 4
+        for _, kwargs in commands:
+            assert "out" not in kwargs
+            assert "err" not in kwargs
+    finally:
+        tmpdir.cleanup()
+
+
+def test_bulk_suite_run_aborts_on_keyboard_interrupt():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            assert kwargs["interruptIsFatal"] is True
+            raise KeyboardInterrupt()
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        def fake_abort(msg):
+            raise RuntimeError(msg)
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("abort", fake_abort), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            try:
+                orig_mx._run_command_for_repo_suites("custom-command", discovery)
+                assert False, "expected abort on keyboard interrupt"
+            except RuntimeError as exc:
+                assert str(exc) == "1"
+
+        assert "Summary:" not in logs
+        assert "commands executed successfully" not in " ".join(logs)
+    finally:
+        tmpdir.cleanup()
+
+
 def test_main_dispatches_arbitrary_command_for_selected_suites():
     tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
     try:
@@ -524,7 +589,7 @@ def test_main_dispatches_arbitrary_command_for_selected_suites():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]):
+        with chdir(repo_root), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), sys_module_patch("mx_mx"):
             orig_mx.main()
 
         assert len(commands) == 4
@@ -538,6 +603,57 @@ def test_main_dispatches_arbitrary_command_for_selected_suites():
             assert "--dry-run" in cmd
             assert cmd.index("-p") < cmd.index("custom-command")
             assert kwargs["cwd"] in invoked_primary_suites
+    finally:
+        tmpdir.cleanup()
+
+
+def test_main_dispatch_respects_skip_missing_imports():
+    tmpdir, repo_root, suite_dirs = _create_repo_with_partial_missing_imports()
+    try:
+        commands = []
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        with chdir(repo_root), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "custom-command", "--dry-run"]), sys_module_patch("mx_mx"):
+            orig_mx.main()
+
+        assert len(commands) == 1
+        cmd, kwargs = commands[0]
+        assert cmd[cmd.index("-p") + 1] == suite_dirs["tools"]
+        assert "custom-command" in cmd
+        assert "--skip-missing-imports" not in cmd
+        assert "--all-suites" not in cmd
+        assert kwargs["cwd"] == suite_dirs["tools"]
+        assert "Selected suites: compiler, tools" in logs
+        assert "Skipping suite `compiler` due to missing local imports: sdk" in logs
+        assert "Skipped 1 suite with missing local imports" in logs
+        assert "1 command executed successfully" in logs
+        assert "Summary:" not in logs
+    finally:
+        tmpdir.cleanup()
+
+
+def test_main_does_not_bulk_dispatch_suites():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        dispatched = []
+
+        def fail_bulk_dispatch(command, discovery):
+            dispatched.append((command, discovery))
+            assert False, "suites should not recurse through bulk run dispatch"
+
+        stdout = io.StringIO()
+        with chdir(repo_root), mx_monkeypatch("_run_command_for_repo_suites", fail_bulk_dispatch), mx_monkeypatch("_check_stdout_encoding", lambda: None), argv_patch(["mx", "--all-suites", "suites", "--locations"]), sys_module_patch("mx_mx"), redirect_stdout(stdout):
+            orig_mx.main()
+
+        assert dispatched == []
+        assert "Roots:" in stdout.getvalue()
     finally:
         tmpdir.cleanup()
 
@@ -612,7 +728,7 @@ def test_diff_suites_dispatches_once_per_selected_suite():
         def fake_get_repo_diff_paths(discovery):
             return "uncommitted changes", [os.path.join(repo_root, "sdk", "mx.sdk", "suite.py")]
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), argv_patch(["mx", "--diff-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--diff-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
             retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
@@ -641,7 +757,7 @@ def test_skip_missing_imports_skips_all_selected_suites():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
             retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
@@ -669,7 +785,7 @@ def test_skip_missing_imports_allows_other_selected_suites_to_run():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
             retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
@@ -702,15 +818,52 @@ def test_summary_uses_suite_paths_for_duplicate_names():
         def fake_abort(msg):
             raise RuntimeError(msg)
 
-        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("abort", fake_abort), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("abort", fake_abort), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
             try:
                 orig_mx._run_command_for_repo_suites("build", discovery)
                 assert False, "expected abort for failed suite command"
             except RuntimeError as exc:
                 assert str(exc) == "1 suite command failed."
 
-        assert "  sdk (repo-a/sdk): FAILED (1)" in logs
-        assert "  sdk (repo-b/sdk): OK" in logs
+        assert "  FAILED (1): sdk (repo-a/sdk)" in logs
+        assert "  OK: compiler, sdk (repo-b/sdk), tools" in logs
+        assert "Summary:" in logs
+    finally:
+        tmpdir.cleanup()
+
+
+def test_summary_distinguishes_missing_command_from_failure():
+    tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        commands = []
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        def fake_abort(msg):
+            raise RuntimeError(msg)
+
+        def fake_check_command_available_for_suite(command, suite_dir):
+            return suite_dir != suite_dirs["sdk"]
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("abort", fake_abort), mx_monkeypatch("_check_command_available_for_suite", fake_check_command_available_for_suite), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+            try:
+                orig_mx._run_command_for_repo_suites("custom-command", discovery)
+                assert False, "expected abort for unavailable command"
+            except RuntimeError as exc:
+                assert str(exc) == "1 suite does not define `custom-command`."
+
+        assert len(commands) == 3
+        invoked_primary_suites = [cmd[cmd.index("-p") + 1] for cmd, _ in commands]
+        assert suite_dirs["sdk"] not in invoked_primary_suites
+        assert "  COMMAND UNDEFINED: sdk" in logs
+        assert "  OK: compiler, tools, truffle" in logs
         assert "Summary:" in logs
     finally:
         tmpdir.cleanup()
@@ -731,7 +884,7 @@ def test_diff_summary_uses_suite_paths_for_duplicate_names():
         def fake_get_repo_diff_paths(discovery):
             return "uncommitted changes", [os.path.join(suite_dirs["repo-a-sdk"], "mx.sdk", "suite.py")]
 
-        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), argv_patch(["mx", "--diff-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_get_repo_diff_paths", fake_get_repo_diff_paths), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--diff-suites", "build", "--dry-run"]), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
             retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
@@ -784,7 +937,9 @@ def tests():
     test_build_without_primary_suite_shows_all_suites_hint()
     test_root_suites_dispatches_once_per_root_suite()
     test_all_suites_dispatches_once_per_discovered_suite()
-    test_main_dispatches_arbitrary_command_for_selected_suites()
+    test_bulk_suite_run_preserves_live_command_output()
+    test_bulk_suite_run_aborts_on_keyboard_interrupt()
+    test_main_does_not_bulk_dispatch_suites()
     test_diff_path_selection_for_all_suites()
     test_diff_path_selection_for_root_suites()
     test_diff_path_selection_for_repo_level_change_selects_all()
@@ -794,6 +949,7 @@ def tests():
     test_skip_missing_imports_skips_all_selected_suites()
     test_skip_missing_imports_allows_other_selected_suites_to_run()
     test_summary_uses_suite_paths_for_duplicate_names()
+    test_summary_distinguishes_missing_command_from_failure()
     test_diff_summary_uses_suite_paths_for_duplicate_names()
     test_multi_suite_flags_reject_explicit_primary_suite_path()
     test_multi_suite_flags_reject_primary_and_specific_suite_filters()

@@ -142,7 +142,7 @@ def _format_repo_suite_discovery(discovery, show_locations=False):
             line = f'  {_suite_label(suite_info, show_locations=show_locations)}'
             imported = local_deps.get(suite_info.suite_key)
             if imported:
-                line += f" -> {', '.join(_suite_reference_label(dep) for dep in imported)}"
+                line += f": depends on: {', '.join(_suite_reference_label(dep) for dep in imported)}"
             lines.append(line)
 
     _append_section('Roots', discovery.root_suites)
@@ -155,7 +155,7 @@ def _format_repo_suite_discovery(discovery, show_locations=False):
         for suite_info in discovery.suites:
             imports = discovery.external_imports.get(suite_info.suite_key)
             if imports:
-                lines.append(f"  {_suite_reference_label(suite_info)} -> {', '.join(imports)}")
+                lines.append(f"  {_suite_reference_label(suite_info)}: depends on: {', '.join(imports)}")
     return '\n'.join(lines)
 
 
@@ -322,7 +322,7 @@ def _select_repo_suites(discovery, default_all=False):
     _mx.abort(f'Unexpected repo suite selection mode: {selection_mode}')
 
 
-def _recursive_mx_args_for_suite(primary_suite_path):
+def _recursive_mx_base_args(primary_suite_path):
     _mx = _mx_module()
     forwarded_args = []
     for arg in sys.argv[1:]:
@@ -333,7 +333,13 @@ def _recursive_mx_args_for_suite(primary_suite_path):
         command_index = forwarded_args.index(_mx._argParser.initialCommandAndArgs[0])
     except (AttributeError, IndexError, ValueError):
         command_index = len(forwarded_args)
-    return [sys.executable, '-u', join(_mx._mx_home, 'mx.py')] + forwarded_args[:command_index] + ['-p', primary_suite_path] + forwarded_args[command_index:]
+    base_args = [sys.executable, '-u', join(_mx._mx_home, 'mx.py')] + forwarded_args[:command_index] + ['-p', primary_suite_path]
+    return base_args, forwarded_args, command_index
+
+
+def _recursive_mx_args_for_suite(primary_suite_path):
+    base_args, forwarded_args, command_index = _recursive_mx_base_args(primary_suite_path)
+    return base_args + forwarded_args[command_index:]
 
 
 def _missing_local_imports(primary_suite_path):
@@ -369,6 +375,28 @@ def _missing_local_imports(primary_suite_path):
         if label not in labels:
             labels.append(label)
     return labels
+
+
+def _repo_suite_failure_message(command, failure_count, unavailable_count, root_suites_only):
+    parts = []
+    if failure_count:
+        plural = '' if failure_count == 1 else 's'
+        suite_kind = 'root suite' if root_suites_only else 'suite'
+        parts.append(f'{failure_count} {suite_kind} command{plural} failed')
+    if unavailable_count:
+        suite_plural = '' if unavailable_count == 1 else 's'
+        verb = 'does' if unavailable_count == 1 else 'do'
+        parts.append(f"{unavailable_count} suite{suite_plural} {verb} not define `{command}`")
+    return '; '.join(parts) + '.'
+
+
+def _check_command_available_for_suite(command, primary_suite_path):
+    _mx = _mx_module()
+    out = _mx.OutputCapture()
+    err = _mx.OutputCapture()
+    base_args, _, _ = _recursive_mx_base_args(primary_suite_path)
+    retcode = _mx.run(base_args + ['--check-command-availability', command], nonZeroIsFatal=False, cwd=primary_suite_path, out=out, err=err)
+    return retcode == 0
 
 
 def _run_command_for_repo_suites(command, discovery):
@@ -413,10 +441,17 @@ def _run_command_for_repo_suites(command, discovery):
                 executable_suites.append(suite_info)
 
     failures = []
+    unavailable = set()
     for suite_info in executable_suites:
         suite_kind = 'root suite' if root_suites_only else 'suite'
+        if not _mx._check_command_available_for_suite(command, suite_info.suite_dir):
+            unavailable.add(suite_info.suite_key)
+            continue
         _mx.log(f"Running `{command}` for {suite_kind} `{_suite_run_label(suite_info)}`")
-        retcode = _mx.run(_mx._recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir)
+        try:
+            retcode = _mx.run(_mx._recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir, interruptIsFatal=True)
+        except KeyboardInterrupt:
+            _mx.abort(1)
         if retcode != 0:
             failures.append((suite_info.suite_key, retcode))
 
@@ -424,16 +459,22 @@ def _run_command_for_repo_suites(command, discovery):
         plural = '' if len(skipped) == 1 else 's'
         _mx.log(f'Skipped {len(skipped)} suite{plural} with missing local imports')
 
-    if failures:
+    if failures or unavailable:
         _mx.log('')
         _mx.log('Summary:')
         failed = dict(failures)
+        grouped = {}
         for suite_info in executable_suites:
-            status = f'FAILED ({failed[suite_info.suite_key]})' if suite_info.suite_key in failed else 'OK'
-            _mx.log(f'  {_suite_run_label(suite_info)}: {status}')
-        plural = '' if len(failures) == 1 else 's'
-        suite_kind = 'root suite' if root_suites_only else 'suite'
-        _mx.abort(f'{len(failures)} {suite_kind} command{plural} failed.')
+            if suite_info.suite_key in failed:
+                status = f'FAILED ({failed[suite_info.suite_key]})'
+            elif suite_info.suite_key in unavailable:
+                status = 'COMMAND UNDEFINED'
+            else:
+                status = 'OK'
+            grouped.setdefault(status, []).append(_suite_run_label(suite_info))
+        for status, suite_labels in grouped.items():
+            _mx.log(f"  {status}: {', '.join(suite_labels)}")
+        _mx.abort(_mx._repo_suite_failure_message(command, len(failures), len(unavailable), root_suites_only))
     if executable_suites:
         plural = '' if len(executable_suites) == 1 else 's'
         _mx.log(f'{len(executable_suites)} command{plural} executed successfully')
