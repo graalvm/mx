@@ -326,7 +326,7 @@ def _recursive_mx_args_for_suite(primary_suite_path):
     _mx = _mx_module()
     forwarded_args = []
     for arg in sys.argv[1:]:
-        if arg in ('--all-suites', '--root-suites', '--diff-suites', '--diff-branch-suites'):
+        if arg in ('--all-suites', '--root-suites', '--diff-suites', '--diff-branch-suites', '--skip-missing-imports'):
             continue
         forwarded_args.append(arg)
     try:
@@ -334,6 +334,41 @@ def _recursive_mx_args_for_suite(primary_suite_path):
     except (AttributeError, IndexError, ValueError):
         command_index = len(forwarded_args)
     return [sys.executable, '-u', join(_mx._mx_home, 'mx.py')] + forwarded_args[:command_index] + ['-p', primary_suite_path] + forwarded_args[command_index:]
+
+
+def _missing_local_imports(primary_suite_path):
+    _mx = _mx_module()
+    primary_mx_dir = _mx._is_suite_dir(primary_suite_path)
+    assert primary_mx_dir, f'Expected suite dir at {primary_suite_path}'
+
+    _mx._suitemodel.set_primary_dir(primary_suite_path)
+    primary_suite = _mx.SourceSuite(primary_mx_dir, primary=True, load=False)
+    discovered = {primary_suite.name: primary_suite}
+    worklist = deque([primary_suite])
+    missing = []
+
+    for name, in_subdir in _mx.get_dynamic_imports():
+        if name not in discovered and primary_suite.get_import(name) is None:
+            primary_suite.suite_imports.append(_mx.SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
+
+    while worklist:
+        suite_obj = worklist.popleft()
+        for suite_import in suite_obj.suite_imports:
+            if suite_import.name in discovered:
+                continue
+            imported_suite, _ = _mx._find_suite_import(suite_obj, suite_import, fatalIfMissing=False, load=False, allow_clone=False)
+            if imported_suite is None:
+                missing.append((suite_obj.name, suite_import.name))
+                continue
+            discovered[imported_suite.name] = imported_suite
+            worklist.append(imported_suite)
+
+    labels = []
+    for importer, imported in missing:
+        label = imported if importer == primary_suite.name else f'{importer} -> {imported}'
+        if label not in labels:
+            labels.append(label)
+    return labels
 
 
 def _run_command_for_repo_suites(command, discovery):
@@ -364,26 +399,46 @@ def _run_command_for_repo_suites(command, discovery):
         _mx.log(f'Selected root suites: {selected_names}')
     else:
         _mx.log(f'Selected suites: {selected_names}')
+
+    skipped = []
+    executable_suites = selected_suites
+    if getattr(_mx._opts, 'skip_missing_imports', False):
+        executable_suites = []
+        for suite_info in selected_suites:
+            missing_imports = _mx._missing_local_imports(suite_info.suite_dir)
+            if missing_imports:
+                skipped.append((suite_info, missing_imports))
+                _mx.log(f"Skipping suite `{_suite_run_label(suite_info)}` due to missing local imports: {', '.join(missing_imports)}")
+            else:
+                executable_suites.append(suite_info)
+
     failures = []
-    for suite_info in selected_suites:
+    for suite_info in executable_suites:
         suite_kind = 'root suite' if root_suites_only else 'suite'
         _mx.log(f"Running `{command}` for {suite_kind} `{_suite_run_label(suite_info)}`")
         retcode = _mx.run(_mx._recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir)
         if retcode != 0:
             failures.append((suite_info.suite_key, retcode))
 
+    if skipped:
+        plural = '' if len(skipped) == 1 else 's'
+        _mx.log(f'Skipped {len(skipped)} suite{plural} with missing local imports')
+
     if failures:
         _mx.log('')
         _mx.log('Summary:')
         failed = dict(failures)
-        for suite_info in selected_suites:
+        for suite_info in executable_suites:
             status = f'FAILED ({failed[suite_info.suite_key]})' if suite_info.suite_key in failed else 'OK'
             _mx.log(f'  {_suite_run_label(suite_info)}: {status}')
         plural = '' if len(failures) == 1 else 's'
         suite_kind = 'root suite' if root_suites_only else 'suite'
         _mx.abort(f'{len(failures)} {suite_kind} command{plural} failed.')
-    plural = '' if len(selected_suites) == 1 else 's'
-    _mx.log(f'{len(selected_suites)} command{plural} executed successfully')
+    if executable_suites:
+        plural = '' if len(executable_suites) == 1 else 's'
+        _mx.log(f'{len(executable_suites)} command{plural} executed successfully')
+    else:
+        _mx.log('No commands executed; all selected suites were skipped due to missing local imports')
     return 0
 
 

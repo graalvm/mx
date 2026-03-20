@@ -379,7 +379,7 @@ from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
 from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
 from .support.timestampfile import TimeStampFile
-from .mx_repo_suite import _RepoSuiteDiscovery, _RepoSuiteInfo, _abort_for_missing_primary_suite, _discover_repo_suites, _format_repo_suite_discovery, _get_repo_diff_paths, _git_diff_name_status_z, _handle_missing_primary_suite_command, _parse_git_diff_name_status_z, _recursive_mx_args_for_suite, _repo_suite_selection_mode, _repo_suite_selection_requested, _run_command_for_repo_suites, _select_repo_suites, _select_repo_suites_by_paths
+from .mx_repo_suite import _RepoSuiteDiscovery, _RepoSuiteInfo, _abort_for_missing_primary_suite, _discover_repo_suites, _format_repo_suite_discovery, _get_repo_diff_paths, _git_diff_name_status_z, _handle_missing_primary_suite_command, _missing_local_imports, _parse_git_diff_name_status_z, _recursive_mx_args_for_suite, _repo_suite_selection_mode, _repo_suite_selection_requested, _run_command_for_repo_suites, _select_repo_suites, _select_repo_suites_by_paths
 
 _mx_commands = MxCommands("mx")
 
@@ -835,6 +835,7 @@ environment variables:
         repo_suites.add_argument('--root-suites', action='store_true', help='run selected built-in commands once for each root suite in the current directory tree when no primary suite is active')
         repo_suites.add_argument('--diff-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched by uncommitted Git changes compared to HEAD')
         repo_suites.add_argument('--diff-branch-suites', action='store_true', help='run selected built-in commands once for each discovered local suite in the current directory tree touched by Git changes on this branch compared to master')
+        self.add_argument('--skip-missing-imports', action='store_true', help='when used with repo suite selection flags, skip suites whose imports are not available locally instead of cloning or fetching them')
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
@@ -3298,7 +3299,7 @@ def _use_binary_suite(suite_name):
     return _binary_suites is not None and (len(_binary_suites) == 0 or suite_name in _binary_suites)
 
 
-def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False):
+def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False, allow_clone=True):
     """
     :rtype : (Suite | None, bool)
     """
@@ -3355,7 +3356,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             return _import_mx_dir
         if clone_mode != search_mode:
             _import_mx_dir = _find_suite_dir(clone_mode)
-        if _import_mx_dir is None:
+        if _import_mx_dir is None and allow_clone:
             # No local copy, so use the URLs in order to "download" one
             clone_kwargs = _clone_kwargs(clone_mode)
             for urlinfo in suite_import.urlinfos:

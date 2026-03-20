@@ -62,20 +62,22 @@ def argv_patch(args):
             orig_mx._argParser.initialCommandAndArgs = previous_initial
 
 
-def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None):
+def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None, import_entries=None):
     imported_suites = imported_suites or []
     suite_dir = os.path.join(repo_root, suite_relpath)
     mx_dir = os.path.join(suite_dir, f"mx.{suite_name}")
     os.makedirs(mx_dir, exist_ok=True)
     imports = ""
-    if imported_suites:
+    if import_entries is None and imported_suites:
+        import_entries = [{"name": suite, "subdir": True} for suite in imported_suites]
+    if import_entries:
         imports = """
     "imports": {
         "suites": [
 %s
         ]
     },
-""" % ",\n".join([f'            {{"name": "{suite}", "subdir": True}}' for suite in imported_suites])
+""" % ",\n".join([f"            {repr(entry)}" for entry in import_entries])
     with open(os.path.join(mx_dir, "suite.py"), "w") as fp:
         fp.write(
             """suite = {
@@ -150,6 +152,45 @@ def _create_workspace_with_duplicate_suite_names():
         "tools": tools_dir,
         "repo-b-sdk": sdk_b_dir,
     }
+
+
+def _create_repo_with_missing_import():
+    tmpdir = tempfile.TemporaryDirectory()
+    repo_root = tmpdir.name
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    compiler_dir = _write_suite(
+        repo_root,
+        "compiler",
+        "compiler",
+        import_entries=[
+            {
+                "name": "sdk",
+                "version": "deadbeef",
+                "urls": [{"url": "https://example.invalid/sdk.git", "kind": "git"}],
+            }
+        ],
+    )
+    return tmpdir, repo_root, {"compiler": compiler_dir}
+
+
+def _create_repo_with_partial_missing_imports():
+    tmpdir = tempfile.TemporaryDirectory()
+    repo_root = tmpdir.name
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    compiler_dir = _write_suite(
+        repo_root,
+        "compiler",
+        "compiler",
+        import_entries=[
+            {
+                "name": "sdk",
+                "version": "deadbeef",
+                "urls": [{"url": "https://example.invalid/sdk.git", "kind": "git"}],
+            }
+        ],
+    )
+    tools_dir = _write_suite(repo_root, "tools", "tools")
+    return tmpdir, repo_root, {"compiler": compiler_dir, "tools": tools_dir}
 
 
 def _edge_name_pairs(discovery):
@@ -586,6 +627,64 @@ def test_diff_suites_dispatches_once_per_selected_suite():
         tmpdir.cleanup()
 
 
+def test_skip_missing_imports_skips_all_selected_suites():
+    tmpdir, repo_root, _ = _create_repo_with_missing_import()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        commands = []
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
+
+        assert retcode == 0
+        assert commands == []
+        assert "Selected suites: compiler" in logs
+        assert "Skipping suite `compiler` due to missing local imports: sdk" in logs
+        assert "Skipped 1 suite with missing local imports" in logs
+        assert "No commands executed; all selected suites were skipped due to missing local imports" in logs
+        assert "Summary:" not in logs
+    finally:
+        tmpdir.cleanup()
+
+
+def test_skip_missing_imports_allows_other_selected_suites_to_run():
+    tmpdir, repo_root, suite_dirs = _create_repo_with_partial_missing_imports()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        commands = []
+        logs = []
+
+        def fake_run(cmd, **kwargs):
+            commands.append((cmd, kwargs))
+            return 0
+
+        def fake_log(msg=""):
+            logs.append(msg)
+
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
+            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
+
+        assert retcode == 0
+        assert len(commands) == 1
+        cmd, kwargs = commands[0]
+        assert cmd[cmd.index("-p") + 1] == suite_dirs["tools"]
+        assert kwargs["cwd"] == suite_dirs["tools"]
+        assert "Skipping suite `compiler` due to missing local imports: sdk" in logs
+        assert "Skipped 1 suite with missing local imports" in logs
+        assert "1 command executed successfully" in logs
+        assert "Summary:" not in logs
+    finally:
+        tmpdir.cleanup()
+
+
 def test_summary_uses_suite_paths_for_duplicate_names():
     tmpdir, workspace_root, _, suite_dirs = _create_workspace_with_duplicate_suite_names()
     try:
@@ -692,6 +791,8 @@ def tests():
     test_workspace_repo_level_change_selects_only_own_repo_suites()
     test_diff_path_selection_with_duplicate_names_selects_only_matching_suite()
     test_diff_suites_dispatches_once_per_selected_suite()
+    test_skip_missing_imports_skips_all_selected_suites()
+    test_skip_missing_imports_allows_other_selected_suites_to_run()
     test_summary_uses_suite_paths_for_duplicate_names()
     test_diff_summary_uses_suite_paths_for_duplicate_names()
     test_multi_suite_flags_reject_explicit_primary_suite_path()
