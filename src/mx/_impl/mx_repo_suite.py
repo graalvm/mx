@@ -36,7 +36,7 @@ def _mx_module():
     return _mx
 
 
-_RepoSuiteInfo = namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'suite_py', 'repo_root', 'suite_key'])
+_RepoSuiteInfo = namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'repo_root', 'suite_key'])
 _RepoSuiteDiscovery = namedtuple('_RepoSuiteDiscovery', ['repo_root', 'repo_roots', 'suites', 'local_edges', 'root_suites', 'external_imports'])
 
 
@@ -60,7 +60,7 @@ def _discover_repo_suites(start_dir=None):
         _, suite_repo_root = _mx.SuiteModel.get_vc(os.path.abspath(suite_dir))
         suite_repo_root = suite_repo_root if suite_repo_root and exists(suite_repo_root) else repo_root
         suite_key = realpath(suite_dir)
-        discovered.append(_RepoSuiteInfo(_mx._suitename(dirpath), suite_dir, dirpath, join(dirpath, 'suite.py'), suite_repo_root, suite_key))
+        discovered.append(_RepoSuiteInfo(_mx._suitename(dirpath), suite_dir, dirpath, suite_repo_root, suite_key))
         discovered_repo_roots.add(realpath(suite_repo_root))
         dirnames[:] = []
 
