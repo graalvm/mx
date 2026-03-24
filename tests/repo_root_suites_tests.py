@@ -120,6 +120,20 @@ def _create_multi_suite_repo():
     }
 
 
+def _create_repo_with_nested_imported_suite():
+    tmpdir = tempfile.TemporaryDirectory()
+    repo_root = tmpdir.name
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    compiler_dir = _write_suite(repo_root, "compiler", "compiler")
+    imported_sdk_dir = _write_suite(os.path.join(repo_root, "compiler", "mx.imports", "source"), "sdk", "sdk")
+    tools_dir = _write_suite(repo_root, "tools", "tools")
+    return tmpdir, repo_root, {
+        "compiler": compiler_dir,
+        "tools": tools_dir,
+        "imported-sdk": imported_sdk_dir,
+    }
+
+
 def _create_workspace_with_subrepos():
     tmpdir = tempfile.TemporaryDirectory()
     workspace_root = tmpdir.name
@@ -251,6 +265,17 @@ def test_discover_repo_suites_from_workspace_root():
             "tools": os.path.realpath(repo_dirs["repo-b"]),
             "truffle": os.path.realpath(repo_dirs["repo-b"]),
         }
+    finally:
+        tmpdir.cleanup()
+
+
+def test_discover_repo_suites_ignores_nested_imported_suites():
+    tmpdir, repo_root, suite_dirs = _create_repo_with_nested_imported_suite()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        assert [suite.name for suite in discovery.suites] == ["compiler", "tools"]
+        assert [suite.name for suite in discovery.root_suites] == ["compiler", "tools"]
+        assert all(suite.suite_dir != suite_dirs["imported-sdk"] for suite in discovery.suites)
     finally:
         tmpdir.cleanup()
 
@@ -446,6 +471,56 @@ def test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace():
         tmpdir.cleanup()
 
 
+def test_diff_branch_suites_requires_local_master_with_fixup_message():
+    tmpdir, repo_root, _ = _create_multi_suite_repo()
+    try:
+        discovery = orig_mx._discover_repo_suites(repo_root)
+        stderr = io.StringIO()
+
+        class FakeGit(object):
+            kind = "git"
+
+        def fake_get_vc(path, abortOnError=True):
+            return FakeGit()
+
+        class FakeGitConfig(object):
+            def check_for_git(self):
+                return self
+
+            def _commitish_revision(self, vcdir, commitish, abortOnError=True):
+                assert commitish == "master"
+                return None
+
+        with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_monkeypatch("GitConfig", FakeGitConfig), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites=True):
+            try:
+                with redirect_stderr(stderr):
+                    orig_mx._get_repo_diff_paths(discovery)
+            except SystemExit as exc:
+                assert exc.code == 1
+            else:
+                assert False, "expected mx.abort"
+
+        message = stderr.getvalue()
+        assert "`--diff-branch-suites` requires a local `master` branch" in message
+        assert "git fetch origin master" in message
+        assert "git branch -f master FETCH_HEAD" in message
+    finally:
+        tmpdir.cleanup()
+
+
+def test_parser_rejects_primary_suite_path_with_repo_suite_flags():
+    parser = orig_mx.ArgParser()
+    stderr = io.StringIO()
+    try:
+        with redirect_stderr(stderr):
+            parser.parse_args(["-p", "/tmp/suite", "--all-suites"])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        assert False, "expected argparse error"
+    assert "not allowed with argument -p/--primary-suite-path" in stderr.getvalue()
+
+
 def test_build_without_primary_suite_shows_all_suites_hint():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -488,6 +563,24 @@ def test_root_suites_dispatches_once_per_root_suite():
             assert kwargs["cwd"] in invoked_primary_suites
     finally:
         tmpdir.cleanup()
+
+
+def test_recursive_mx_args_preserve_global_option_values_matching_command_name():
+    with argv_patch(["mx", "--env", "build", "build", "--dry-run"]):
+        orig_mx._argParser.initialCommandAndArgs = ["build", "--dry-run"]
+        cmd = orig_mx._recursive_mx_args_for_suite("/tmp/suite")
+
+    assert cmd == [
+        sys.executable,
+        "-u",
+        os.path.join(orig_mx._mx_home, "mx.py"),
+        "--env",
+        "build",
+        "-p",
+        "/tmp/suite",
+        "build",
+        "--dry-run",
+    ]
 
 
 def test_all_suites_dispatches_once_per_discovered_suite():
@@ -896,12 +989,12 @@ def test_diff_summary_uses_suite_paths_for_duplicate_names():
         tmpdir.cleanup()
 
 
-def test_multi_suite_flags_reject_explicit_primary_suite_path():
+def test_multi_suite_flags_reject_primary_suite_path_from_env():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
         discovery = orig_mx._discover_repo_suites(repo_root)
-        expected = "`-p/--primary-suite-path` cannot be used together with `--all-suites`, `--root-suites`, `--diff-suites`, or `--diff-branch-suites`."
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", object()), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path="/tmp/suite"):
+        expected = "`MX_PRIMARY_SUITE_PATH` cannot be used together with `--all-suites`, `--root-suites`, `--diff-suites`, or `--diff-branch-suites`."
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", object()), mx_monkeypatch("_primary_suite_path", "/tmp/suite"), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, primary=False, specific_suites=[], primary_suite_path=None):
             _assert_abort(lambda: orig_mx._run_command_for_repo_suites("build", discovery), expected)
     finally:
         tmpdir.cleanup()
@@ -923,6 +1016,7 @@ def test_multi_suite_flags_reject_primary_and_specific_suite_filters():
 def tests():
     test_discover_repo_suites()
     test_discover_repo_suites_from_workspace_root()
+    test_discover_repo_suites_ignores_nested_imported_suites()
     test_show_suites_without_primary_suite()
     test_show_suites_without_primary_suite_from_workspace_root()
     test_show_suites_without_primary_suite_with_locations()
@@ -934,8 +1028,11 @@ def tests():
     test_show_suites_diff_branch_for_all_suites()
     test_get_repo_diff_paths_ignores_non_git_repos()
     test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace()
+    test_diff_branch_suites_requires_local_master_with_fixup_message()
+    test_parser_rejects_primary_suite_path_with_repo_suite_flags()
     test_build_without_primary_suite_shows_all_suites_hint()
     test_root_suites_dispatches_once_per_root_suite()
+    test_recursive_mx_args_preserve_global_option_values_matching_command_name()
     test_all_suites_dispatches_once_per_discovered_suite()
     test_bulk_suite_run_preserves_live_command_output()
     test_bulk_suite_run_aborts_on_keyboard_interrupt()
@@ -951,5 +1048,5 @@ def tests():
     test_summary_uses_suite_paths_for_duplicate_names()
     test_summary_distinguishes_missing_command_from_failure()
     test_diff_summary_uses_suite_paths_for_duplicate_names()
-    test_multi_suite_flags_reject_explicit_primary_suite_path()
+    test_multi_suite_flags_reject_primary_suite_path_from_env()
     test_multi_suite_flags_reject_primary_and_specific_suite_filters()
