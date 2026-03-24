@@ -834,7 +834,7 @@ environment variables:
         repo_suites.add_argument('--all-suites', action='store_true', help='select all discovered local suites in the current directory tree for repo-suite-aware commands')
         repo_suites.add_argument('--root-suites', action='store_true', help='select root suites in the current directory tree for repo-suite-aware commands')
         repo_suites.add_argument('--diff-suites', action='store_true', help='select local suites in the current directory tree touched by uncommitted Git changes compared to HEAD for repo-suite-aware commands')
-        repo_suites.add_argument('--diff-branch-suites', action='store_true', help='select local suites in the current directory tree touched by Git changes on this branch compared to master for repo-suite-aware commands')
+        repo_suites.add_argument('--diff-branch-suites', nargs='?', const='master', metavar='<branch>', help='select local suites in the current directory tree touched by Git changes on this branch compared to the given main-line branch (default: master) for repo-suite-aware commands')
         self.add_argument('--skip-missing-imports', action='store_true', help='when used with repo suite selection flags, skip suites whose imports are not available locally instead of cloning or fetching them')
         self.add_argument('--check-command-availability', metavar='<command>', help=SUPPRESS)
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874

@@ -471,7 +471,16 @@ def test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace():
         tmpdir.cleanup()
 
 
-def test_diff_branch_suites_requires_local_master_with_fixup_message():
+def test_parser_accepts_optional_diff_branch_suites_value():
+    parser = orig_mx.ArgParser()
+    parsed = parser.parse_args(["--diff-branch-suites"])
+    assert parsed.diff_branch_suites == "master"
+
+    parsed = parser.parse_args(["--diff-branch-suites=main"])
+    assert parsed.diff_branch_suites == "main"
+
+
+def test_diff_branch_suites_requires_configured_branch_with_fixup_message():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
         discovery = orig_mx._discover_repo_suites(repo_root)
@@ -488,10 +497,10 @@ def test_diff_branch_suites_requires_local_master_with_fixup_message():
                 return self
 
             def _commitish_revision(self, vcdir, commitish, abortOnError=True):
-                assert commitish == "master"
+                assert commitish == "main"
                 return None
 
-        with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_monkeypatch("GitConfig", FakeGitConfig), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites=True):
+        with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_monkeypatch("GitConfig", FakeGitConfig), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites="main"):
             try:
                 with redirect_stderr(stderr):
                     orig_mx._get_repo_diff_paths(discovery)
@@ -501,9 +510,9 @@ def test_diff_branch_suites_requires_local_master_with_fixup_message():
                 assert False, "expected mx.abort"
 
         message = stderr.getvalue()
-        assert "`--diff-branch-suites` requires a local `master` branch" in message
-        assert "git fetch origin master" in message
-        assert "git branch -f master FETCH_HEAD" in message
+        assert "`--diff-branch-suites` requires a local `main` branch" in message
+        assert "git fetch origin main" in message
+        assert "git branch -f main FETCH_HEAD" in message
     finally:
         tmpdir.cleanup()
 
@@ -576,6 +585,22 @@ def test_recursive_mx_args_preserve_global_option_values_matching_command_name()
         os.path.join(orig_mx._mx_home, "mx.py"),
         "--env",
         "build",
+        "-p",
+        "/tmp/suite",
+        "build",
+        "--dry-run",
+    ]
+
+
+def test_recursive_mx_args_strip_diff_branch_suites_with_explicit_value():
+    with argv_patch(["mx", "--diff-branch-suites=main", "build", "--dry-run"]):
+        orig_mx._argParser.initialCommandAndArgs = ["build", "--dry-run"]
+        cmd = orig_mx._recursive_mx_args_for_suite("/tmp/suite")
+
+    assert cmd == [
+        sys.executable,
+        "-u",
+        os.path.join(orig_mx._mx_home, "mx.py"),
         "-p",
         "/tmp/suite",
         "build",
@@ -1028,11 +1053,13 @@ def tests():
     test_show_suites_diff_branch_for_all_suites()
     test_get_repo_diff_paths_ignores_non_git_repos()
     test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace()
-    test_diff_branch_suites_requires_local_master_with_fixup_message()
+    test_parser_accepts_optional_diff_branch_suites_value()
+    test_diff_branch_suites_requires_configured_branch_with_fixup_message()
     test_parser_rejects_primary_suite_path_with_repo_suite_flags()
     test_build_without_primary_suite_shows_all_suites_hint()
     test_root_suites_dispatches_once_per_root_suite()
     test_recursive_mx_args_preserve_global_option_values_matching_command_name()
+    test_recursive_mx_args_strip_diff_branch_suites_with_explicit_value()
     test_all_suites_dispatches_once_per_discovered_suite()
     test_bulk_suite_run_preserves_live_command_output()
     test_bulk_suite_run_aborts_on_keyboard_interrupt()

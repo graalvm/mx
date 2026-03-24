@@ -40,12 +40,12 @@ _RepoSuiteInfo = namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'r
 _RepoSuiteDiscovery = namedtuple('_RepoSuiteDiscovery', ['repo_root', 'repo_roots', 'suites', 'local_edges', 'root_suites', 'external_imports'])
 
 
-def _diff_branch_master_fix_message(repo_root, detail):
+def _diff_branch_fix_message(repo_root, branch, detail):
     return (
         f'`--diff-branch-suites` {detail} in git repository `{repo_root}`.\n'
-        'Create or update the local `master` branch first, for example:\n'
-        '  git fetch origin master\n'
-        '  git branch -f master FETCH_HEAD'
+        f'Create or update the local `{branch}` branch first, for example:\n'
+        f'  git fetch origin {branch}\n'
+        f'  git branch -f {branch} FETCH_HEAD'
     )
 
 
@@ -227,8 +227,8 @@ def _get_repo_diff_paths(discovery):
             relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, ['HEAD']))
             changed_paths.extend(realpath(join(repo_root, path)) for path in relative_paths)
     else:
-        assert getattr(_mx._opts, 'diff_branch_suites', False)
-        base = 'master'
+        base = getattr(_mx._opts, 'diff_branch_suites', None)
+        assert base
         git = _mx.GitConfig()
         if git_repo_roots:
             git.check_for_git()
@@ -236,10 +236,10 @@ def _get_repo_diff_paths(discovery):
         for repo_root in git_repo_roots:
             base_rev = git._commitish_revision(repo_root, base, abortOnError=False)
             if base_rev is None:
-                _mx.abort(_diff_branch_master_fix_message(repo_root, 'requires a local `master` branch'))
+                _mx.abort(_diff_branch_fix_message(repo_root, base, f'requires a local `{base}` branch'))
             merge_base = git.git_command(repo_root, ['merge-base', 'HEAD', base_rev], abortOnError=False)
             if merge_base is None or not merge_base.strip():
-                _mx.abort(_diff_branch_master_fix_message(repo_root, 'could not determine the merge-base with local `master`'))
+                _mx.abort(_diff_branch_fix_message(repo_root, base, f'could not determine the merge-base with local `{base}`'))
             merge_base = merge_base.strip()
             merge_bases.append(merge_base)
             relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, [f'{merge_base}..HEAD']))
@@ -335,14 +335,30 @@ def _select_repo_suites(discovery, default_all=False):
 
 def _recursive_mx_base_args(primary_suite_path):
     _mx = _mx_module()
-    stripped_args = {'--all-suites', '--root-suites', '--diff-suites', '--diff-branch-suites', '--skip-missing-imports'}
     original_args = sys.argv[1:]
     initial_command_and_args = getattr(_mx._argParser, 'initialCommandAndArgs', [])
     command_index = len(original_args) - len(initial_command_and_args)
     if command_index < 0:
         command_index = len(original_args)
-    global_args = [arg for arg in original_args[:command_index] if arg not in stripped_args]
-    command_and_args = [arg for arg in original_args[command_index:] if arg not in stripped_args]
+    global_args = []
+    raw_global_args = original_args[:command_index]
+    i = 0
+    while i < len(raw_global_args):
+        arg = raw_global_args[i]
+        if arg in ('--all-suites', '--root-suites', '--diff-suites', '--skip-missing-imports'):
+            i += 1
+            continue
+        if arg == '--diff-branch-suites':
+            i += 1
+            if i < len(raw_global_args) and not raw_global_args[i].startswith('-'):
+                i += 1
+            continue
+        if arg.startswith('--diff-branch-suites='):
+            i += 1
+            continue
+        global_args.append(arg)
+        i += 1
+    command_and_args = original_args[command_index:]
     base_args = [sys.executable, '-u', join(_mx._mx_home, 'mx.py')] + global_args + ['-p', primary_suite_path]
     return base_args, command_and_args
 
