@@ -28,7 +28,7 @@
 from collections import deque, namedtuple
 import os
 import sys
-from os.path import basename, dirname, exists, join, realpath
+from pathlib import Path
 
 
 def _mx_module():
@@ -38,6 +38,22 @@ def _mx_module():
 
 _RepoSuiteInfo = namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'repo_root', 'suite_key'])
 _RepoSuiteDiscovery = namedtuple('_RepoSuiteDiscovery', ['repo_root', 'repo_roots', 'suites', 'local_edges', 'root_suites', 'external_imports'])
+
+
+def _absolute_path(path):
+    return Path(path).absolute()
+
+
+def _resolve_path(path):
+    return Path(path).resolve()
+
+
+def _contains_path(parent, child):
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
 
 
 def _diff_branch_fix_message(repo_root, branch, detail):
@@ -52,29 +68,30 @@ def _diff_branch_fix_message(repo_root, branch, detail):
 def _discover_repo_suites(start_dir=None):
     _mx = _mx_module()
     if start_dir is None:
-        start_dir = os.getcwd()
-    start_dir = os.path.abspath(start_dir)
-    _, enclosing_repo_root = _mx.SuiteModel.get_vc(start_dir)
-    repo_root = enclosing_repo_root if enclosing_repo_root and exists(enclosing_repo_root) else start_dir
+        start_dir = Path.cwd()
+    start_dir = _absolute_path(start_dir)
+    _, enclosing_repo_root = _mx.SuiteModel.get_vc(str(start_dir))
+    repo_root = _absolute_path(enclosing_repo_root) if enclosing_repo_root and Path(enclosing_repo_root).exists() else start_dir
 
     discovered = []
     discovered_repo_roots = set()
     skip_dirs = {'.git', '.hg', '.svn', '__pycache__', 'mxbuild', 'mx.imports'}
-    for dirpath, dirnames, filenames in os.walk(repo_root):
+    for dirpath, dirnames, filenames in os.walk(str(repo_root)):
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-        mx_dir_name = basename(dirpath)
+        dirpath = Path(dirpath)
+        mx_dir_name = dirpath.name
         if 'suite.py' not in filenames or not (mx_dir_name.startswith('mx.') or mx_dir_name.startswith('.mx.')):
             continue
-        suite_dir = dirname(dirpath)
-        _, suite_repo_root = _mx.SuiteModel.get_vc(os.path.abspath(suite_dir))
-        suite_repo_root = suite_repo_root if suite_repo_root and exists(suite_repo_root) else repo_root
-        suite_key = realpath(suite_dir)
-        discovered.append(_RepoSuiteInfo(_mx._suitename(dirpath), suite_dir, dirpath, suite_repo_root, suite_key))
-        discovered_repo_roots.add(realpath(suite_repo_root))
+        suite_dir = dirpath.parent
+        _, suite_repo_root = _mx.SuiteModel.get_vc(str(_absolute_path(suite_dir)))
+        suite_repo_root = _absolute_path(suite_repo_root) if suite_repo_root and Path(suite_repo_root).exists() else repo_root
+        suite_key = str(_resolve_path(suite_dir))
+        discovered.append(_RepoSuiteInfo(_mx._suitename(str(dirpath)), str(suite_dir), str(dirpath), str(suite_repo_root), suite_key))
+        discovered_repo_roots.add(str(_resolve_path(suite_repo_root)))
         dirnames[:] = []
 
     if not discovered:
-        return _RepoSuiteDiscovery(repo_root, [], [], [], [], {})
+        return _RepoSuiteDiscovery(str(repo_root), [], [], [], [], {})
 
     discovered.sort(key=lambda s: (s.name, s.suite_key))
     suites_by_key = {s.suite_key: s for s in discovered}
@@ -84,7 +101,7 @@ def _discover_repo_suites(start_dir=None):
     incoming_edges = {s.suite_key: 0 for s in discovered}
     local_edges = []
     external_imports = {}
-    repo_root_real = realpath(repo_root)
+    repo_root_real = _resolve_path(repo_root)
 
     for repo_suite in discovered:
         suite_obj = _mx.SourceSuite(repo_suite.mx_dir, primary=True, load=False)
@@ -93,14 +110,14 @@ def _discover_repo_suites(start_dir=None):
             name_matches = suites_by_name.get(import_name, ())
             imported_suite = None
             if suite_import.suite_dir:
-                imported_suite = suites_by_key.get(realpath(suite_import.suite_dir))
+                imported_suite = suites_by_key.get(str(_resolve_path(suite_import.suite_dir)))
                 if imported_suite is None and suite_import.in_subdir and len(name_matches) == 1:
                     imported_suite = name_matches[0]
             elif suite_import.in_subdir:
-                imported_suite = suites_by_key.get(realpath(join(repo_suite.repo_root, import_name)))
+                imported_suite = suites_by_key.get(str(_resolve_path(Path(repo_suite.repo_root) / import_name)))
                 if imported_suite is None and len(name_matches) == 1:
                     imported_suite = name_matches[0]
-            if imported_suite is not None and os.path.commonpath([repo_root_real, imported_suite.suite_key]) == repo_root_real:
+            if imported_suite is not None and _contains_path(repo_root_real, _resolve_path(imported_suite.suite_key)):
                 local_edges.append((repo_suite.suite_key, imported_suite.suite_key))
                 incoming_edges[imported_suite.suite_key] += 1
             else:
@@ -110,11 +127,18 @@ def _discover_repo_suites(start_dir=None):
         imports.sort()
     local_edges.sort()
     root_suites = [suite for suite in discovered if incoming_edges[suite.suite_key] == 0]
-    return _RepoSuiteDiscovery(repo_root, sorted(discovered_repo_roots), discovered, local_edges, root_suites, external_imports)
+    return _RepoSuiteDiscovery(str(repo_root), sorted(discovered_repo_roots), discovered, local_edges, root_suites, external_imports)
 
 
 def _suite_label(suite_info, show_locations=False):
-    suite_dir = suite_info.suite_dir if show_locations else os.path.relpath(suite_info.suite_dir, os.getcwd())
+    suite_dir_path = Path(suite_info.suite_dir)
+    if show_locations:
+        suite_dir = str(suite_dir_path)
+    else:
+        try:
+            suite_dir = str(suite_dir_path.relative_to(Path.cwd()))
+        except ValueError:
+            suite_dir = os.path.relpath(str(suite_dir_path), os.getcwd())
     return f'{suite_info.name} ({suite_dir})'
 
 
@@ -225,7 +249,7 @@ def _get_repo_diff_paths(discovery):
         diff_desc = 'uncommitted changes'
         for repo_root in git_repo_roots:
             relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, ['HEAD']))
-            changed_paths.extend(realpath(join(repo_root, path)) for path in relative_paths)
+            changed_paths.extend(str(_resolve_path(Path(repo_root) / path)) for path in relative_paths)
     else:
         base = getattr(_mx._opts, 'diff_branch_suites', None)
         assert base
@@ -243,7 +267,7 @@ def _get_repo_diff_paths(discovery):
             merge_base = merge_base.strip()
             merge_bases.append(merge_base)
             relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, [f'{merge_base}..HEAD']))
-            changed_paths.extend(realpath(join(repo_root, path)) for path in relative_paths)
+            changed_paths.extend(str(_resolve_path(Path(repo_root) / path)) for path in relative_paths)
         if len(git_repo_roots) == 1:
             diff_desc = f'{merge_bases[0]}..HEAD'
         else:
@@ -252,28 +276,28 @@ def _get_repo_diff_paths(discovery):
 
 
 def _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only):
-    repo_root = realpath(discovery.repo_root)
-    suite_roots = sorted(((suite_info, realpath(suite_info.suite_dir)) for suite_info in discovery.suites), key=lambda item: len(item[1]), reverse=True)
-    repo_roots = sorted({realpath(suite_info.repo_root) for suite_info in discovery.suites}, key=len, reverse=True)
+    repo_root = _resolve_path(discovery.repo_root)
+    suite_roots = sorted(((suite_info, _resolve_path(suite_info.suite_dir)) for suite_info in discovery.suites), key=lambda item: len(str(item[1])), reverse=True)
+    repo_roots = sorted({_resolve_path(suite_info.repo_root) for suite_info in discovery.suites}, key=lambda path: len(str(path)), reverse=True)
     suites_by_repo_root = {}
     for suite_info in discovery.suites:
-        suites_by_repo_root.setdefault(realpath(suite_info.repo_root), []).append(suite_info)
+        suites_by_repo_root.setdefault(_resolve_path(suite_info.repo_root), []).append(suite_info)
     touched_suite_keys = set()
 
     for changed_path in changed_paths:
-        changed_path = realpath(changed_path)
-        if os.path.commonpath([repo_root, changed_path]) != repo_root:
+        changed_path = _resolve_path(changed_path)
+        if not _contains_path(repo_root, changed_path):
             continue
         matched_suite = None
         for suite_info, suite_root in suite_roots:
-            if os.path.commonpath([suite_root, changed_path]) == suite_root:
+            if _contains_path(suite_root, changed_path):
                 matched_suite = suite_info
                 break
         if matched_suite is not None:
             touched_suite_keys.add(matched_suite.suite_key)
             continue
         for suite_repo_root in repo_roots:
-            if os.path.commonpath([suite_repo_root, changed_path]) == suite_repo_root:
+            if _contains_path(suite_repo_root, changed_path):
                 touched_suite_keys.update(suite_info.suite_key for suite_info in suites_by_repo_root.get(suite_repo_root, ()))
                 break
 
@@ -359,7 +383,7 @@ def _recursive_mx_base_args(primary_suite_path):
         global_args.append(arg)
         i += 1
     command_and_args = original_args[command_index:]
-    base_args = [sys.executable, '-u', join(_mx._mx_home, 'mx.py')] + global_args + ['-p', primary_suite_path]
+    base_args = [sys.executable, '-u', str(Path(_mx._mx_home) / 'mx.py')] + global_args + ['-p', primary_suite_path]
     return base_args, command_and_args
 
 
