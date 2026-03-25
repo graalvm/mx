@@ -632,8 +632,9 @@ def _run_mx_suite_tests():
     code_owners_tests.tests()
     stoml_tests.tests()
 
-    from tests import test_maven_projects
+    from tests import test_maven_projects, repo_root_suites_tests
     test_maven_projects.tests()
+    repo_root_suites_tests.tests()
 
     mx.checkmarkdownlinks(['--no-external', './**/*.md'])
 

@@ -353,7 +353,7 @@ import threading
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, ONE_OR_MORE, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
+from argparse import ArgumentParser, PARSER, REMAINDER, ONE_OR_MORE, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType, SUPPRESS
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars as os_expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO, StringIO, open as io_open
@@ -379,6 +379,26 @@ from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
 from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
 from .support.timestampfile import TimeStampFile
+from .mx_repo_suite import (  # pylint: disable=unused-import
+    _RepoSuiteDiscovery,
+    _RepoSuiteInfo,
+    _abort_for_missing_primary_suite,
+    _check_command_available_for_suite,
+    _discover_repo_suites,
+    _format_repo_suite_discovery,
+    _get_repo_diff_paths,
+    _git_diff_name_status_z,
+    _handle_missing_primary_suite_command,
+    _missing_local_imports,
+    _parse_git_diff_name_status_z,
+    _recursive_mx_args_for_suite,
+    _repo_suite_failure_message,
+    _repo_suite_selection_mode,
+    _repo_suite_selection_requested,
+    _run_command_for_repo_suites,
+    _select_repo_suites,
+    _select_repo_suites_by_paths,
+)
 
 _mx_commands = MxCommands("mx")
 
@@ -828,7 +848,14 @@ environment variables:
         self.add_argument('--quiet', action='store_true', help='disable log messages')
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
-        self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
+        repo_suites = self.add_mutually_exclusive_group()
+        repo_suites.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
+        repo_suites.add_argument('--all-suites', action='store_true', help='select all discovered local suites in the current directory tree for repo-suite-aware commands')
+        repo_suites.add_argument('--root-suites', action='store_true', help='select root suites in the current directory tree for repo-suite-aware commands')
+        repo_suites.add_argument('--diff-suites', action='store_true', help='select local suites in the current directory tree touched by uncommitted Git changes compared to HEAD for repo-suite-aware commands')
+        repo_suites.add_argument('--diff-branch-suites', nargs='?', const='master', metavar='<branch>', help='select local suites in the current directory tree touched by Git changes on this branch compared to the given main-line branch (default: master) for repo-suite-aware commands')
+        self.add_argument('--skip-missing-imports', action='store_true', help='when used with repo suite selection flags, skip suites whose imports are not available locally instead of cloning or fetching them')
+        self.add_argument('--check-command-availability', metavar='<command>', help=SUPPRESS)
         self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
@@ -1123,7 +1150,7 @@ def suite_context_free(func):
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
 # This cannot be used outside of mx because of implementation restrictions
-_optional_suite_context = ['help', 'paths']
+_optional_suite_context = ['help', 'paths', 'suites', 'build', 'checkstyle', 'clean']
 
 
 def optional_suite_context(func):
@@ -3292,7 +3319,7 @@ def _use_binary_suite(suite_name):
     return _binary_suites is not None and (len(_binary_suites) == 0 or suite_name in _binary_suites)
 
 
-def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False):
+def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False, allow_clone=True):
     """
     :rtype : (Suite | None, bool)
     """
@@ -3349,7 +3376,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             return _import_mx_dir
         if clone_mode != search_mode:
             _import_mx_dir = _find_suite_dir(clone_mode)
-        if _import_mx_dir is None:
+        if _import_mx_dir is None and allow_clone:
             # No local copy, so use the URLs in order to "download" one
             clone_kwargs = _clone_kwargs(clone_mode)
             for urlinfo in suite_import.urlinfos:
@@ -4209,6 +4236,8 @@ def clean(args, parser=None):
     Removes all files created by a build, including Java class files, executables, and
     generated images.
     """
+    if primary_suite() is None:
+        return _handle_missing_primary_suite_command('clean')
 
     suppliedParser = parser is not None
 
@@ -12822,6 +12851,17 @@ def _format_commands():
     return msg + '\n'
 
 
+def _resolve_command_name(name):
+    if name in _mx_commands.commands():
+        return name, None
+    hits = [c for c in _mx_commands.commands().keys() if c.startswith(name)]
+    if len(hits) == 1:
+        return hits[0], None
+    if len(hits) == 0:
+        return None, None
+    return None, hits
+
+
 ### ~~~~~~~~~~~~~ JDK
 
 """
@@ -13603,6 +13643,7 @@ def run(
     stdin: str | None = None,
     cmdlinefile=None,
     on_timeout=None,
+    interruptIsFatal=False,
     **kwargs
 ):
     """
@@ -13748,6 +13789,8 @@ def run(
                         # Propagate SIGINT to subprocess. If the subprocess does not
                         # handle the signal, it will terminate and this loop exits.
                         _kill_process(p.pid, signal.SIGINT)
+                    if interruptIsFatal:
+                        raise
         else:
             retcode = _waitWithTimeout(p, cmd_line, timeout, nonZeroIsFatal, on_timeout)
         while any([t.is_alive() for t in joiners]):
@@ -14739,6 +14782,8 @@ def resolve_targets(names):
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
+    if primary_suite() is None:
+        return _handle_missing_primary_suite_command('build')
     with BuildReport(cmd_args) as build_report:
         _build_with_report(cmd_args, build_report=build_report, parser=parser)
 
@@ -16109,6 +16154,8 @@ def checkstyle(args):
 
    Run Checkstyle over the Java sources. Any errors or warnings
    produced by Checkstyle result in a non-zero exit code."""
+    if primary_suite() is None:
+        return _handle_missing_primary_suite_command('checkstyle')
 
     parser = ArgumentParser(prog='mx checkstyle')
 
@@ -16259,14 +16306,12 @@ Given a command name, print help for that command."""
         return
 
     name = args[0]
-    if name not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().keys() if c.startswith(name)]
-        if len(hits) == 1:
-            name = hits[0]
-        elif len(hits) == 0:
+    resolved_name, hits = _resolve_command_name(name)
+    if resolved_name is None:
+        if hits is None:
             abort(f'mx: unknown command \'{name}\'\n{_format_commands()}use "mx help" for more options')
-        else:
-            abort(f"mx: command '{name}' is ambiguous\n    {' '.join(hits)}")
+        abort(f"mx: command '{name}' is ambiguous\n    {' '.join(hits)}")
+    name = resolved_name
 
     command = _mx_commands.commands()[name]
     print(command.get_doc())
@@ -17825,18 +17870,59 @@ def show_suites(args):
 
     usage: mx suites [-h] [--locations] [--licenses]
 
+    When no primary suite is active, mx discovers local suites in the current
+    directory tree and prints each suite with its suite directory relative to
+    the current working directory. In that discovery mode, --locations switches
+    the suite directory display to absolute paths. The --licenses, --class, and
+    --archived-deps options require an active primary suite.
+
     optional arguments:
       -h, --help   show this help message and exit
-      --locations  show element locations on disk
+      --locations  show absolute element locations on disk
       --class      show mx class implementing each suite component
       --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
-    parser.add_argument('-p', '--locations', action='store_true', help='show element locations on disk')
+    parser.add_argument('-p', '--locations', action='store_true', help='show absolute element locations on disk')
     parser.add_argument('-l', '--licenses', action='store_true', help='show element licenses')
     parser.add_argument('-c', '--class', dest='clazz', action='store_true', help='show mx class implementing each suite component')
     parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')
     args = parser.parse_args(args)
+
+    if primary_suite() is None:
+        unsupported = []
+        if args.licenses:
+            unsupported.append('--licenses')
+        if args.clazz:
+            unsupported.append('--class')
+        if args.archived_deps:
+            unsupported.append('--archived-deps')
+        if unsupported:
+            abort(f"{', '.join(unsupported)} require an active primary suite when running `mx suites`.")
+        discovery = _discover_repo_suites()
+        if not discovery or not discovery.suites:
+            abort('No suites found in this directory tree.')
+        selected_suites, _, _ = _select_repo_suites(discovery, default_all=True)
+        selected_keys = {suite_info.suite_key for suite_info in selected_suites}
+        filtered_root_suites = [suite_info for suite_info in discovery.root_suites if suite_info.suite_key in selected_keys]
+        filtered_edges = [(importer, imported) for importer, imported in discovery.local_edges if importer in selected_keys and imported in selected_keys]
+        filtered_external_imports = {
+            suite_key: imports for suite_key, imports in discovery.external_imports.items() if suite_key in selected_keys
+        }
+        filtered_ambiguous_imports = {
+            suite_key: imports for suite_key, imports in discovery.ambiguous_imports.items() if suite_key in selected_keys
+        }
+        filtered_discovery = _RepoSuiteDiscovery(
+            discovery.repo_root,
+            discovery.repo_roots,
+            selected_suites,
+            filtered_edges,
+            filtered_root_suites,
+            filtered_external_imports,
+            filtered_ambiguous_imports,
+        )
+        print(_format_repo_suite_discovery(filtered_discovery, show_locations=args.locations))
+        return
 
     def _location(e):
         if args.locations:
@@ -18642,7 +18728,7 @@ def main():
             _primary_suite_init(primary)
         else:
             _mx_suite._complete_init()
-            if not is_optional_suite_context:
+            if not is_optional_suite_context and not _repo_suite_selection_requested():
                 abort(f'no primary suite found for {initial_command}')
 
         for envVar in _loadedEnv:
@@ -18661,9 +18747,21 @@ def main():
         primary_suite().recursive_post_init()
         _check_dependency_cycles()
 
+    if getattr(_opts, 'check_command_availability', None):
+        resolved_name, hits = _resolve_command_name(_opts.check_command_availability)
+        if resolved_name is not None:
+            raise SystemExit(0)
+        if hits is None:
+            raise SystemExit(2)
+        raise SystemExit(3)
+
     if len(commandAndArgs) == 0:
         print_simple_help()
         return
+
+    command = commandAndArgs[0]
+    if _repo_suite_selection_requested() and command != 'suites':
+        return _run_command_for_repo_suites(command, _discover_repo_suites())
 
     # add JMH archive participants
     def _has_jmh_dep(dist):
@@ -18687,21 +18785,18 @@ def main():
             if d.isJARDistribution() and _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
-    command = commandAndArgs[0]
     global _mx_command_and_args
     _mx_command_and_args = commandAndArgs
     global _mx_args
     _mx_args = sys.argv[1:sys.argv.index(command)]
     command_args = commandAndArgs[1:]
 
-    if command not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().keys() if c.startswith(command)]
-        if len(hits) == 1:
-            command = hits[0]
-        elif len(hits) == 0:
+    resolved_command, hits = _resolve_command_name(command)
+    if resolved_command is None:
+        if hits is None:
             abort(f'mx: unknown command \'{command}\'\n{_format_commands()}use "mx help" for more options')
-        else:
-            abort(f"mx: command '{command}' is ambiguous\n    {' '.join(hits)}")
+        abort(f"mx: command '{command}' is ambiguous\n    {' '.join(hits)}")
+    command = resolved_command
 
     mx_compdb.init()
 
