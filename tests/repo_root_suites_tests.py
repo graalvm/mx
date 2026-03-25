@@ -6,6 +6,7 @@ import tempfile
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from mx._impl import mx as orig_mx
+from mx._impl import mx_native as orig_mx_native
 
 
 @contextmanager
@@ -80,12 +81,38 @@ def sys_module_patch(name):
 def mx_main_state_patch():
     sentinel = object()
     previous_mvn = getattr(orig_mx, "_mvn", sentinel)
+    previous_target_registry = dict(orig_mx_native.Target._registry)
+    previous_target_selection_global = orig_mx_native.TargetSelection._global
+    previous_target_selection_extra = list(orig_mx_native.TargetSelection._extra)
     previous_state = {
         "_binary_suites": orig_mx._binary_suites,
         "_mx_suite": orig_mx._mx_suite,
         "_primary_suite": orig_mx._primary_suite,
         "_primary_suite_path": orig_mx._primary_suite_path,
         "_suites": dict(orig_mx._suites),
+        "_projects": dict(orig_mx._projects),
+        "_libs": dict(orig_mx._libs),
+        "_jreLibs": dict(orig_mx._jreLibs),
+        "_jdkLibs": dict(orig_mx._jdkLibs),
+        "_dists": dict(orig_mx._dists),
+        "_removed_projects": dict(orig_mx._removed_projects),
+        "_removed_libs": dict(orig_mx._removed_libs),
+        "_removed_jreLibs": dict(orig_mx._removed_jreLibs),
+        "_removed_jdkLibs": dict(orig_mx._removed_jdkLibs),
+        "_removed_dists": dict(orig_mx._removed_dists),
+        "_distTemplates": dict(orig_mx._distTemplates),
+        "_licenses": dict(orig_mx._licenses),
+        "_repositories": dict(orig_mx._repositories),
+        "_loadedEnv": dict(orig_mx._loadedEnv),
+        "_jdkFactories": dict(orig_mx._jdkFactories),
+        "_removedDeps": dict(orig_mx._removedDeps),
+        "_urlrewrites": list(orig_mx._urlrewrites),
+        "_jdkProvidedSuites": set(orig_mx._jdkProvidedSuites),
+        "_annotationProcessorProjects": orig_mx._annotationProcessorProjects,
+        "_mx_tests_suite": orig_mx._mx_tests_suite,
+        "_suitemodel": orig_mx._suitemodel,
+        "_sorted_extra_java_homes": list(orig_mx._sorted_extra_java_homes),
+        "_default_java_home": orig_mx._default_java_home,
     }
     previous_excepthook = orig_mx.threading.excepthook
     try:
@@ -94,6 +121,32 @@ def mx_main_state_patch():
         orig_mx._primary_suite = None
         orig_mx._primary_suite_path = None
         orig_mx._suites = {}
+        orig_mx._projects = {}
+        orig_mx._libs = {}
+        orig_mx._jreLibs = {}
+        orig_mx._jdkLibs = {}
+        orig_mx._dists = {}
+        orig_mx._removed_projects = {}
+        orig_mx._removed_libs = {}
+        orig_mx._removed_jreLibs = {}
+        orig_mx._removed_jdkLibs = {}
+        orig_mx._removed_dists = {}
+        orig_mx._distTemplates = {}
+        orig_mx._licenses = {}
+        orig_mx._repositories = {}
+        orig_mx._loadedEnv = {}
+        orig_mx._jdkFactories = {}
+        orig_mx._removedDeps = {}
+        orig_mx._urlrewrites = []
+        orig_mx._jdkProvidedSuites = set()
+        orig_mx._annotationProcessorProjects = None
+        orig_mx._mx_tests_suite = None
+        orig_mx._suitemodel = None
+        orig_mx._sorted_extra_java_homes = []
+        orig_mx._default_java_home = None
+        orig_mx_native.Target._registry = {}
+        orig_mx_native.TargetSelection._global = None
+        orig_mx_native.TargetSelection._extra = []
         if previous_mvn is not sentinel:
             delattr(orig_mx, "_mvn")
         yield
@@ -103,6 +156,32 @@ def mx_main_state_patch():
         orig_mx._primary_suite = previous_state["_primary_suite"]
         orig_mx._primary_suite_path = previous_state["_primary_suite_path"]
         orig_mx._suites = previous_state["_suites"]
+        orig_mx._projects = previous_state["_projects"]
+        orig_mx._libs = previous_state["_libs"]
+        orig_mx._jreLibs = previous_state["_jreLibs"]
+        orig_mx._jdkLibs = previous_state["_jdkLibs"]
+        orig_mx._dists = previous_state["_dists"]
+        orig_mx._removed_projects = previous_state["_removed_projects"]
+        orig_mx._removed_libs = previous_state["_removed_libs"]
+        orig_mx._removed_jreLibs = previous_state["_removed_jreLibs"]
+        orig_mx._removed_jdkLibs = previous_state["_removed_jdkLibs"]
+        orig_mx._removed_dists = previous_state["_removed_dists"]
+        orig_mx._distTemplates = previous_state["_distTemplates"]
+        orig_mx._licenses = previous_state["_licenses"]
+        orig_mx._repositories = previous_state["_repositories"]
+        orig_mx._loadedEnv = previous_state["_loadedEnv"]
+        orig_mx._jdkFactories = previous_state["_jdkFactories"]
+        orig_mx._removedDeps = previous_state["_removedDeps"]
+        orig_mx._urlrewrites = previous_state["_urlrewrites"]
+        orig_mx._jdkProvidedSuites = previous_state["_jdkProvidedSuites"]
+        orig_mx._annotationProcessorProjects = previous_state["_annotationProcessorProjects"]
+        orig_mx._mx_tests_suite = previous_state["_mx_tests_suite"]
+        orig_mx._suitemodel = previous_state["_suitemodel"]
+        orig_mx._sorted_extra_java_homes = previous_state["_sorted_extra_java_homes"]
+        orig_mx._default_java_home = previous_state["_default_java_home"]
+        orig_mx_native.Target._registry = previous_target_registry
+        orig_mx_native.TargetSelection._global = previous_target_selection_global
+        orig_mx_native.TargetSelection._extra = previous_target_selection_extra
         orig_mx.threading.excepthook = previous_excepthook
         if previous_mvn is sentinel:
             if hasattr(orig_mx, "_mvn"):
