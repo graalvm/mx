@@ -143,15 +143,8 @@ local with(platform, java_release, timelimit="15:00") = {
     },
 
     version_update_check:: self.with_name("version-update-check") + {
-        publishArtifacts: [
-          {
-            name: "version-update-check",
-            patterns: ["version-update-check.ok"]
-          }
-        ],
         run: [
             [ path("./ci/check_version.py") ],
-            [ "touch", "$PWD/version-update-check.ok" ],
         ],
     },
 
@@ -170,15 +163,13 @@ local with(platform, java_release, timelimit="15:00") = {
 
 {
     specVersion: "3",
+
     tierConfig: {
         tier1: "gate",
         tier2: "gate",
     },
 
-    # Overlay
-    overlay: "e5436c8fc676743516e63409e33d9e95462d8777",
-
-    # For use by overlay
+    # Shared configuration values
     versions:: versions,
     extra_catch_files:: extra_catch_files,
     primary_jdk_version:: "latest",
