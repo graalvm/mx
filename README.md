@@ -409,13 +409,15 @@ For example:
 <suite>/mxbuild/darwin-amd64/<project>  # Platform dependent project
 ```
 
-Partitioning build output to take the platform into account has the following advantages: file system sharing) keeps its platform dependent output separated.
+Partitioning build output to take the platform into account has the following advantages:
 * A file system shared between different platforms (e.g. via NFS or virtualization host/guest
+  file system sharing) keeps its platform dependent output separated.
 
-Unless `MX_OUTPUT_ROOT_INCLUDES_CONFIG=false` then: JDK(s) specified by `JAVA_HOME` and `EXTRA_JAVA_HOMES`.
-reflecting both the platform and JDKs.
+Unless `MX_OUTPUT_ROOT_INCLUDES_CONFIG=false` then:
 * The output for JDK dependent suite constituents is under a directory reflecting the
+  JDK(s) specified by `JAVA_HOME` and `EXTRA_JAVA_HOMES`.
 * The output for platform and JDK dependent suite constituents is under a directory
+  reflecting both the platform and JDKs.
 
 For example:
 
@@ -624,7 +626,8 @@ In other words, there should be no back-and-forth to the same repo.
 ### Preview features
 
 Java projects may use language or runtime features which are considered _preview features_ in certain Java versions, in which case preview features must be enabled for compilation (`--enable-preview`).
-This is specified using the `javaPreviewNeeded` attribute, which is a version specification in the same format as `javaCompliance`, for example: `"javaPreviewNeeded": "19..20"` If the compiling JDK matches that version or version range, preview features are enabled for compilation.
+This is specified using the `javaPreviewNeeded` attribute, which is a version specification in the same format as `javaCompliance`, for example: `"javaPreviewNeeded": "19..20"`.
+If the compiling JDK matches that version or version range, preview features are enabled for compilation.
 Given that javac and the JVM must be on the same JDK version for preview features (see [here](https://nipafx.dev/enable-preview-language-features/#same-version-for-feature-compiler-and-jvm) for details), compiling a project with preview features will force the javac `-source` and `-target` options to `N` where `N` is the minimum of:
 * the version of the JDK being used for compilation (i.e. `JAVA_HOME`) and
 * the lowest version where `--enable-preview` is not needed.
