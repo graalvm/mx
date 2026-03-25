@@ -143,8 +143,15 @@ local with(platform, java_release, timelimit="15:00") = {
     },
 
     version_update_check:: self.with_name("version-update-check") + {
+        publishArtifacts: [
+          {
+            name: "version-update-check",
+            patterns: ["version-update-check.ok"]
+          }
+        ],
         run: [
             [ path("./ci/check_version.py") ],
+            [ "touch", "$PWD/version-update-check.ok" ],
         ],
     },
 
