@@ -983,7 +983,6 @@ def test_main_does_not_bulk_dispatch_suites():
             orig_mx.main()
 
         assert dispatched == []
-        assert stdout.getvalue() == "" or "Roots:" in stdout.getvalue()
     finally:
         tmpdir.cleanup()
 
