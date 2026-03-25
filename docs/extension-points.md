@@ -28,6 +28,9 @@ If present, this function is called when the suite extension module is loaded.
 
 Use it for registrations that should happen as soon as the suite is known, such as command registration, gate runner registration, or other global setup.
 
+In existing suites, equivalent initialization is often done directly in the global scope of `mx_<suite>.py` instead of inside `mx_init(suite)`.
+Either way, keep that work cheap: expensive initialization in the extension module adds to mx startup time.
+
 ### `mx_post_parse_cmd_line(opts)`
 
 If present, this function is called after command line parsing and after the suite graph has been loaded.

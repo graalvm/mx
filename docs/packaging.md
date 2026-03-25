@@ -2,7 +2,7 @@
 
 In mx, projects build intermediate outputs and distributions package those outputs into artifacts that other tools, other suites, or end users consume.
 
-That split is important: if you want to understand what a suite _publishes_, look at `distributions`, not just at `projects`.
+That split is important: if you want to understand what a suite _publishes_, look at `distributions`, not at `projects`.
 
 ## Core packaging model
 
@@ -12,7 +12,11 @@ The kind of distribution determines how those dependencies are turned into an ar
 The most important rule is that direct distribution dependencies are normally treated as separate packaged artifacts, not as contents to be merged into the current artifact.
 In other words, a dependency on another distribution usually means "this artifact needs that artifact on its class path or module path", not "copy that artifact's contents into this one".
 
-A notable exception is a layout directory distribution used as an input to another distribution: that assembled directory is meant to be consumed as content, not just as a separate published archive.
+Library dependencies are a notable exception for JAR distributions.
+There, a dependency on a library normally means "repackage that library's contents into this distribution JAR".
+If some libraries should remain dependencies instead of being repackaged, the distribution usually needs an `exclude` attribute listing the libraries it should depend on rather than repackage.
+
+Another exception is a layout directory distribution used as an input to another distribution: that assembled directory is meant to be consumed as content, not just as a separate published archive.
 
 That rule is the source of much of mx's packaging behavior, especially for JAR distributions and launcher layouts.
 
@@ -37,6 +41,8 @@ It tells mx which class should be used as the application entry point for that J
 
 What it does **not** mean is "bundle every runtime dependency into one fat JAR".
 If the distribution has `distDependencies`, those remain separate artifacts.
+Internally, JAR distributions still flatten `dependencies` and `distDependencies` into one dependency list.
+The split is therefore mainly a cue to human readers about packaging intent: `dependencies` usually contribute contents to the JAR, while `distDependencies` are meant to stay as separate companion artifacts.
 A JAR with `mainClass` is therefore best thought of as an _entry-point JAR_, not automatically as a self-contained launcher image.
 
 ### Layout distributions
