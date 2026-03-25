@@ -29,6 +29,7 @@ from collections import deque, namedtuple
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def _mx_module():
@@ -37,7 +38,7 @@ def _mx_module():
 
 
 _RepoSuiteInfo = namedtuple('_RepoSuiteInfo', ['name', 'suite_dir', 'mx_dir', 'repo_root', 'suite_key'])
-_RepoSuiteDiscovery = namedtuple('_RepoSuiteDiscovery', ['repo_root', 'repo_roots', 'suites', 'local_edges', 'root_suites', 'external_imports'])
+_RepoSuiteDiscovery = namedtuple('_RepoSuiteDiscovery', ['repo_root', 'repo_roots', 'suites', 'local_edges', 'root_suites', 'external_imports', 'ambiguous_imports'])
 
 
 def _absolute_path(path):
@@ -63,6 +64,42 @@ def _diff_branch_fix_message(repo_root, branch, detail):
         f'  git fetch origin {branch}\n'
         f'  git branch -f {branch} FETCH_HEAD'
     )
+
+
+def _safe_unique_name_match(name_matches):
+    return name_matches[0] if len(name_matches) == 1 else None
+
+
+def _importer_relative_candidates(repo_suite, suite_import, suites_by_key):
+    candidates = []
+
+    def add_candidate(path):
+        suite_info = suites_by_key.get(str(_resolve_path(path)))
+        if suite_info is not None and suite_info not in candidates:
+            candidates.append(suite_info)
+
+    if suite_import.suite_dir:
+        add_candidate(suite_import.suite_dir)
+
+    if suite_import.in_subdir:
+        add_candidate(Path(repo_suite.repo_root) / suite_import.name)
+        return candidates
+
+    sibling_root = Path(repo_suite.repo_root).parent
+    for urlinfo in suite_import.urlinfos or ():
+        if urlinfo.abs_kind() != 'source':
+            continue
+        repo_name = Path(urlparse(urlinfo.url).path).stem
+        if repo_name:
+            add_candidate(sibling_root / repo_name)
+            break
+    add_candidate(sibling_root / suite_import.name)
+    return candidates
+
+
+def _ambiguous_import_label(import_name, candidate_suites):
+    candidates = ', '.join(_suite_label(candidate, show_locations=False) for candidate in candidate_suites)
+    return f'{import_name} (ambiguous: {candidates})'
 
 
 def _discover_repo_suites(start_dir=None):
@@ -91,7 +128,7 @@ def _discover_repo_suites(start_dir=None):
         dirnames[:] = []
 
     if not discovered:
-        return _RepoSuiteDiscovery(str(repo_root), [], [], [], [], {})
+        return _RepoSuiteDiscovery(str(repo_root), [], [], [], [], {}, {})
 
     discovered.sort(key=lambda s: (s.name, s.suite_key))
     suites_by_key = {s.suite_key: s for s in discovered}
@@ -101,22 +138,24 @@ def _discover_repo_suites(start_dir=None):
     incoming_edges = {s.suite_key: 0 for s in discovered}
     local_edges = []
     external_imports = {}
+    ambiguous_imports = {}
     repo_root_real = _resolve_path(repo_root)
 
     for repo_suite in discovered:
         suite_obj = _mx.SourceSuite(repo_suite.mx_dir, primary=True, load=False)
         for suite_import in suite_obj.suite_imports:
             import_name = suite_import.name
-            name_matches = suites_by_name.get(import_name, ())
-            imported_suite = None
-            if suite_import.suite_dir:
-                imported_suite = suites_by_key.get(str(_resolve_path(suite_import.suite_dir)))
-                if imported_suite is None and suite_import.in_subdir and len(name_matches) == 1:
-                    imported_suite = name_matches[0]
-            elif suite_import.in_subdir:
-                imported_suite = suites_by_key.get(str(_resolve_path(Path(repo_suite.repo_root) / import_name)))
-                if imported_suite is None and len(name_matches) == 1:
-                    imported_suite = name_matches[0]
+            name_matches = list(suites_by_name.get(import_name, ()))
+            importer_relative = _importer_relative_candidates(repo_suite, suite_import, suites_by_key)
+            imported_suite = _safe_unique_name_match(importer_relative)
+            if imported_suite is None and len(importer_relative) > 1:
+                ambiguous_imports.setdefault(repo_suite.suite_key, []).append(_ambiguous_import_label(import_name, importer_relative))
+                continue
+            if imported_suite is None:
+                if len(name_matches) > 1:
+                    ambiguous_imports.setdefault(repo_suite.suite_key, []).append(_ambiguous_import_label(import_name, name_matches))
+                    continue
+                imported_suite = _safe_unique_name_match(name_matches)
             if imported_suite is not None and _contains_path(repo_root_real, _resolve_path(imported_suite.suite_key)):
                 local_edges.append((repo_suite.suite_key, imported_suite.suite_key))
                 incoming_edges[imported_suite.suite_key] += 1
@@ -125,9 +164,11 @@ def _discover_repo_suites(start_dir=None):
 
     for imports in external_imports.values():
         imports.sort()
+    for imports in ambiguous_imports.values():
+        imports.sort()
     local_edges.sort()
     root_suites = [suite for suite in discovered if incoming_edges[suite.suite_key] == 0]
-    return _RepoSuiteDiscovery(str(repo_root), sorted(discovered_repo_roots), discovered, local_edges, root_suites, external_imports)
+    return _RepoSuiteDiscovery(str(repo_root), sorted(discovered_repo_roots), discovered, local_edges, root_suites, external_imports, ambiguous_imports)
 
 
 def _suite_label(suite_info, show_locations=False):
@@ -185,6 +226,14 @@ def _format_repo_suite_discovery(discovery, show_locations=False):
             imports = discovery.external_imports.get(suite_info.suite_key)
             if imports:
                 lines.append(f"  {_suite_reference_label(suite_info)}: depends on: {', '.join(imports)}")
+    if discovery.ambiguous_imports:
+        if lines:
+            lines.append('')
+        lines.append('Ambiguous dependencies:')
+        for suite_info in discovery.suites:
+            imports = discovery.ambiguous_imports.get(suite_info.suite_key)
+            if imports:
+                lines.append(f"  {_suite_label(suite_info, show_locations=show_locations)}: depends on: {', '.join(imports)}")
     return '\n'.join(lines)
 
 

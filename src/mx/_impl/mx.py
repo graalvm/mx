@@ -17890,6 +17890,9 @@ def show_suites(args):
         filtered_external_imports = {
             suite_key: imports for suite_key, imports in discovery.external_imports.items() if suite_key in selected_keys
         }
+        filtered_ambiguous_imports = {
+            suite_key: imports for suite_key, imports in discovery.ambiguous_imports.items() if suite_key in selected_keys
+        }
         filtered_discovery = _RepoSuiteDiscovery(
             discovery.repo_root,
             discovery.repo_roots,
@@ -17897,6 +17900,7 @@ def show_suites(args):
             filtered_edges,
             filtered_root_suites,
             filtered_external_imports,
+            filtered_ambiguous_imports,
         )
         print(_format_repo_suite_discovery(filtered_discovery, show_locations=args.locations))
         return

@@ -182,6 +182,28 @@ def _create_workspace_with_duplicate_suite_names():
     }
 
 
+def _create_workspace_with_ambiguous_import():
+    tmpdir = tempfile.TemporaryDirectory()
+    workspace_root = tmpdir.name
+    importer_repo = os.path.join(workspace_root, "importer-repo")
+    repo_a = os.path.join(workspace_root, "repo-a")
+    repo_b = os.path.join(workspace_root, "repo-b")
+    os.makedirs(importer_repo, exist_ok=True)
+    os.makedirs(repo_a, exist_ok=True)
+    os.makedirs(repo_b, exist_ok=True)
+    open(os.path.join(importer_repo, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_a, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_b, ".mx_vcs_root"), "w").close()
+    compiler_dir = _write_suite(importer_repo, "compiler", "compiler", ["sdk"])
+    sdk_a_dir = _write_suite(repo_a, "sdk", "sdk")
+    sdk_b_dir = _write_suite(repo_b, "sdk", "sdk")
+    return tmpdir, workspace_root, {
+        "compiler": compiler_dir,
+        "repo-a-sdk": sdk_a_dir,
+        "repo-b-sdk": sdk_b_dir,
+    }
+
+
 def _create_repo_with_missing_import():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = tmpdir.name
@@ -371,6 +393,38 @@ def test_show_suites_with_duplicate_names_disambiguates_dependencies():
         assert "  sdk (repo-a/sdk)" in output
         assert "  sdk (repo-b/sdk)" in output
         assert "  tools (repo-b/tools): depends on: sdk (repo-b/sdk)" in output
+    finally:
+        tmpdir.cleanup()
+
+
+def test_discover_repo_suites_reports_ambiguous_imports():
+    tmpdir, workspace_root, suite_dirs = _create_workspace_with_ambiguous_import()
+    try:
+        discovery = orig_mx._discover_repo_suites(workspace_root)
+        assert discovery.local_edges == []
+        compiler_key = os.path.realpath(suite_dirs["compiler"])
+        assert compiler_key in discovery.ambiguous_imports
+        imports = discovery.ambiguous_imports[compiler_key]
+        assert len(imports) == 1
+        assert "sdk (ambiguous:" in imports[0]
+        assert "repo-a/sdk" in imports[0]
+        assert "repo-b/sdk" in imports[0]
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_reports_ambiguous_imports():
+    tmpdir, workspace_root, _ = _create_workspace_with_ambiguous_import()
+    try:
+        stdout = io.StringIO()
+        with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
+            orig_mx.show_suites([])
+        output = stdout.getvalue()
+        assert "Ambiguous dependencies:\n" in output
+        assert "  compiler (importer-repo/compiler): depends on: sdk (ambiguous:" in output
+        assert "repo-a/sdk" in output
+        assert "repo-b/sdk" in output
+        assert "depends on: sdk, sdk" not in output
     finally:
         tmpdir.cleanup()
 
@@ -1048,6 +1102,8 @@ def tests():
     test_show_suites_without_primary_suite_rejects_detailed_flags()
     test_discover_repo_suites_with_duplicate_names_from_workspace_root()
     test_show_suites_with_duplicate_names_disambiguates_dependencies()
+    test_discover_repo_suites_reports_ambiguous_imports()
+    test_show_suites_reports_ambiguous_imports()
     test_show_suites_for_root_suites_only()
     test_show_suites_diff_for_all_suites()
     test_show_suites_diff_branch_for_all_suites()
