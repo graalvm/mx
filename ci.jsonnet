@@ -33,7 +33,6 @@ local with(platform, java_release, timelimit="15:00") = {
     local base = platform + jdk + common.deps.pylint + common.deps.sulong + common.deps.svm + {
         # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then Java version followed by OS and arch
         name: "%s-jdk-%s-%s-%s" % [self.prefix, java_release, os, arch],
-        targets: ["gate"],
         catch_files+: extra_catch_files,
         timelimit: timelimit,
         setup: [
@@ -52,11 +51,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     with_name(prefix):: base + {
         prefix:: prefix,
-    } + if prefix != "version-update-check" then {
-        requireArtifacts: [
-            {name: "version-update-check"}
-        ],
-    } else {},
+    },
 
     # Specific gate builders are defined by the following functions
 
@@ -148,15 +143,8 @@ local with(platform, java_release, timelimit="15:00") = {
     },
 
     version_update_check:: self.with_name("version-update-check") + {
-        publishArtifacts: [
-          {
-            name: "version-update-check",
-            patterns: ["version-update-check.ok"]
-          }
-        ],
         run: [
             [ path("./ci/check_version.py") ],
-            [ "touch", "$PWD/version-update-check.ok" ]
         ],
     },
 
@@ -176,29 +164,37 @@ local with(platform, java_release, timelimit="15:00") = {
 {
     specVersion: "3",
 
+    tierConfig: {
+        tier1: "gate",
+        tier2: "gate",
+    },
+
     # Shared configuration values
     versions:: versions,
     extra_catch_files:: extra_catch_files,
     primary_jdk_version:: "latest",
     secondary_jdk_version:: 21,
 
+    local tier1(build) = build + common.frequencies.tier1,
+    local tier2(build) = build + common.frequencies.tier2,
+
     local builds = [
-        with(common.linux_amd64, self.primary_jdk_version).gate,
-        with(common.linux_amd64, self.primary_jdk_version).fetchjdk_test,
-        with(common.windows_amd64, self.primary_jdk_version).fetchjdk_test,
-        with(common.linux_amd64, self.primary_jdk_version).bisect_test,
-        with(common.windows_amd64, self.primary_jdk_version).gate,
-        with(common.darwin_aarch64, self.primary_jdk_version).gate,
-        with(common.linux_amd64, self.primary_jdk_version).bench_test,
-        with(common.linux_amd64, self.primary_jdk_version).jmh_test,
-        with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
-        with(common.linux_amd64, self.primary_jdk_version).mx_mergetool_gate,
-        with(common.linux_amd64, self.primary_jdk_version).version_update_check,
+        tier2(with(common.linux_amd64, self.primary_jdk_version).gate),
+        tier2(with(common.linux_amd64, self.primary_jdk_version).fetchjdk_test),
+        tier2(with(common.windows_amd64, self.primary_jdk_version).fetchjdk_test),
+        tier2(with(common.linux_amd64, self.primary_jdk_version).bisect_test),
+        tier2(with(common.windows_amd64, self.primary_jdk_version).gate),
+        tier2(with(common.darwin_aarch64, self.primary_jdk_version).gate),
+        tier2(with(common.linux_amd64, self.primary_jdk_version).bench_test),
+        tier2(with(common.linux_amd64, self.primary_jdk_version).jmh_test),
+        tier2(with(common.linux_amd64, self.primary_jdk_version).mx_unit_test),
+        tier2(with(common.linux_amd64, self.primary_jdk_version).mx_mergetool_gate),
+        tier1(with(common.linux_amd64, self.primary_jdk_version).version_update_check),
         with(common.linux_amd64, self.primary_jdk_version).post_merge_tag_version,
 
-        with(common.linux_amd64, self.secondary_jdk_version).gate,
-        with(common.windows_amd64, self.secondary_jdk_version).gate,
-        with(common.darwin_aarch64, self.secondary_jdk_version).gate,
+        tier2(with(common.linux_amd64, self.secondary_jdk_version).gate),
+        tier2(with(common.windows_amd64, self.secondary_jdk_version).gate),
+        tier2(with(common.darwin_aarch64, self.secondary_jdk_version).gate),
     ],
     builds: [remove_mx_from_packages(b) for b in builds],
 }
