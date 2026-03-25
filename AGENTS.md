@@ -72,4 +72,3 @@ make -C docs/api html
 ## NOTES
 - Cache files (`*.pyc`, `__pycache__/`) are not tracked in git, but they can exist locally as ignored files; use targeted searches that exclude `mxbuild/`, caches, and other generated outputs.
 - CI downloads Eclipse from `archive.eclipse.org`; failures here can be external/network-related.
-- If CI job `verify-graal-common-sync-*` fails with `diff graal/common.json common.json` (or after any `src/mx/mx_version.py` bump), run `./mx -y mx-sync-common-ci` and commit `common.json` (and `ci/common.jsonnet` if changed). Use `-y` in non-interactive environments.

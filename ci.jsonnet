@@ -52,10 +52,9 @@ local with(platform, java_release, timelimit="15:00") = {
 
     with_name(prefix):: base + {
         prefix:: prefix,
-    } + if prefix != "version-update-check" && prefix != "verify-graal-common-sync" then {
+    } + if prefix != "version-update-check" then {
         requireArtifacts: [
-            {name: "version-update-check"},
-            {name: "verify-graal-common-sync"}
+            {name: "version-update-check"}
         ],
     } else {},
 
@@ -92,39 +91,6 @@ local with(platform, java_release, timelimit="15:00") = {
         ]
     },
 
-    proftool_test:: self.with_name("proftool-test") + {
-        packages+: {
-            "pip:capstone": ">=" + versions.capstone,
-        },
-        setup:  [
-            [mx, "build"],
-        ],
-        run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
-            [mx, "-p", "../graal/compiler", "build"],
-            [mx, "-p", "../graal/compiler", "profrecord", "-E", "gate-xcomp", "$JAVA_HOME/bin/java", "-Xcomp", "foo", "||", "true"],
-            [mx, "-p", "../graal/compiler", "profpackage", "gate-xcomp"],
-            [mx, "-p", "../graal/compiler", "profhot", "gate-xcomp.zip"],
-            [mx, "-p", "../graal/compiler", "profhot", "gate-xcomp"],
-            [mx, "-p", "../graal/compiler", "profjson", "gate-xcomp", "-o", "prof_gate_xcomp.json"],
-            [mx, "-p", "../graal/compiler", "benchmark", "dacapo:fop", "--tracker", "none", "--", "--profiler", "proftool"],
-            ["set-export", "PROFTOOL_FOP_LAST", ["printf", "%s\n", "proftool_fop_*", "|", "sort", "|", "tail", "-n", "1"]],
-            [mx, "-p", "../graal/compiler", "profpackage", "-n", "$PROFTOOL_FOP_LAST"],
-            [mx, "-p", "../graal/compiler", "profhot", "$PROFTOOL_FOP_LAST"],
-            [mx, "-p", "../graal/compiler", "benchmark", "scala-dacapo:tmt", "--tracker", "none", "--", "--profiler", "proftool"],
-            ["set-export", "PROFTOOL_TMT_LAST", ["printf", "%s\n", "proftool_tmt_*", "|", "sort", "|", "tail", "-n", "1"]],
-            [mx, "-p", "../graal/compiler", "profpackage", "-D", "$PROFTOOL_TMT_LAST"],
-            [mx, "-p", "../graal/compiler", "profhot", "-c", "1", "-s", "${PROFTOOL_TMT_LAST}.zip"],
-            [mx, "-p", "../graal/vm", "--env", "ni-ce", "build"],
-            [mx, "-p", "../graal/vm", "--env", "ni-ce", "benchmark", "renaissance-native-image:scrabble", "--tracker", "none", "--", "--jvm=native-image", "--jvm-config=default-ce", "--profiler", "proftool"],
-            ["set-export", "PROFTOOL_SCRABBLE_LAST", ["printf", "%s\n", "proftool_scrabble_*", "|", "sort", "|", "tail", "-n", "1"]],
-            [mx, "profjson", "$PROFTOOL_SCRABBLE_LAST", "-o", "prof_scrabble.json"],
-            [mx, "profhot", "$PROFTOOL_SCRABBLE_LAST"],
-            [mx, "profrecord", "-E", "profrecord_scrabble", "../graal/sdk/mxbuild/native-image-benchmarks/renaissance-*-scrabble-default-ce/renaissance-*-scrabble-default-ce", "scrabble"],
-            [mx, "profhot", "profrecord_scrabble"]
-        ]
-    },
-
     fetchjdk_test:: self.with_name("fetch-jdk-test") + {
         local base_dir = path("./fetch-jdk-%s-test-folder" % java_release),
 
@@ -148,18 +114,6 @@ local with(platform, java_release, timelimit="15:00") = {
         ],
     },
 
-    build_graalvm_ce:: self.with_name("gate-build-graalvm-ce") + common.deps.sulong + {
-        packages+: {
-            make: ">=" + versions.make,
-        },
-        run: [
-            [mx, "sclone", "--kind", "git", "--source", "https://github.com/oracle/graal.git", "--dest", "../graal"],
-        ] + self.java_home_in_env("../graal/vm", "vm") + [
-            # Test the ce env file
-            [mx, "-p", "../graal/vm", "--env", "ce", "build"],
-        ],
-    },
-
     mx_unit_test:: self.with_name("unit-tests") + {
         run: [
             ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
@@ -179,20 +133,18 @@ local with(platform, java_release, timelimit="15:00") = {
           ["git", "-C", repo, "config", "mergetool.mx-suite-import.trustExitCode", "true"],
           # merging
           ["git", "-C", repo, "checkout", local_rev],
-          ["git", "-C", repo, "merge", "--no-ff", "--no-commit", remote_rev, "||", "git", "-C", repo, "mergetool", "--tool", "mx-suite-import"],
+          ["git", "-C", repo, "merge", "--no-ff", "--no-commit", remote_rev, "||", "git", "-C", repo, "mergetool", "--no-prompt", "--tool", "mx-suite-import"],
           ["test", "-z", ["git", "-C", repo, "diff", reference_rev]],
         ],
-      local test_repo = "test_repo",
-      environment+: {
-        MERGETOOL_TEST_REPO: "<mergetool-test-repo>",
-      },
+      local simple_test_repo = "test_repo_simple",
+      local complex_test_repo = "test_repo_complex",
       setup: [
         ["set-export", "MX_HOME", ["pwd"]],
-        ["git", "clone", "${MERGETOOL_TEST_REPO}", test_repo],
+        ["python3", path("tests/create_mergetool_test_repos.py"), simple_test_repo, complex_test_repo],
       ],
       run:
-        test_mergetool(test_repo, "caffcf0fe72", "172acf1141f", "ebf58d86069f5450adfe4a617aa3b52a9887a257")+ # GR-54826
-        test_mergetool(test_repo, "195c215f9cf", "a6862ad4f37", "8f54cbb8faed3a765069d81b4f075b923bf39533 "), # GR-54649
+        test_mergetool(simple_test_repo, "local", "remote", "expected") +
+        test_mergetool(complex_test_repo, "local", "remote", "expected"),
     },
 
     version_update_check:: self.with_name("version-update-check") + {
@@ -224,10 +176,7 @@ local with(platform, java_release, timelimit="15:00") = {
 {
     specVersion: "3",
 
-    # Overlay
-    overlay: "c806fbf97833c31bee09daad7a596319a499346e",
-
-    # For use by overlay
+    # Shared configuration values
     versions:: versions,
     extra_catch_files:: extra_catch_files,
     primary_jdk_version:: "latest",
@@ -242,8 +191,6 @@ local with(platform, java_release, timelimit="15:00") = {
         with(common.darwin_aarch64, self.primary_jdk_version).gate,
         with(common.linux_amd64, self.primary_jdk_version).bench_test,
         with(common.linux_amd64, self.primary_jdk_version).jmh_test,
-        with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").proftool_test,
-        with(common.linux_amd64, self.primary_jdk_version, timelimit="30:00").build_graalvm_ce,
         with(common.linux_amd64, self.primary_jdk_version).mx_unit_test,
         with(common.linux_amd64, self.primary_jdk_version).mx_mergetool_gate,
         with(common.linux_amd64, self.primary_jdk_version).version_update_check,
