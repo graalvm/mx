@@ -192,6 +192,19 @@ local common_json = import "../common.json";
       packages+: if self.os == "windows" then $.devkits["windows-" + self.jdk_name].packages else {},
     },
 
+    eclipse: {
+      downloads+: {
+        ECLIPSE: {
+          name: "eclipse",
+          version: common_json.eclipse.version,
+          platformspecific: true,
+        }
+      },
+      environment+: {
+        ECLIPSE_EXE: "$ECLIPSE/eclipse",
+      },
+    },
+
     jdt: {
       environment+: {
         JDT: "builtin",
