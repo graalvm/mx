@@ -379,7 +379,26 @@ from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
 from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
 from .support.timestampfile import TimeStampFile
-from .mx_repo_suite import _RepoSuiteDiscovery, _RepoSuiteInfo, _abort_for_missing_primary_suite, _check_command_available_for_suite, _discover_repo_suites, _format_repo_suite_discovery, _get_repo_diff_paths, _git_diff_name_status_z, _handle_missing_primary_suite_command, _missing_local_imports, _parse_git_diff_name_status_z, _recursive_mx_args_for_suite, _repo_suite_failure_message, _repo_suite_selection_mode, _repo_suite_selection_requested, _run_command_for_repo_suites, _select_repo_suites, _select_repo_suites_by_paths
+from .mx_repo_suite import (  # pylint: disable=unused-import
+    _RepoSuiteDiscovery,
+    _RepoSuiteInfo,
+    _abort_for_missing_primary_suite,
+    _check_command_available_for_suite,
+    _discover_repo_suites,
+    _format_repo_suite_discovery,
+    _get_repo_diff_paths,
+    _git_diff_name_status_z,
+    _handle_missing_primary_suite_command,
+    _missing_local_imports,
+    _parse_git_diff_name_status_z,
+    _recursive_mx_args_for_suite,
+    _repo_suite_failure_message,
+    _repo_suite_selection_mode,
+    _repo_suite_selection_requested,
+    _run_command_for_repo_suites,
+    _select_repo_suites,
+    _select_repo_suites_by_paths,
+)
 
 _mx_commands = MxCommands("mx")
 

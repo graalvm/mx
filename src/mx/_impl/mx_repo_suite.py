@@ -262,27 +262,9 @@ def _git_diff_name_status_z(vc_dir, extra_args):
 
 
 def _parse_git_diff_name_status_z(output):
-    entries = []
-    parts = output.split('\0')
-    i = 0
-    while i < len(parts):
-        if not parts[i]:
-            i += 1
-            continue
-        status = parts[i]
-        i += 1
-        if status.startswith('R'):
-            old_path = parts[i]
-            i += 1
-            new_path = parts[i]
-            i += 1
-            entries.append(old_path)
-            entries.append(new_path)
-        else:
-            path = parts[i]
-            i += 1
-            entries.append(path)
-    return [path for path in entries if path]
+    from .mx_codeowners import parse_git_diff_output
+
+    return parse_git_diff_output(output)
 
 
 def _get_repo_diff_paths(discovery):
