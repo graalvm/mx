@@ -6,6 +6,7 @@ import tempfile
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from mx._impl import mx as orig_mx
+from mx._impl import mx_benchmark as orig_mx_benchmark
 from mx._impl import mx_native as orig_mx_native
 
 
@@ -84,6 +85,18 @@ def mx_main_state_patch():
     previous_target_registry = dict(orig_mx_native.Target._registry)
     previous_target_selection_global = orig_mx_native.TargetSelection._global
     previous_target_selection_extra = list(orig_mx_native.TargetSelection._extra)
+    previous_bm_suites = dict(orig_mx_benchmark._bm_suites)
+    previous_java_vm_registry = {
+        "_vms": orig_mx_benchmark.OrderedDict(orig_mx_benchmark.java_vm_registry._vms),
+        "_vms_suite": dict(orig_mx_benchmark.java_vm_registry._vms_suite),
+        "_vms_priority": dict(orig_mx_benchmark.java_vm_registry._vms_priority),
+    }
+    previous_js_vm_registry = {
+        "_vms": orig_mx_benchmark.OrderedDict(orig_mx_benchmark.js_vm_registry._vms),
+        "_vms_suite": dict(orig_mx_benchmark.js_vm_registry._vms_suite),
+        "_vms_priority": dict(orig_mx_benchmark.js_vm_registry._vms_priority),
+    }
+    previous_benchmark_context_instance = orig_mx_benchmark.BenchmarkExecutionContext._instance
     previous_state = {
         "_binary_suites": orig_mx._binary_suites,
         "_mx_suite": orig_mx._mx_suite,
@@ -147,6 +160,14 @@ def mx_main_state_patch():
         orig_mx_native.Target._registry = {}
         orig_mx_native.TargetSelection._global = None
         orig_mx_native.TargetSelection._extra = []
+        orig_mx_benchmark._bm_suites = {}
+        orig_mx_benchmark.java_vm_registry._vms = orig_mx_benchmark.OrderedDict()
+        orig_mx_benchmark.java_vm_registry._vms_suite = {}
+        orig_mx_benchmark.java_vm_registry._vms_priority = {}
+        orig_mx_benchmark.js_vm_registry._vms = orig_mx_benchmark.OrderedDict()
+        orig_mx_benchmark.js_vm_registry._vms_suite = {}
+        orig_mx_benchmark.js_vm_registry._vms_priority = {}
+        orig_mx_benchmark.BenchmarkExecutionContext._instance = None
         if previous_mvn is not sentinel:
             delattr(orig_mx, "_mvn")
         yield
@@ -182,6 +203,14 @@ def mx_main_state_patch():
         orig_mx_native.Target._registry = previous_target_registry
         orig_mx_native.TargetSelection._global = previous_target_selection_global
         orig_mx_native.TargetSelection._extra = previous_target_selection_extra
+        orig_mx_benchmark._bm_suites = previous_bm_suites
+        orig_mx_benchmark.java_vm_registry._vms = previous_java_vm_registry["_vms"]
+        orig_mx_benchmark.java_vm_registry._vms_suite = previous_java_vm_registry["_vms_suite"]
+        orig_mx_benchmark.java_vm_registry._vms_priority = previous_java_vm_registry["_vms_priority"]
+        orig_mx_benchmark.js_vm_registry._vms = previous_js_vm_registry["_vms"]
+        orig_mx_benchmark.js_vm_registry._vms_suite = previous_js_vm_registry["_vms_suite"]
+        orig_mx_benchmark.js_vm_registry._vms_priority = previous_js_vm_registry["_vms_priority"]
+        orig_mx_benchmark.BenchmarkExecutionContext._instance = previous_benchmark_context_instance
         orig_mx.threading.excepthook = previous_excepthook
         if previous_mvn is sentinel:
             if hasattr(orig_mx, "_mvn"):
