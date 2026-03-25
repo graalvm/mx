@@ -176,8 +176,8 @@ Named license definitions referenced by distributions, libraries and repositorie
 
 ### `repositories`
 
-Named binary or Maven deployment targets.
-These are used by commands such as `mx binary-deploy` and `mx maven-deploy`.
+Named Maven deployment repositories.
+These are used by commands such as `mx maven-deploy`.
 
 ### Maven publication metadata: `groupId`, `url`, `developer`, `scm`
 

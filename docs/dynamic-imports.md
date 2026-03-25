@@ -111,7 +111,6 @@ suite = {
                 "version": "48b6b625b43b09f451dac5d82ca87569a1a01c61",
                 "urls": [
                     {"url" : "https://github.com/graalvm/graal.git", "kind" : "git"},
-                    {"url" : "https://curio.ssw.jku.at/nexus/content/repositories/snapshots", "kind" : "binary"},
                 ]
             },
         ]
@@ -121,7 +120,7 @@ suite = {
 
 With this definition, the `compiler` import would only be activated when using `--dy /compiler`.
 The `subdir: True` property indicates that `compiler` lives in a repository subdirectory instead of at the repository root, which is why the command-line form uses `/compiler`.
-If it is not available locally, it is cloned at the specified version using the provided URLs (cloning the sources by default or binaries if the suite is mentioned in `MX_BINARY_SUITES`).
+If it is not available locally, it is cloned at the specified version using the provided source URLs.
 
 This is the key difference from a command-line-only dynamic import: the command line activates the optional import, while the declaration in `suite.py` supplies the import metadata.
 If both are present, the declared import gives mx the version and URL information that the ad-hoc command-line form does not carry.
