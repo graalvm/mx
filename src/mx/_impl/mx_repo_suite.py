@@ -177,9 +177,9 @@ def _suite_label(suite_info, show_locations=False):
         suite_dir = str(suite_dir_path)
     else:
         try:
-            suite_dir = str(suite_dir_path.relative_to(Path.cwd()))
+            suite_dir = suite_dir_path.relative_to(Path.cwd()).as_posix()
         except ValueError:
-            suite_dir = os.path.relpath(str(suite_dir_path), os.getcwd())
+            suite_dir = Path(os.path.relpath(str(suite_dir_path), os.getcwd())).as_posix()
     return f'{suite_info.name} ({suite_dir})'
 
 
