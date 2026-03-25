@@ -76,6 +76,54 @@ def sys_module_patch(name):
             sys.modules[name] = previous
 
 
+@contextmanager
+def mx_main_state_patch():
+    sentinel = object()
+    previous_mvn = getattr(orig_mx, "_mvn", sentinel)
+    previous_state = {
+        "_binary_suites": orig_mx._binary_suites,
+        "_mx_suite": orig_mx._mx_suite,
+        "_primary_suite": orig_mx._primary_suite,
+        "_primary_suite_path": orig_mx._primary_suite_path,
+        "_suites": dict(orig_mx._suites),
+    }
+    previous_excepthook = orig_mx.threading.excepthook
+    try:
+        orig_mx._binary_suites = None
+        orig_mx._mx_suite = None
+        orig_mx._primary_suite = None
+        orig_mx._primary_suite_path = None
+        orig_mx._suites = {}
+        if previous_mvn is not sentinel:
+            delattr(orig_mx, "_mvn")
+        yield
+    finally:
+        orig_mx._binary_suites = previous_state["_binary_suites"]
+        orig_mx._mx_suite = previous_state["_mx_suite"]
+        orig_mx._primary_suite = previous_state["_primary_suite"]
+        orig_mx._primary_suite_path = previous_state["_primary_suite_path"]
+        orig_mx._suites = previous_state["_suites"]
+        orig_mx.threading.excepthook = previous_excepthook
+        if previous_mvn is sentinel:
+            if hasattr(orig_mx, "_mvn"):
+                delattr(orig_mx, "_mvn")
+        else:
+            orig_mx._mvn = previous_mvn
+
+
+@contextmanager
+def mx_vc_systems_patch():
+    previous_vc_systems = orig_mx._vc_systems
+    previous_suitemodel = orig_mx._suitemodel
+    orig_mx._vc_systems = [orig_mx.HgConfig(), orig_mx.GitConfig(), orig_mx.BinaryVC()]
+    orig_mx._suitemodel = orig_mx.SiblingSuiteModel(orig_mx._primary_suite_path, "sibling")
+    try:
+        yield
+    finally:
+        orig_mx._vc_systems = previous_vc_systems
+        orig_mx._suitemodel = previous_suitemodel
+
+
 def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None, import_entries=None):
     imported_suites = imported_suites or []
     suite_dir = os.path.join(repo_root, suite_relpath)
@@ -596,7 +644,8 @@ def test_build_without_primary_suite_shows_all_suites_hint():
 def test_root_suites_dispatches_once_per_root_suite():
     tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
     try:
-        discovery = orig_mx._discover_repo_suites(repo_root)
+        with mx_vc_systems_patch():
+            discovery = orig_mx._discover_repo_suites(repo_root)
         commands = []
         logs = []
 
@@ -665,7 +714,8 @@ def test_recursive_mx_args_strip_diff_branch_suites_with_explicit_value():
 def test_all_suites_dispatches_once_per_discovered_suite():
     tmpdir, repo_root, suite_dirs = _create_multi_suite_repo()
     try:
-        discovery = orig_mx._discover_repo_suites(repo_root)
+        with mx_vc_systems_patch():
+            discovery = orig_mx._discover_repo_suites(repo_root)
         commands = []
         logs = []
 
@@ -761,7 +811,7 @@ def test_main_dispatches_arbitrary_command_for_selected_suites():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), sys_module_patch("mx_mx"):
+        with chdir(repo_root), mx_main_state_patch(), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), sys_module_patch("mx_mx"):
             orig_mx.main()
 
         assert len(commands) == 4
@@ -792,7 +842,7 @@ def test_main_dispatch_respects_skip_missing_imports():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "custom-command", "--dry-run"]), sys_module_patch("mx_mx"):
+        with chdir(repo_root), mx_main_state_patch(), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "custom-command", "--dry-run"]), sys_module_patch("mx_mx"):
             orig_mx.main()
 
         assert len(commands) == 1
@@ -821,7 +871,7 @@ def test_main_does_not_bulk_dispatch_suites():
             assert False, "suites should not recurse through bulk run dispatch"
 
         stdout = io.StringIO()
-        with chdir(repo_root), mx_monkeypatch("_run_command_for_repo_suites", fail_bulk_dispatch), mx_monkeypatch("_check_stdout_encoding", lambda: None), argv_patch(["mx", "--all-suites", "suites", "--locations"]), sys_module_patch("mx_mx"), redirect_stdout(stdout):
+        with chdir(repo_root), mx_main_state_patch(), mx_monkeypatch("_run_command_for_repo_suites", fail_bulk_dispatch), mx_monkeypatch("_check_stdout_encoding", lambda: None), argv_patch(["mx", "--all-suites", "suites", "--locations"]), sys_module_patch("mx_mx"), redirect_stdout(stdout):
             orig_mx.main()
 
         assert dispatched == []
@@ -918,19 +968,20 @@ def test_diff_suites_dispatches_once_per_selected_suite():
 def test_skip_missing_imports_skips_all_selected_suites():
     tmpdir, repo_root, _ = _create_repo_with_missing_import()
     try:
-        discovery = orig_mx._discover_repo_suites(repo_root)
-        commands = []
-        logs = []
+        with mx_vc_systems_patch():
+            discovery = orig_mx._discover_repo_suites(repo_root)
+            commands = []
+            logs = []
 
-        def fake_run(cmd, **kwargs):
-            commands.append((cmd, kwargs))
-            return 0
+            def fake_run(cmd, **kwargs):
+                commands.append((cmd, kwargs))
+                return 0
 
-        def fake_log(msg=""):
-            logs.append(msg)
+            def fake_log(msg=""):
+                logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
-            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
+            with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, dynamic_imports=None, primary=False, specific_suites=[], primary_suite_path=None):
+                retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
         assert commands == []
@@ -946,19 +997,20 @@ def test_skip_missing_imports_skips_all_selected_suites():
 def test_skip_missing_imports_allows_other_selected_suites_to_run():
     tmpdir, repo_root, suite_dirs = _create_repo_with_partial_missing_imports()
     try:
-        discovery = orig_mx._discover_repo_suites(repo_root)
-        commands = []
-        logs = []
+        with mx_vc_systems_patch():
+            discovery = orig_mx._discover_repo_suites(repo_root)
+            commands = []
+            logs = []
 
-        def fake_run(cmd, **kwargs):
-            commands.append((cmd, kwargs))
-            return 0
+            def fake_run(cmd, **kwargs):
+                commands.append((cmd, kwargs))
+                return 0
 
-        def fake_log(msg=""):
-            logs.append(msg)
+            def fake_log(msg=""):
+                logs.append(msg)
 
-        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, primary=False, specific_suites=[], primary_suite_path=None):
-            retcode = orig_mx._run_command_for_repo_suites("build", discovery)
+            with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch("log", fake_log), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]), mx_opt_patch(all_suites=True, root_suites=False, diff_suites=False, diff_branch_suites=False, skip_missing_imports=True, dynamic_imports=None, primary=False, specific_suites=[], primary_suite_path=None):
+                retcode = orig_mx._run_command_for_repo_suites("build", discovery)
 
         assert retcode == 0
         assert len(commands) == 1
