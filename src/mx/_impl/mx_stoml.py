@@ -1,8 +1,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# pylint: disable=unspecified-encoding
-
 # Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -35,7 +33,7 @@ def parse_fd(fd, path="<fd>"):
     return parse_string(content, path=path)
 
 def parse_file(path):
-    with open(path, "r") as f:
+    with open(path, "rb") as f:
         return parse_fd(f, path)
 
 def parse_string(content, path="<toml-string>"):

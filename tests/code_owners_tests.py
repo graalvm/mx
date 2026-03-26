@@ -1,5 +1,3 @@
-# pylint: disable=unspecified-encoding
-
 import atexit
 import json
 import os
@@ -42,7 +40,7 @@ class TempFileTree:
         for filename, contents in description.items():
             full_path = os.path.join(basedir, filename)
             if isinstance(contents, str):
-                with open(full_path, "w") as f:
+                with open(full_path, "w", encoding="utf-8") as f:
                     f.write(contents)
             else:
                 os.mkdir(full_path)
@@ -906,7 +904,7 @@ def test_codeowners_json_output():
 
         run_in_mx(mx_args, base_dir)
 
-        with open(os.path.join(base_dir, "__codeowners.json"), "r") as inp:
+        with open(os.path.join(base_dir, "__codeowners.json"), "r", encoding="utf-8") as inp:
             json_output = json.load(inp)
 
         # FIXME: replace with plain assert once this runs within a reasonable

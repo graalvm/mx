@@ -1,8 +1,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# pylint: disable=unspecified-encoding
-
 # Copyright (c) 2007, 2015, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -146,7 +144,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         print('Checking ' + checktype + ' signature changes against ' + sigtestResults)
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance), out=out, err=out)
         mx_util.ensure_dir_exists(p.get_output_root())
-        with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w') as f:
+        with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w', encoding='utf-8') as f:
             f.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
             f.write('<testsuite tests="1" name="' + p.name + '.sigtest.' + checktype + '">\n')
             f.write('<testcase classname="' + p.name + '" name="sigtest.' + checktype + '">\n')

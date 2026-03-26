@@ -1,5 +1,3 @@
-# pylint: disable=unspecified-encoding
-
 # ----------------------------------------------------------------------------------------------------
 #
 # Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
@@ -117,7 +115,7 @@ class Compdb:
         return self
 
     def __exit__(self, *args):
-        with open(_compdb_path, 'w') as f:
+        with open(_compdb_path, 'w', encoding='utf-8') as f:
             json.dump(list(self.content.values()), f, indent=4)
         _compdb_lock.release()
 
@@ -135,7 +133,7 @@ class Compdb:
             mx.warn("Error decoding JSON compilation database. Ignoring.")
 
     def mergeFile(self, path):
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             self.mergeFileDesc(f, path=path)
 
     def mergeFileDesc(self, fd, path=None):

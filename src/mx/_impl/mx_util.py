@@ -1,8 +1,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# pylint: disable=unspecified-encoding
-
 # Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -223,7 +221,7 @@ def _create_tmp_files(tmp_dir, num):
         filename = f'{tmp_dir}/tmp{i}'
         with SafeFileCreation(filename) as sfc:
             pid = os.getpid()
-            with open(sfc.tmpPath, 'w') as out:
+            with open(sfc.tmpPath, 'w', encoding='utf-8') as out:
                 print(f"file {i} created by process {pid}", file=out)
 
 

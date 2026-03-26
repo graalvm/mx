@@ -1,5 +1,3 @@
-# pylint: disable=unspecified-encoding
-
 import contextlib
 import json
 import tempfile
@@ -100,7 +98,7 @@ def test_json_array_rule():
         )
 
         # Test ``resolve_key`` method
-        with open(tmp) as f:
+        with open(tmp, encoding="utf-8") as f:
             json_content = json.load(f)
             benchmark_values = rule.resolve_key(json_content, "benchmark__name")
             assert benchmark_values == ["hello-world"]

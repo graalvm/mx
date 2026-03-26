@@ -1,5 +1,3 @@
-# pylint: disable=unspecified-encoding
-
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -60,7 +58,7 @@ class SuiteConstituent(Comparable, metaclass=ABCMeta):
         suitepy = self.suite.suite_py()
         if os.path.exists(suitepy):
             import tokenize
-            with open(suitepy) as fp:
+            with open(suitepy, encoding='utf-8') as fp:
                 candidate = None
                 for t in tokenize.generate_tokens(fp.readline):
                     _, tval, (srow, _), _, _ = t

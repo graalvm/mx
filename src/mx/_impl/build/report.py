@@ -1,5 +1,3 @@
-# pylint: disable=consider-using-dict-items
-
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -82,9 +80,8 @@ class BuildReport:
 
     def _write_header(self, f):
         f.write('<h1>mx build report</h1>\n<dl class="header">\n')
-        for k in self.properties:
+        for k, v in self.properties.items():
             f.write(f"    <dt>{k}</dt>\n")
-            v = self.properties[k]
             if isinstance(v, list):
                 f.write("        <dd>\n")
                 for i in v:

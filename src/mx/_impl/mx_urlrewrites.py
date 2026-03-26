@@ -1,5 +1,3 @@
-# pylint: disable=unspecified-encoding
-
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -100,7 +98,7 @@ def register_urlrewrites_from_env(name):
 
         value = value.strip()
         if value[0] not in '{[':
-            with open(value) as fp:
+            with open(value, encoding='utf-8') as fp:
                 jsonValue = fp.read().strip()
         else:
             jsonValue = value

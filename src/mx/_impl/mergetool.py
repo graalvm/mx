@@ -1,8 +1,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# pylint: disable=unspecified-encoding
-
 # Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -93,7 +91,7 @@ def remove_conflict_markers(filename):
         },
 
     """
-    with open(filename, "r") as fp:
+    with open(filename, "r", encoding="utf-8") as fp:
         suite_content = fp.read()
         result = []
         conflict_level = 0
@@ -181,7 +179,7 @@ def mergetool_suite_import(args):
     def _run_diff3(local, base, remote, merged):
         out = mx.OutputCapture()
         ret = mx.run(["diff3", "-m", local, base, remote], nonZeroIsFatal=False, out=out)
-        with open(merged, "w") as fp:
+        with open(merged, "w", encoding="utf-8") as fp:
             fp.write(out.data)
         return ret
 
@@ -247,9 +245,9 @@ def mergetool_suite_import(args):
     new_base = None
     try:
         # fmt: off
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as new_local_fp, \
-              tempfile.NamedTemporaryFile(mode="w", delete=False) as new_remote_fp, \
-              tempfile.NamedTemporaryFile(mode="w", delete=False) as new_base_fp:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as new_local_fp, \
+              tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as new_remote_fp, \
+              tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as new_base_fp:
             # fmt: on
             new_local_fp.write(local_content)
             new_local = new_local_fp.name

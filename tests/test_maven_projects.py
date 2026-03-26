@@ -1,5 +1,3 @@
-# pylint: disable=unspecified-encoding
-
 import os
 import pathlib
 import re
@@ -27,7 +25,7 @@ def mx_monkeypatch(name, value):
 def test_pom_helper():
     print("test_maven_projects('test_pom_helper')")
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "pom.xml"), "w") as f:
+        with open(os.path.join(tmpdir, "pom.xml"), "w", encoding="utf-8") as f:
             pomtext = """
             <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
             <modelVersion>4.0.0</modelVersion>
@@ -124,7 +122,7 @@ def test_maven_project():
     """
 
     def create_project(pomtext, tmpdir, deps, buildDeps):
-        with open(os.path.join(tmpdir, "pom.xml"), "w") as f:
+        with open(os.path.join(tmpdir, "pom.xml"), "w", encoding="utf-8") as f:
             f.write(pomtext)
         suite = cast(mx.Suite, mx.primary_suite())
         lisense = [l.theLicense for l in suite.libs if l.theLicense is not None][0]
