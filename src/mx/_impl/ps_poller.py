@@ -23,6 +23,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=consider-using-with,unspecified-encoding
+
 import argparse
 import datetime
 import os

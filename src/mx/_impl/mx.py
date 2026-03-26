@@ -29,6 +29,8 @@ mx is a command line tool for managing the development of Java code organized as
 
 """
 
+# pylint: disable=super-with-arguments,unspecified-encoding,too-many-positional-arguments,raise-missing-from,consider-using-with,modified-iterating-list,raising-bad-type,use-dict-literal,consider-iterating-dictionary,f-string-without-interpolation,deprecated-argument,broad-exception-caught,unsupported-membership-test,arguments-renamed,function-redefined,consider-using-f-string,consider-using-dict-items,unused-variable,global-variable-not-assigned,duplicate-code
+
 from __future__ import annotations
 
 __all__ = [
@@ -624,7 +626,7 @@ def _check_file_with_digest(path, digest, mustExist=True, newFile=False, logErro
             content = f.read()
             # Hash is everything up to first space or end of file,
             # whichever comes first
-            return content.split()[0]
+            return content.split(maxsplit=1)[0]
 
     def _write_digest(digest_name, value=None):
         with SafeFileCreation(digest_path) as sfc, open(sfc.tmpPath, 'w') as f:
@@ -1552,7 +1554,7 @@ class SuiteImport:
             abort('unexpected type in SuiteImport.get_source_urls')
 
 
-_suites = dict()
+_suites = {}
 _primary_suite_path = None
 _primary_suite = None
 _mx_suite = None
@@ -2130,7 +2132,7 @@ class Suite(object):
         self._load_repositories(repositoryDefs)
 
     def _check_suiteDict(self, key):
-        return self.suiteDict.get(key, dict())
+        return self.suiteDict.get(key, {})
 
     def imports_dir(self, kind):
         return join(join(self.dir, 'mx.imports'), kind)
@@ -3021,7 +3023,7 @@ class SourceSuite(Suite):
         """return all projects including those in imported suites"""
         result = []
         result += self.projects
-        visitmap = dict()
+        visitmap = {}
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
 
@@ -3355,9 +3357,9 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
 
     def _clone_kwargs(mode):
         if mode == 'binary':
-            return dict(result=dict(), suite_name=suite_import.name)
+            return dict(result={}, suite_name=suite_import.name)
         else:
-            return dict()
+            return {}
 
     _clone_status = [False]
     _found_mode = [None]
@@ -3855,7 +3857,7 @@ def download_file_with_digest(name, path, urls, digest, resolve, mustExist, ext=
                     # if another thread wins the race to create the symlink
                     if not os.path.lexists(link_name):
                         # It was some other error
-                        raise Exception(link_name, e)
+                        raise OSError(f"failed to create symlink {link_name}") from e
             else:
                 # If we can't symlink, then atomically copy. Never move as that
                 # can cause problems in the context of multiple processes/threads.
@@ -4530,35 +4532,42 @@ def update_file(path, content, showDiff=False):
         abort('Error while writing to ' + path + ': ' + str(e))
 
 
-try: zipfile.ZipFile.__enter__
-except:
-    zipfile.ZipFile.__enter__ = lambda self: self
-    zipfile.ZipFile.__exit__ = lambda self, t, value, traceback: self.close()
+try:
+    zipfile.ZipFile.__enter__
+except Exception:  # pragma: no cover - compatibility shim
+    def _zipfile_enter(self):
+        return self
 
-_projects = dict()
-_libs = dict()
+    def _zipfile_exit(self, t, value, traceback):
+        self.close()
+
+    zipfile.ZipFile.__enter__ = _zipfile_enter
+    zipfile.ZipFile.__exit__ = _zipfile_exit
+
+_projects = {}
+_libs = {}
 """
 :type: dict[str, ResourceLibrary|Library]
 """
-_jreLibs = dict()
+_jreLibs = {}
 """
 :type: dict[str, JreLibrary]
 """
-_jdkLibs = dict()
+_jdkLibs = {}
 """
 :type: dict[str, JdkLibrary]
 """
-_dists = dict()
+_dists = {}
 
-_removed_projects = dict()
-_removed_libs = dict()
-_removed_jreLibs = dict()
-_removed_jdkLibs = dict()
-_removed_dists = dict()
+_removed_projects = {}
+_removed_libs = {}
+_removed_jreLibs = {}
+_removed_jdkLibs = {}
+_removed_dists = {}
 
-_distTemplates = dict()
-_licenses = dict()
-_repositories = dict()
+_distTemplates = {}
+_licenses = {}
+_repositories = {}
 _mavenRepoBaseURLs = [
     "https://repo1.maven.org/maven2/",
     "https://search.maven.org/remotecontent?filepath="
@@ -4567,7 +4576,7 @@ _mavenRepoBaseURLs = [
 """
 Map of the environment variables loaded by parsing the suites.
 """
-_loadedEnv = dict()
+_loadedEnv = {}
 
 _jdkFactories = {}
 
@@ -6028,7 +6037,8 @@ Common causes:
             if not self.suite.vc or not self.suite.vc.locate(self.suite.vc_dir, file_path, abortOnError=False):
                 absolute_source = isabs(source_path)
                 if absolute_source:
-                    _arcname_f = lambda a: a
+                    def _arcname_f(a):
+                        return a
                 warn(f"Adding file which is not in the repository: '{file_path}' in '{destination}'", context=self)
             elif isabs(source_path):
                 abort(f"Source should not be absolute: '{source_path}' in '{destination}'", context=self)
@@ -6559,7 +6569,7 @@ class Project(Dependency):
         Get the dependencies of this project that are not recursive (i.e. cannot be reached
         via other dependencies).
         """
-        distances = dict()
+        distances = {}
         result = set()
         self._compute_max_dep_distances(self, distances, 0)
         for n, d in distances.items():
@@ -6575,7 +6585,7 @@ class Project(Dependency):
         """
         Get the maximum canonical distance between this project and its most distant dependency.
         """
-        distances = dict()
+        distances = {}
         self._compute_max_dep_distances(self.name, distances, 0)
         return max(distances.values())
 
@@ -6913,7 +6923,7 @@ class JavaProject(Project, ClasspathDependency):
         'function' returns true. A map from class name to source file path for each existing class
         corresponding to a matched source file is returned.
         """
-        result = dict()
+        result = {}
         source_dirs = self.source_dirs()
         if includeGenSrc:
             source_dirs.append(self.source_gen_dir())
@@ -8011,7 +8021,7 @@ class CompilerDaemon(Daemon):
         try:
             s.connect(('127.0.0.1', self.port))
             logv(f'Compile with {self.name()}: {" ".join(compilerArgs)}')
-            commandLine = u'\x00'.join(compilerArgs)
+            commandLine = '\x00'.join(compilerArgs)
             s.send((f'{CompilerDaemon.header_compile}{commandLine}\n').encode('utf-8'))
             f = s.makefile()
             while True:
@@ -9604,7 +9614,7 @@ class HgConfig(VC):
         if rc == 0:
             for line in out.data.splitlines():
                 if line.strip().startswith(' * '):
-                    return line[3:].split(" ")[0]
+                    return line[3:].split(" ", 1)[0]
         if abortOnError:
             abort('no active hg bookmark found')
         return None
@@ -10133,7 +10143,7 @@ class GitConfig(VC):
             command += ['-C', vcdir]
         command += ['ls-remote', repository, cls._head_to_ref(brefs)]
 
-        result = dict()
+        result = {}
         try:
             head_ref_prefix_length = len(cls._head_to_ref(''))
             for line in _check_output_str(command).splitlines():
@@ -12683,7 +12693,7 @@ def read_annotation_processors(path):
     def parse(fp):
         lines = []
         for line in fp:
-            line = line.split('#')[0].strip()
+            line = line.split('#', 1)[0].strip()
             if line:
                 lines.append(line)
         return lines
@@ -12819,7 +12829,7 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
                 return vmArgs, remainder
         else:
             if not args[i].startswith('-'):
-                if i != 0 and (args[i - 1] == '-cp' or args[i - 1] == '-classpath'):
+                if i != 0 and args[i - 1] in ('-cp', '-classpath'):
                     if not allowClasspath:
                         abort('Cannot supply explicit class path option')
                     else:
@@ -13203,7 +13213,8 @@ def _find_jdk(versionCheck=None, versionDescription=None):
     """
     assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
     if not versionCheck:
-        versionCheck = lambda _: True
+        def versionCheck(_):
+            return True
 
     candidateJdks = []
     source = ''
@@ -13786,7 +13797,7 @@ def run(
                         raise
         else:
             retcode = _waitWithTimeout(p, cmd_line, timeout, nonZeroIsFatal, on_timeout)
-        while any([t.is_alive() for t in joiners]):
+        while any(t.is_alive() for t in joiners):
             # Need to use timeout otherwise all signals (including CTRL-C) are blocked
             # see: http://bugs.python.org/issue1167930
             for t in joiners:
@@ -14341,7 +14352,7 @@ class JDKConfig(Comparable):
                             inLintSection = True
                     else:
                         if line.startswith('         '):
-                            warning = line.split()[0]
+                            warning = line.split(maxsplit=1)[0]
                             self._knownJavacLints.append(warning)
                             self._knownJavacLints.append('-' + warning)
                         elif line.strip().startswith('-X'):
@@ -14559,7 +14570,7 @@ def expand_project_in_args(args, insitu=True, jdk=None):
     The updated object is returned.
     """
     for i in range(len(args)):
-        if args[i] == '-cp' or args[i] == '-classpath':
+        if args[i] in ('-cp', '-classpath'):
             if i + 1 < len(args):
                 if not insitu:
                     args = list(args) # clone args
@@ -14882,7 +14893,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
         deprecation_as_error_args = parser.parse_args(cmd_args[:])
         deprecation_as_error_args.force_deprecation_as_warning = False
         primary_java_projects = [p for p in primary_suite().projects if p.isJavaProject()]
-        primary_java_project_dists = [d for d in primary_suite().dists if any([p in d.deps for p in primary_java_projects])]
+        primary_java_project_dists = [d for d in primary_suite().dists if any(p in d.deps for p in primary_java_projects)]
         deps_w_deprecation_errors = [e.name for e in primary_java_projects + primary_java_project_dists]
         logv("Deprecations are only errors for " + ", ".join(deps_w_deprecation_errors))
 
@@ -15078,7 +15089,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
                 if len(incompleteDeps) == 0:
                     task._d = 0
                 else:
-                    task._d = max([remainingDepsDepth(t) for t in incompleteDeps]) + 1
+                    task._d = max(remainingDepsDepth(t) for t in incompleteDeps) + 1
             return task._d
 
         cpus = cpu_count()
@@ -15762,7 +15773,7 @@ class Archiver(SafeFileCreation):
     def __enter__(self):
         if self.path:
             SafeFileCreation.__enter__(self)
-            if self.kind == 'zip' or self.kind == 'jar':
+            if self.kind in ('zip', 'jar'):
                 self.zf = zipfile.ZipFile(self.tmpPath, 'w', compression=zipfile.ZIP_DEFLATED if self.compress else zipfile.ZIP_STORED)
                 self._add_f = self._add_zip
                 self._add_str = self._add_str_zip
@@ -16912,7 +16923,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if g not in groups:
                 groups[g] = set()
             groups[g].add(p)
-        groupargs = list()
+        groupargs = []
         for k, v in groups.items():
             if len(v) == 0:
                 continue
@@ -17082,10 +17093,10 @@ def site(args):
                     for dep in p.canonical_deps():
                         if dep in [proj.name for proj in projects]:
                             print('"' + p.name + '" -> "' + dep + '"', file=fp)
-                depths = dict()
+                depths = {}
                 for p in projects:
                     d = p.max_depth()
-                    depths.setdefault(d, list()).append(p.name)
+                    depths.setdefault(d, []).append(p.name)
                 print('}', file=fp)
 
             run(['dot', '-Tsvg', '-o' + svg, '-Tjpg', '-o' + jpg, dot])

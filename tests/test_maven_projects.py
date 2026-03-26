@@ -1,3 +1,5 @@
+# pylint: disable=unspecified-encoding
+
 import os
 import pathlib
 import re
@@ -183,8 +185,13 @@ def test_maven_project():
         assert not os.path.exists(os.path.join(project.get_output_root(), "pom.xml"))
         maven_runs = []
         maven_deployments = []
-        mp_run_maven = lambda *args, **kwargs: maven_runs.append([args, kwargs]) or defaultjarpath.touch()
-        mp_maven_deploy = lambda *args, **kwargs: maven_deployments.append([args, kwargs])
+        def mp_run_maven(*args, **kwargs):
+            maven_runs.append([args, kwargs])
+            defaultjarpath.touch()
+
+        def mp_maven_deploy(*args, **kwargs):
+            maven_deployments.append([args, kwargs])
+
         with mx_monkeypatch("run_maven", mp_run_maven) as _:
             with mx_monkeypatch("maven_deploy", mp_maven_deploy) as _:
                 try:

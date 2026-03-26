@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=super-with-arguments,unspecified-encoding,too-many-positional-arguments,consider-using-with,arguments-renamed,f-string-without-interpolation
+
 import copy
 import io
 import json
@@ -856,7 +858,7 @@ class CompiledCodeInfo:
             print(f'\tTop 5 basic blocks from graal {[(b.id, b.freq) for b in bmax_graal[:5]]}\n\tTop 5 basic blocks from perf {[(b.id, b.samples, b.period) for b in bmax_perf[:5]]}', file=fp)
 
             graal_most_frequent = {b.id for b in bmax_graal[:5]}
-            if all([b.id not in graal_most_frequent for b in bmax_perf[:5]]):
+            if all(b.id not in graal_most_frequent for b in bmax_perf[:5]):
                 print('[ERROR] Top 5 most frequent basic blocks from graal is disjoint from top 5 most frequent basic blocks from perf', file=fp)
             return
 
@@ -1269,7 +1271,7 @@ class GeneratedAssembly:
                 for nmethod in mx_logcompilation.collect_nmethods(tree):
                     current = nmethods.get(nmethod.entry_pc)
                     if current is None:
-                        current = list()
+                        current = []
                         nmethods[nmethod.entry_pc] = current
                     current.append(nmethod)
 

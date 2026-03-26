@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=unspecified-encoding
+
 import os, tempfile, shlex, subprocess, re, sys
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath, basename, getmtime

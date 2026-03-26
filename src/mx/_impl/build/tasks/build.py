@@ -1,3 +1,5 @@
+# pylint: disable=unspecified-encoding
+
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -79,7 +81,7 @@ class BuildTask(Buildable, Task):
     """A Task used to build a dependency."""
 
     def __init__(self, subject: Dependency, args: Args, parallelism: int):
-        super(BuildTask, self).__init__(subject, args, parallelism)
+        super().__init__(subject, args, parallelism)
         self._saved_config_path = path.join(subject.suite.get_mx_output_dir(), 'savedConfig', type(subject).__name__,
                                             subject._extra_artifact_discriminant(), self.name)
 

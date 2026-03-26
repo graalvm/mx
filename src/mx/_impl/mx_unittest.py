@@ -25,6 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+# pylint: disable=unspecified-encoding,too-many-positional-arguments,consider-using-with,raise-missing-from
+
 __all__ = [
     "add_global_ignore_glob",
     "find_test_candidates",
@@ -183,7 +185,9 @@ def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=
     any element of 'annotations' (ignoring preceding whitespace) and return the list of fully
     qualified class names for each Java source file matched.
     """
-    matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
+    def matches(line):
+        return any(line == annotation or line.startswith(annotation + '(') for annotation in annotations)
+
     return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
 
 
@@ -369,7 +373,7 @@ class MxUnittestConfig:
 # the default config that applies unittest participants
 class DefaultMxUnittestConfig(MxUnittestConfig):
     def __init__(self):
-        super(DefaultMxUnittestConfig, self).__init__("default")
+        super().__init__("default")
 
     def apply(self, config):
         for p in _config_participants:
@@ -377,7 +381,7 @@ class DefaultMxUnittestConfig(MxUnittestConfig):
         return config
 
 
-_unittest_configs = dict()
+_unittest_configs = {}
 def register_unittest_config(cfg):
     name = cfg.name
     assert not name in _unittest_configs, 'duplicate unittest config'

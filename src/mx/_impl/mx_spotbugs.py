@@ -1,3 +1,5 @@
+# pylint: disable=unspecified-encoding
+
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -194,7 +196,7 @@ def _spotbugs(parsed_args, args, spotbugsArgs, suite, projectsToTest, spotbugsVe
         print(xml, file=fp)
 
     outputDirs = [mx._cygpathU2W(p.output_dir()) for p in projectsToTest]
-    javaCompliance = max([p.javaCompliance for p in projectsToTest])
+    javaCompliance = max(p.javaCompliance for p in projectsToTest)
     max_jdk_version = _max_jdk_version_supported(spotbugsVersion)
     if max_jdk_version < javaCompliance.value:
         _warn_or_abort(

@@ -23,6 +23,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=super-with-arguments,use-dict-literal,consider-using-with,unspecified-encoding
+
 __all__ = [
     "lazy_default",
     "lazy_class_default",
@@ -401,9 +403,11 @@ class Ninja(object):
             if callable(err):
                 err = mx.TeeOutputCapture(err)
         if out is None:
-            out = lambda msg: mx.log(msg, important=False)
+            def out(msg):
+                mx.log(msg, important=False)
         if err is None:
-            err = lambda msg: mx.log(msg, important=True)
+            def err(msg):
+                mx.log(msg, important=True)
 
         rc = mx.run(cmd, nonZeroIsFatal=False, out=out, err=err, cwd=self.build_dir)
         if rc:
@@ -752,7 +756,7 @@ class NinjaProject(MultitargetProject):
                 grouping = collections.defaultdict(list)
                 for f in files:
                     grouping[os.path.splitext(f)[1]].append(os.path.join(rel_root, f))
-                for ext in grouping.keys():
+                for ext in grouping:
                     source_files[ext] += grouping[ext]
 
         return dict(tree=source_tree, files=source_files)

@@ -1,6 +1,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=unspecified-encoding,f-string-without-interpolation,unreachable,raise-missing-from
+
 # Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #

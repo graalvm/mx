@@ -25,6 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+# pylint: disable=unspecified-encoding,consider-using-f-string
+
 __all__ = [
     "FileOwners",
     "stoml_parse_rules",
@@ -51,7 +53,7 @@ def _load_toml_from_fd(fd):
         try:
             return tomllib.load(fd)
         except tomllib.TOMLDecodeError as e:
-            raise _TomlParsingException(str(e))
+            raise _TomlParsingException(str(e)) from e
     except ImportError:
         # Try another library
         pass
@@ -64,7 +66,7 @@ def _load_toml_from_fd(fd):
             # mx_stoml we also decode from UTF-8 ourselves explicitly.
             return toml.loads(fd.read().decode('utf-8'))
         except toml.TomlDecodeError as e:
-            raise _TomlParsingException(e)
+            raise _TomlParsingException(e) from e
     except ImportError:
         # Try another library
         pass
@@ -75,7 +77,7 @@ def _load_toml_from_fd(fd):
         return tree
     except RuntimeError as e:
         mx.log_error(f"Failed at parsing {fd.name} using the in-house parser. You can try again after installing the 'tomllib' or 'toml' package.")
-        raise _TomlParsingException(e)
+        raise _TomlParsingException(e) from e
 
 
 def _whitespace_split(inp):
@@ -147,7 +149,7 @@ class FileOwners:
                 if not 'files' in rule:
                     mx.log_error(f"Ignoring rule {rule} in {name} as it contains no files")
                     continue
-                if all([not rule_type in rule for rule_type in _supported_rule_types()]):
+                if all(rule_type not in rule for rule_type in _supported_rule_types()):
                     mx.log_error(f"Ignoring rule {rule} in {name} as it contains no owner specification")
                     continue
 
@@ -498,7 +500,7 @@ def codeowners(args):
             else:
                 mx.log(" o " + ' or '.join(i))
 
-    if all([len(reviewers[rule_type]) == 0 for rule_type in _supported_rule_types()]):
+    if all(len(reviewers[rule_type]) == 0 for rule_type in _supported_rule_types()):
         mx.log("No specific reviewer requested by OWNERS.toml files for the given changeset.")
 
 
@@ -746,9 +748,11 @@ def nocodeowners(args):
     args = parser.parse_args(args)
 
     if args.print_everything:
-        summary_function = lambda x: x.oneline_all(args.use_colors)
+        def summary_function(x):
+            return x.oneline_all(args.use_colors)
     else:
-        summary_function = lambda x: x.oneline_brief(args.use_colors)
+        def summary_function(x):
+            return x.oneline_brief(args.use_colors)
 
     root = '.' # _git_get_repo_root_or_cwd()
     owners = FileOwners(root)

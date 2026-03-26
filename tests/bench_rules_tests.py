@@ -1,3 +1,5 @@
+# pylint: disable=unspecified-encoding
+
 import contextlib
 import json
 import tempfile

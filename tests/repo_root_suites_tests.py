@@ -1,3 +1,5 @@
+# pylint: disable=unspecified-encoding
+
 import io
 import os
 import sys

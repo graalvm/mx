@@ -1,3 +1,5 @@
+# pylint: disable=consider-using-with
+
 import argparse
 import re
 import subprocess

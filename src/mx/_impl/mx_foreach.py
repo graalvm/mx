@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=consider-using-f-string
+
 import argparse
 import textwrap
 

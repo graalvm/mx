@@ -24,6 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=unspecified-encoding
 
 try:
     # Use more secure defusedxml library, if available
@@ -146,7 +147,7 @@ def intellijinit(config: IntellijConfig):
         mx_ideconfig.fsckprojects([])
 
 def intellij_read_sdks():
-    sdks = dict()
+    sdks = {}
     # https://www.jetbrains.com/help/idea/2023.2/directories-used-by-the-ide-to-store-settings-caches-plugins-and-logs.html
     if mx.is_linux() or mx.is_openbsd() or mx.is_sunos():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \

@@ -25,6 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+# pylint: disable=unspecified-encoding,too-many-positional-arguments,consider-using-with
+
 __all__ = [
     "JARDistribution",
 ]
@@ -577,7 +579,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 f.writelines((l + os.linesep for l in self.stripConfig))
 
     def remoteName(self, platform=None):
-        base_name = super(JARDistribution, self).remoteName(platform=platform)
+        base_name = super().remoteName(platform=platform)
         if self.is_stripped():
             return base_name + "_stripped"
         else:

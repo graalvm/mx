@@ -1,6 +1,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=unspecified-encoding
+
 # Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -229,7 +231,7 @@ def mergetool_suite_import(args):
     mismatches = [
         s
         for s in local_import_dict.keys()
-        if local_import_dict[s] != remote_import_dict[s] and local_import_dict[s] != base_import_dict[s]
+        if local_import_dict[s] not in (remote_import_dict[s], base_import_dict[s])
     ]
     _assert_or_fallback(mismatches, "Not import mismatches. Falling back to diff3")
 

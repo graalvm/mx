@@ -24,6 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=unspecified-encoding
 
 import os, sys
 from os.path import join, exists

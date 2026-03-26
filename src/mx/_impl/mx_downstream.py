@@ -294,7 +294,7 @@ def _checkout_upstream_revision(upstream_commit, candidate_downstream_branches, 
         if downstream_commit is None:
             mx.log(f" - cannot find a revision in branch 'origin/{downstream_branch}' of '{downstream_suite.vc_dir}' that imports revision '{upstream_commit}' of '{upstream_suite.name}'")
             continue
-        downstream_commit = downstream_commit.split('\n')[0]
+        downstream_commit = downstream_commit.split('\n', 1)[0]
         mx.log(f"Checking out revision '{downstream_commit}' of downstream suite '{downstream_suite.name}', which imports revision '{upstream_commit}' of '{upstream_suite.name}'")
         mx.GitConfig().update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
         return True

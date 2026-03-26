@@ -1,3 +1,5 @@
+# pylint: disable=unspecified-encoding
+
 import atexit
 import json
 import os

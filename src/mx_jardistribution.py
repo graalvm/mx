@@ -33,7 +33,7 @@ DO NOT WRITE IMPLEMENTATION CODE HERE.
 See docs/package-structure.md for more details.
 """
 
-# pylint: disable=wildcard-import,unused-wildcard-import
+# pylint: disable=wildcard-import,unused-wildcard-import,duplicate-code
 from mx._impl.mx_jardistribution import *
 
 from mx._legacy.oldnames import redirect as _redirect

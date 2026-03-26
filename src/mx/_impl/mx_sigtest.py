@@ -1,6 +1,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=unspecified-encoding
+
 # Copyright (c) 2007, 2015, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -65,7 +67,7 @@ def _sigtest_generate(args, suite=None, projects=None):
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
-    javaCompliance = max([p.javaCompliance for p in nonTestProjects])
+    javaCompliance = max(p.javaCompliance for p in nonTestProjects)
 
     for p in nonTestProjects:
         sigtestlib = p.suite.getMxCompatibility().get_sigtest_jar()
@@ -113,7 +115,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 1
-    javaCompliance = max([p.javaCompliance for p in nonTestProjects])
+    javaCompliance = max(p.javaCompliance for p in nonTestProjects)
 
     if checktype != 'all':
         print('Running sigtest with checktype=' + checktype + '. For a full check, pass \'--check all\'.')

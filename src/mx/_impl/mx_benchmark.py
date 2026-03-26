@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=super-with-arguments,unspecified-encoding,too-many-positional-arguments,consider-using-f-string,used-before-assignment,arguments-renamed,consider-using-with,f-string-without-interpolation,raise-missing-from,possibly-used-before-assignment
+
 from __future__ import annotations
 
 __all__ = [
@@ -1620,7 +1622,7 @@ def element_wise_product_converter(values: Dict[str, List]) -> List[Dict[str, st
         if len(value_list) == 1:
             one_element_list_keys.append(key)
             continue
-        if length != 1 and length != len(value_list):
+        if length not in (1, len(value_list)):
             raise ValueError("All lists with more than one element should be of equal length")
         length = len(value_list)
         multi_element_list_keys.append(key)
@@ -3806,7 +3808,7 @@ class RssPercentilesTracker(Tracker):
         if not _use_tracker:
             return cmd
 
-        if mx.get_os() != "linux" and mx.get_os() != "darwin":
+        if mx.get_os() not in ("linux", "darwin"):
             mx.warn(f"Ignoring the '{self.__class__.__name__}' tracker since it is not supported on {mx.get_os()}")
             return cmd
 
@@ -4643,6 +4645,7 @@ class BenchmarkExecutor(object):
 
         with TTYCapturing(out=out, err=err):
             suite: Optional[BenchmarkSuite] = None
+            benchNamesList = []
             if mxBenchmarkArgs.benchmark:
                 # The suite will read the benchmark specifier,
                 # and therewith produce a list of benchmark sets to run in separate forks.

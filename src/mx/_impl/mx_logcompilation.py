@@ -1,6 +1,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=consider-using-f-string,unspecified-encoding,consider-using-generator,consider-using-dict-items
+
 # Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -163,7 +165,7 @@ def print_compile_queue_statistics(tree):
     dequeued = 0
     tasks = {}
     for x in tree.getroot().iter():
-        if x.tag == 'task_queued' or x.tag == 'task_dequeued' or x.tag == 'nmethod':
+        if x.tag in ('task_queued', 'task_dequeued', 'nmethod'):
             compile_id = int(x.get('compile_id'))
             level = int(x.get('level', 4))
             if level == 0:
@@ -243,7 +245,7 @@ def print_make_not(event, tasks):
 def print_event(event, tasks):
     if event.tag == 'task':
         print_task(event)
-    elif event.tag == 'make_not_entrant' or event.tag == 'make_not_compilable':
+    elif event.tag in ('make_not_entrant', 'make_not_compilable'):
         print_make_not(event, tasks)
 
 
