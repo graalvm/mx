@@ -237,6 +237,134 @@ def _format_repo_suite_discovery(discovery, show_locations=False):
     return '\n'.join(lines)
 
 
+def _dot_quote(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+_ROOT_NODE_COLOR = '#e76f00'
+_LOCAL_NODE_COLOR = '#437291'
+_LOCAL_EDGE_COLOR = '#999999'
+_EXTERNAL_NODE_COLOR = _LOCAL_EDGE_COLOR
+_EXTERNAL_EDGE_COLOR = '#dddddd'
+
+
+def _dot_graph_header():
+    return [
+        'digraph suites {',
+        '  graph [bgcolor=white, newrank=true, compound=true];',
+        '  rankdir=TB;',
+        '  node [shape=plain, fontname="DejaVu Sans", fontsize=12];',
+        '  edge [penwidth=2, arrowsize=0.7];',
+    ]
+
+
+def _dot_node_color(external=False, root=False):
+    if external:
+        return _EXTERNAL_NODE_COLOR
+    if root:
+        return _ROOT_NODE_COLOR
+    return _LOCAL_NODE_COLOR
+
+
+def _dot_append_key(lines, anchor_node_ids=()):
+    lines.extend([
+        '  subgraph "cluster_key" {',
+        '    rank=sink;',
+        '    color="white";',
+        '    pencolor="white";',
+        '    "key_left_anchor" [shape=point, width=0.01, height=0.01, label="", style=invis, group="left"];',
+        '    "key" [shape=plain, margin=0, label=<',
+        '      <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="3" COLOR="#cccccc">',
+        '        <TR><TD BGCOLOR="#f5f5f5"><FONT POINT-SIZE="9" COLOR="#777777"><B>Node type</B></FONT></TD><TD BGCOLOR="#f5f5f5"><FONT POINT-SIZE="9" COLOR="#777777"><B>Meaning</B></FONT></TD></TR>',
+        '        <TR><TD><FONT POINT-SIZE="9" COLOR="' + _ROOT_NODE_COLOR + '">root suite</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="9">local suite with no local importers</FONT></TD></TR>',
+        '        <TR><TD><FONT POINT-SIZE="9" COLOR="' + _LOCAL_NODE_COLOR + '">non-root suite</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="9">local suite imported by another local suite</FONT></TD></TR>',
+        '        <TR><TD><FONT POINT-SIZE="9" COLOR="' + _EXTERNAL_NODE_COLOR + '">external suite</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="9">imported suite not discovered locally</FONT></TD></TR>',
+        '      </TABLE>',
+        '    >];',
+        '    { rank=same; "key_left_anchor"; "key"; }',
+        '    "key_left_anchor" -> "key" [style=invis, color="white", weight=100];',
+        '  }',
+        '  "graph_left_anchor" -> "key_left_anchor" [style=invis, color="white", weight=100, ltail="cluster_graph", lhead="cluster_key"];',
+    ])
+    for anchor_node_id in anchor_node_ids:
+        lines.append(f'  {_dot_quote(anchor_node_id)} -> "key" [style=invis, color="white", weight=100, ltail="cluster_graph", lhead="cluster_key"];')
+
+
+def _format_repo_suite_discovery_dot(discovery, show_locations=False):
+    suites_by_key = {suite.suite_key: suite for suite in discovery.suites}
+    root_keys = {suite.suite_key for suite in discovery.root_suites}
+    name_counts = {}
+    for suite_info in discovery.suites:
+        name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
+
+    def _suite_reference_label(suite_info):
+        if name_counts.get(suite_info.name, 0) > 1:
+            return _suite_label(suite_info, show_locations=show_locations)
+        return suite_info.name
+
+    def _suite_node_id(suite_info):
+        if name_counts.get(suite_info.name, 0) > 1:
+            return 'suite:' + suite_info.suite_key
+        return 'suite:' + suite_info.name
+
+    lines = _dot_graph_header()
+    lines.extend([
+        '  subgraph "cluster_graph" {',
+        '    color="white";',
+        '    pencolor="white";',
+        '    "graph_left_anchor" [shape=point, width=0.01, height=0.01, label="", style=invis, group="left"];',
+    ])
+    emitted_nodes = set()
+    emitted_edges = set()
+    all_node_ids = set()
+    nodes_with_outgoing_edges = set()
+
+    def _emit_node(node_id, label, external=False, root=False):
+        if node_id in emitted_nodes:
+            return
+        color = _dot_node_color(external=external, root=root)
+        attrs = [f'label={_dot_quote(label)}', f'fontcolor={_dot_quote(color)}']
+        lines.append(f'    {_dot_quote(node_id)} [{", ".join(attrs)}];')
+        emitted_nodes.add(node_id)
+        all_node_ids.add(node_id)
+
+    def _emit_edge(source_id, target_id, external=False):
+        edge = (source_id, target_id)
+        if edge in emitted_edges:
+            return
+        color = _EXTERNAL_EDGE_COLOR if external else _LOCAL_EDGE_COLOR
+        lines.append(f'    {_dot_quote(source_id)} -> {_dot_quote(target_id)} [color={_dot_quote(color)}];')
+        emitted_edges.add(edge)
+        nodes_with_outgoing_edges.add(source_id)
+
+    for suite_info in discovery.suites:
+        _emit_node(_suite_node_id(suite_info), _suite_reference_label(suite_info), root=suite_info.suite_key in root_keys)
+
+    for importer, imported in discovery.local_edges:
+        _emit_edge(_suite_node_id(suites_by_key[importer]), _suite_node_id(suites_by_key[imported]))
+
+    for suite_info in discovery.suites:
+        source_id = _suite_node_id(suite_info)
+        for import_name in discovery.external_imports.get(suite_info.suite_key, ()):
+            target_id = 'external:' + import_name
+            _emit_node(target_id, import_name, external=True)
+            _emit_edge(source_id, target_id, external=True)
+
+    isolated_root_node_ids = sorted(
+        _suite_node_id(suite_info)
+        for suite_info in discovery.root_suites
+        if _suite_node_id(suite_info) not in nodes_with_outgoing_edges
+    )
+    if isolated_root_node_ids:
+        lines.append('    { rank=min; "graph_left_anchor"; ' + '; '.join(_dot_quote(node_id) for node_id in isolated_root_node_ids) + '; }')
+
+    sink_node_ids = sorted(all_node_ids - nodes_with_outgoing_edges)
+    lines.append('  }')
+    _dot_append_key(lines, anchor_node_ids=sink_node_ids)
+    lines.append('}')
+    return '\n'.join(lines)
+
+
 def _abort_for_missing_primary_suite(command, discovery=None):
     _mx = _mx_module()
     if discovery is None:
@@ -279,7 +407,7 @@ def _get_repo_diff_paths(discovery):
     if getattr(_mx._opts, 'diff_suites', False):
         diff_desc = 'uncommitted changes'
         for repo_root in git_repo_roots:
-            relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, ['HEAD']))
+            relative_paths = _parse_git_diff_name_status_z(_git_diff_name_status_z(repo_root, ['HEAD']))
             changed_paths.extend(str(_resolve_path(Path(repo_root) / path)) for path in relative_paths)
     else:
         base = getattr(_mx._opts, 'diff_branch_suites', None)
@@ -297,7 +425,7 @@ def _get_repo_diff_paths(discovery):
                 _mx.abort(_diff_branch_fix_message(repo_root, base, f'could not determine the merge-base with local `{base}`'))
             merge_base = merge_base.strip()
             merge_bases.append(merge_base)
-            relative_paths = _mx._parse_git_diff_name_status_z(_mx._git_diff_name_status_z(repo_root, [f'{merge_base}..HEAD']))
+            relative_paths = _parse_git_diff_name_status_z(_git_diff_name_status_z(repo_root, [f'{merge_base}..HEAD']))
             changed_paths.extend(str(_resolve_path(Path(repo_root) / path)) for path in relative_paths)
         if len(git_repo_roots) == 1:
             diff_desc = f'{merge_bases[0]}..HEAD'
@@ -363,13 +491,12 @@ def _repo_suite_selection_mode():
 
 
 def _repo_suite_selection_requested():
-    _mx = _mx_module()
-    return _mx._repo_suite_selection_mode() is not None
+    return _repo_suite_selection_mode() is not None
 
 
 def _select_repo_suites(discovery, default_all=False):
     _mx = _mx_module()
-    selection_mode = _mx._repo_suite_selection_mode()
+    selection_mode = _repo_suite_selection_mode()
     if selection_mode is None:
         if default_all:
             return discovery.suites, None, False
@@ -382,8 +509,8 @@ def _select_repo_suites(discovery, default_all=False):
 
     root_suites_only = False
     if selection_mode in ('diff', 'diff-branch'):
-        diff_desc, changed_paths = _mx._get_repo_diff_paths(discovery)
-        return _mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only), diff_desc, root_suites_only
+        diff_desc, changed_paths = _get_repo_diff_paths(discovery)
+        return _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only), diff_desc, root_suites_only
 
     _mx.abort(f'Unexpected repo suite selection mode: {selection_mode}')
 
@@ -492,8 +619,8 @@ def _run_command_for_repo_suites(command, discovery):
     if not discovery or not discovery.suites:
         _mx.abort('No suites found in this directory tree.')
 
-    selected_suites, diff_desc, root_suites_only = _mx._select_repo_suites(discovery)
-    selection_mode = _mx._repo_suite_selection_mode()
+    selected_suites, diff_desc, root_suites_only = _select_repo_suites(discovery)
+    selection_mode = _repo_suite_selection_mode()
     name_counts = {}
     for suite_info in discovery.suites:
         name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
@@ -517,7 +644,7 @@ def _run_command_for_repo_suites(command, discovery):
     if getattr(_mx._opts, 'skip_missing_imports', False):
         executable_suites = []
         for suite_info in selected_suites:
-            missing_imports = _mx._missing_local_imports(suite_info.suite_dir)
+            missing_imports = _missing_local_imports(suite_info.suite_dir)
             if missing_imports:
                 skipped.append((suite_info, missing_imports))
                 _mx.log(f"Skipping suite `{_suite_run_label(suite_info)}` due to missing local imports: {', '.join(missing_imports)}")
@@ -528,12 +655,12 @@ def _run_command_for_repo_suites(command, discovery):
     unavailable = set()
     for suite_info in executable_suites:
         suite_kind = 'root suite' if root_suites_only else 'suite'
-        if not _mx._check_command_available_for_suite(command, suite_info.suite_dir):
+        if not _check_command_available_for_suite(command, suite_info.suite_dir):
             unavailable.add(suite_info.suite_key)
             continue
         _mx.log(f"Running `{command}` for {suite_kind} `{_suite_run_label(suite_info)}`")
         try:
-            retcode = _mx.run(_mx._recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir, interruptIsFatal=True)
+            retcode = _mx.run(_recursive_mx_args_for_suite(suite_info.suite_dir), nonZeroIsFatal=False, cwd=suite_info.suite_dir, interruptIsFatal=True)
         except KeyboardInterrupt:
             _mx.abort(1)
         if retcode != 0:
@@ -558,7 +685,7 @@ def _run_command_for_repo_suites(command, discovery):
             grouped.setdefault(status, []).append(_suite_run_label(suite_info))
         for status, suite_labels in grouped.items():
             _mx.log(f"  {status}: {', '.join(suite_labels)}")
-        _mx.abort(_mx._repo_suite_failure_message(command, len(failures), len(unavailable), root_suites_only))
+        _mx.abort(_repo_suite_failure_message(command, len(failures), len(unavailable), root_suites_only))
     if executable_suites:
         plural = '' if len(executable_suites) == 1 else 's'
         _mx.log(f'{len(executable_suites)} command{plural} executed successfully')
@@ -570,6 +697,6 @@ def _run_command_for_repo_suites(command, discovery):
 def _handle_missing_primary_suite_command(command):
     _mx = _mx_module()
     discovery = _mx._discover_repo_suites()
-    if _mx._repo_suite_selection_requested():
-        return _mx._run_command_for_repo_suites(command, discovery)
-    _mx._abort_for_missing_primary_suite(command, discovery)
+    if _repo_suite_selection_requested():
+        return _run_command_for_repo_suites(command, discovery)
+    _abort_for_missing_primary_suite(command, discovery)

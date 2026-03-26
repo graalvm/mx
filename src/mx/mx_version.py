@@ -1,2 +1,2 @@
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = "7.76.0"  # [repo-root multi-suite improvements] stabilize repo-suite gates and merge master updates
+version = "7.76.2"  # GR-74335 - Graphviz dot graph rendering for suites

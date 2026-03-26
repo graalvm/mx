@@ -381,23 +381,16 @@ from .support.system import get_os, get_os_variant, is_continuous_integration, i
 from .support.timestampfile import TimeStampFile
 from .mx_repo_suite import (  # pylint: disable=unused-import
     _RepoSuiteDiscovery,
-    _RepoSuiteInfo,
-    _abort_for_missing_primary_suite,
-    _check_command_available_for_suite,
     _discover_repo_suites,
+    _dot_graph_header,
+    _dot_node_color,
+    _dot_append_key,
     _format_repo_suite_discovery,
-    _get_repo_diff_paths,
-    _git_diff_name_status_z,
+    _format_repo_suite_discovery_dot,
     _handle_missing_primary_suite_command,
-    _missing_local_imports,
-    _parse_git_diff_name_status_z,
-    _recursive_mx_args_for_suite,
-    _repo_suite_failure_message,
-    _repo_suite_selection_mode,
     _repo_suite_selection_requested,
     _run_command_for_repo_suites,
     _select_repo_suites,
-    _select_repo_suites_by_paths,
 )
 
 _mx_commands = MxCommands("mx")
@@ -17865,29 +17858,120 @@ def _update_digests(args):
                 fp.write(suite_py)
     log(f'{updated} library digests were updated to {algorithm}, {unmodified} already used {algorithm} and {unresolved} non-downloaded were skipped')
 
+
+def _try_show_inline_suites_graph(dot_path):
+    dot_exe = shutil.which('dot')
+    if dot_exe is None:
+        return
+    png_path = os.path.splitext(dot_path)[0] + '.png'
+
+    start_new_session, creationflags = _get_new_progress_group_args()
+
+    def _communicate_process(args, stdin=None, capture_stdout=True):
+        proc = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE if stdin is not None else None,
+            stdout=subprocess.PIPE if capture_stdout else None,
+            stderr=subprocess.PIPE,
+            start_new_session=start_new_session,
+            creationflags=creationflags,
+        )
+        entry = _addSubprocess(proc, args)
+        try:
+            stdout, stderr = proc.communicate(stdin)
+            return proc.returncode, stdout, stderr
+        finally:
+            _removeSubprocess(entry)
+
+    def _stdout_supports_inline_images():
+        return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+    def _supports_kitty_graphics_protocol():
+        term_program = os.environ.get('TERM_PROGRAM', '').lower()
+        term = os.environ.get('TERM', '').lower()
+        return term_program in ('ghostty', 'kitty') or term == 'xterm-kitty' or 'KITTY_WINDOW_ID' in os.environ
+
+    try:
+        if _stdout_supports_inline_images():
+            chafa_exe = shutil.which('chafa')
+            if chafa_exe is not None and _supports_kitty_graphics_protocol():
+                dot_retcode, png, render_err = _communicate_process([dot_exe, '-Tpng', dot_path])
+                if dot_retcode != 0 or not png:
+                    if render_err:
+                        logv(f"Skipping inline suites graph display after dot failure: {render_err.decode(errors='replace').strip()}")
+                    return
+                _, _, chafa_err = _communicate_process([chafa_exe, '-f', 'kitty'], stdin=png, capture_stdout=False)
+                if chafa_err:
+                    logv(f"Inline suites graph display reported stderr: {chafa_err.decode(errors='replace').strip()}")
+                return
+
+            imgcat_exe = shutil.which('imgcat')
+            if imgcat_exe is not None:
+                dot_retcode, _, render_err = _communicate_process([dot_exe, '-Tpng', '-o', png_path, dot_path], capture_stdout=False)
+                if dot_retcode != 0:
+                    if render_err:
+                        logv(f"Skipping inline suites graph display after dot failure: {render_err.decode(errors='replace').strip()}")
+                    return
+                _, _, imgcat_err = _communicate_process([imgcat_exe, png_path], capture_stdout=False)
+                if imgcat_err:
+                    logv(f"Inline suites graph display reported stderr: {imgcat_err.decode(errors='replace').strip()}")
+                return png_path
+
+        dot_retcode, _, render_err = _communicate_process([dot_exe, '-Tpng', '-o', png_path, dot_path], capture_stdout=False)
+        if dot_retcode != 0:
+            if render_err:
+                logv(f"Skipping suites graph PNG rendering after dot failure: {render_err.decode(errors='replace').strip()}")
+            return
+        return png_path
+    except OSError as e:
+        logv(f"Skipping suites graph rendering: {e}")
+
 def show_suites(args):
     """show all suites
 
-    usage: mx suites [-h] [--locations] [--licenses]
+    usage: mx suites [-h] [--locations] [--licenses] [--dot [FILE]]
 
     When no primary suite is active, mx discovers local suites in the current
     directory tree and prints each suite with its suite directory relative to
     the current working directory. In that discovery mode, --locations switches
-    the suite directory display to absolute paths. The --licenses, --class, and
-    --archived-deps options require an active primary suite.
+    the suite directory display to absolute paths. The --dot option writes the
+    suite dependency graph in Graphviz DOT format. If Graphviz dot is
+    available, mx also renders a PNG, and on TTYs with imgcat or with chafa in
+    a kitty-compatible terminal it renders the graph inline in the console. The
+    --licenses, --class, and --archived-deps options require an active primary
+    suite.
 
     optional arguments:
       -h, --help   show this help message and exit
       --locations  show absolute element locations on disk
+      --dot [FILE] write the suite dependency graph as Graphviz DOT; if
+                   Graphviz dot is available, also render a PNG, and on TTYs
+                   with imgcat or with chafa in a kitty-compatible terminal
+                   render it inline in the console
       --class      show mx class implementing each suite component
       --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
     parser.add_argument('-p', '--locations', action='store_true', help='show absolute element locations on disk')
+    parser.add_argument(
+        '--dot',
+        nargs='?',
+        const='suites.dot',
+        metavar='FILE',
+        help='write the suite dependency graph as Graphviz DOT (default: suites.dot). '
+             'If Graphviz dot is available, also render a PNG, and on TTYs with imgcat '
+             'or with chafa in a kitty-compatible terminal, render it inline in the console',
+    )
     parser.add_argument('-l', '--licenses', action='store_true', help='show element licenses')
     parser.add_argument('-c', '--class', dest='clazz', action='store_true', help='show mx class implementing each suite component')
     parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')
     args = parser.parse_args(args)
+    dot_output_path = os.path.abspath(args.dot) if args.dot else None
+
+    def _write_dot_graph(path, graph):
+        with open(path, 'w', encoding='utf-8') as fp:
+            fp.write(graph)
+            fp.write('\n')
 
     if primary_suite() is None:
         unsupported = []
@@ -17921,8 +18005,105 @@ def show_suites(args):
             filtered_external_imports,
             filtered_ambiguous_imports,
         )
+        if args.dot:
+            _write_dot_graph(args.dot, _format_repo_suite_discovery_dot(filtered_discovery, show_locations=args.locations))
         print(_format_repo_suite_discovery(filtered_discovery, show_locations=args.locations))
+        if dot_output_path:
+            print('')
+            print(f'DOT graph written to {dot_output_path}')
+            png_output_path = _try_show_inline_suites_graph(dot_output_path)
+            if png_output_path:
+                print(f'PNG graph written to {png_output_path}')
         return
+
+    def _dot_quote(value):
+        return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+    def _suite_graph_label(suite_obj):
+        if args.locations:
+            return suite_obj.name + '\\n' + suite_obj.mxDir
+        return suite_obj.name
+
+    def _format_loaded_suites_dot(initial_suites):
+        lines = _dot_graph_header()
+        lines.extend([
+            '  subgraph "cluster_graph" {',
+            '    color="white";',
+            '    pencolor="white";',
+            '    "graph_left_anchor" [shape=point, width=0.01, height=0.01, label="", style=invis, group="left"];',
+        ])
+        emitted_nodes = set()
+        emitted_edges = set()
+        suite_objects = {}
+        local_edges = set()
+        external_node_ids = set()
+        visited = set()
+        worklist = deque(initial_suites)
+
+        while worklist:
+            suite_obj = worklist.popleft()
+            if suite_obj.name in visited:
+                continue
+            visited.add(suite_obj.name)
+            suite_objects[suite_obj.name] = suite_obj
+            for suite_import in suite_obj.suite_imports:
+                imported_suite = suite(suite_import.name, fatalIfMissing=False)
+                if imported_suite is None:
+                    continue
+                local_edges.add((suite_obj.name, imported_suite.name))
+                if imported_suite.name not in visited:
+                    worklist.append(imported_suite)
+
+        incoming = {name: 0 for name in suite_objects}
+        for _, imported_name in local_edges:
+            incoming[imported_name] = incoming.get(imported_name, 0) + 1
+        root_names = {name for name, count in incoming.items() if count == 0}
+        local_node_ids = {'suite:' + suite_name for suite_name in suite_objects}
+        nodes_with_outgoing_edges = {'suite:' + importer_name for importer_name, _ in local_edges}
+
+        def _emit_node(node_id, label, external=False, root=False):
+            if node_id in emitted_nodes:
+                return
+            color = _dot_node_color(external=external, root=root)
+            attrs = [f'label={_dot_quote(label)}', f'fontcolor={_dot_quote(color)}']
+            lines.append(f'    {_dot_quote(node_id)} [{", ".join(attrs)}];')
+            emitted_nodes.add(node_id)
+            if external:
+                external_node_ids.add(node_id)
+
+        def _emit_edge(source_id, target_id, external=False):
+            edge = (source_id, target_id)
+            if edge in emitted_edges:
+                return
+            color = '#dddddd' if external else '#999999'
+            lines.append(f'    {_dot_quote(source_id)} -> {_dot_quote(target_id)} [color={_dot_quote(color)}];')
+            emitted_edges.add(edge)
+            nodes_with_outgoing_edges.add(source_id)
+
+        for suite_name in sorted(suite_objects):
+            suite_obj = suite_objects[suite_name]
+            source_id = 'suite:' + suite_obj.name
+            _emit_node(source_id, _suite_graph_label(suite_obj), root=suite_obj.name in root_names)
+            for suite_import in suite_obj.suite_imports:
+                imported_suite = suite(suite_import.name, fatalIfMissing=False)
+                if imported_suite is None:
+                    target_id = 'external:' + suite_import.name
+                    _emit_node(target_id, suite_import.name, external=True)
+                    _emit_edge(source_id, target_id, external=True)
+                else:
+                    target_id = 'suite:' + imported_suite.name
+                    _emit_node(target_id, _suite_graph_label(imported_suite), root=imported_suite.name in root_names)
+                    _emit_edge(source_id, target_id)
+
+        isolated_root_node_ids = sorted('suite:' + suite_name for suite_name in root_names if ('suite:' + suite_name) not in nodes_with_outgoing_edges)
+        if isolated_root_node_ids:
+            lines.append('    { rank=min; "graph_left_anchor"; ' + '; '.join(_dot_quote(node_id) for node_id in isolated_root_node_ids) + '; }')
+
+        sink_node_ids = sorted((local_node_ids | external_node_ids) - nodes_with_outgoing_edges)
+        lines.append('  }')
+        _dot_append_key(lines, anchor_node_ids=sink_node_ids)
+        lines.append('}')
+        return '\n'.join(lines)
 
     def _location(e):
         if args.locations:
@@ -17960,7 +18141,11 @@ def show_suites(args):
                     for a in e.archived_deps():
                         print('      ' + a.name)
 
-    for s in suites(True):
+    shown_suites = suites(True)
+    if args.dot:
+        _write_dot_graph(args.dot, _format_loaded_suites_dot(shown_suites))
+
+    for s in shown_suites:
         location = _location(s)
         if location:
             print(f'{s.name} ({location})')
@@ -17971,6 +18156,11 @@ def show_suites(args):
         _show_section('jdklibraries', s.jdkLibs)
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
+    if dot_output_path:
+        print(f'DOT graph written to {dot_output_path}')
+        png_output_path = _try_show_inline_suites_graph(dot_output_path)
+        if png_output_path:
+            print(f'PNG graph written to {png_output_path}')
 
 
 _show_paths_examples = """

@@ -8,6 +8,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from mx._impl import mx as orig_mx
 from mx._impl import mx_benchmark as orig_mx_benchmark
 from mx._impl import mx_native as orig_mx_native
+from mx._impl import mx_repo_suite as orig_mx_repo_suite
 
 
 @contextmanager
@@ -21,13 +22,13 @@ def chdir(path):
 
 
 @contextmanager
-def mx_monkeypatch(name, value):
-    previous = getattr(orig_mx, name)
-    setattr(orig_mx, name, value)
+def mx_monkeypatch(name, value, module=orig_mx):
+    previous = getattr(module, name)
+    setattr(module, name, value)
     try:
         yield value
     finally:
-        setattr(orig_mx, name, previous)
+        setattr(module, name, previous)
 
 
 @contextmanager
@@ -264,7 +265,7 @@ def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None, imp
 
 def _create_multi_suite_repo():
     tmpdir = tempfile.TemporaryDirectory()
-    repo_root = tmpdir.name
+    repo_root = os.path.realpath(tmpdir.name)
     open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
     compiler_dir = _write_suite(repo_root, "compiler", "compiler", ["sdk"])
     sdk_dir = _write_suite(repo_root, "sdk", "sdk")
@@ -284,7 +285,7 @@ def _create_multi_suite_repo():
 
 def _create_repo_with_nested_imported_suite():
     tmpdir = tempfile.TemporaryDirectory()
-    repo_root = tmpdir.name
+    repo_root = os.path.realpath(tmpdir.name)
     open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
     compiler_dir = _write_suite(repo_root, "compiler", "compiler")
     imported_sdk_dir = _write_suite(os.path.join(repo_root, "compiler", "mx.imports", "source"), "sdk", "sdk")
@@ -302,7 +303,7 @@ def _create_repo_with_nested_imported_suite():
 
 def _create_workspace_with_subrepos():
     tmpdir = tempfile.TemporaryDirectory()
-    workspace_root = tmpdir.name
+    workspace_root = os.path.realpath(tmpdir.name)
     repo_a = os.path.join(workspace_root, "repo-a")
     repo_b = os.path.join(workspace_root, "repo-b")
     os.makedirs(repo_a, exist_ok=True)
@@ -331,7 +332,7 @@ def _create_workspace_with_subrepos():
 
 def _create_workspace_with_duplicate_suite_names():
     tmpdir = tempfile.TemporaryDirectory()
-    workspace_root = tmpdir.name
+    workspace_root = os.path.realpath(tmpdir.name)
     repo_a = os.path.join(workspace_root, "repo-a")
     repo_b = os.path.join(workspace_root, "repo-b")
     os.makedirs(repo_a, exist_ok=True)
@@ -386,7 +387,7 @@ def _create_workspace_with_ambiguous_import():
 
 def _create_repo_with_missing_import():
     tmpdir = tempfile.TemporaryDirectory()
-    repo_root = tmpdir.name
+    repo_root = os.path.realpath(tmpdir.name)
     open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
     compiler_dir = _write_suite(
         repo_root,
@@ -405,7 +406,7 @@ def _create_repo_with_missing_import():
 
 def _create_repo_with_partial_missing_imports():
     tmpdir = tempfile.TemporaryDirectory()
-    repo_root = tmpdir.name
+    repo_root = os.path.realpath(tmpdir.name)
     open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
     compiler_dir = _write_suite(
         repo_root,
@@ -539,6 +540,109 @@ def test_show_suites_without_primary_suite_with_locations():
         tmpdir.cleanup()
 
 
+def test_show_suites_without_primary_suite_writes_dot():
+    tmpdir, repo_root, _ = _create_repo_with_missing_import()
+    try:
+        dot_path = os.path.join(repo_root, "suites.dot")
+        png_path = os.path.join(repo_root, "suites.png")
+        stdout = io.StringIO()
+        inline_graph_calls = []
+
+        def _record_inline_graph(path):
+            inline_graph_calls.append(path)
+            return png_path
+
+        with mx_vc_systems_patch():
+            with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
+                "_try_show_inline_suites_graph", _record_inline_graph
+            ), redirect_stdout(stdout):
+                orig_mx.show_suites(["--dot", dot_path])
+        output = stdout.getvalue()
+
+        with open(dot_path, "r", encoding="utf-8") as fp:
+            dot = fp.read()
+
+        assert inline_graph_calls == [dot_path]
+        assert "DOT graph written to " + dot_path in output
+        assert "PNG graph written to " + png_path in output
+        assert "rankdir=TB;" in dot
+        assert '"suite:compiler" [label="compiler", fontcolor="#e76f00"]' in dot
+        assert '"external:sdk" [label="sdk", fontcolor="#999999"]' in dot
+        assert '"suite:compiler" -> "external:sdk" [color="#dddddd"];' in dot
+        assert 'subgraph "cluster_graph" {' in dot
+        assert 'subgraph "cluster_key" {' in dot
+        assert '"graph_left_anchor" [shape=point, width=0.01, height=0.01, label="", style=invis, group="left"];' in dot
+        assert '"key_left_anchor" [shape=point, width=0.01, height=0.01, label="", style=invis, group="left"];' in dot
+        assert '"key" [shape=plain, margin=0, label=<' in dot
+        assert (
+            '<FONT POINT-SIZE="9" COLOR="#e76f00">root suite</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="9">local suite with no local importers</FONT></TD>'
+            in dot
+        )
+        assert (
+            '<FONT POINT-SIZE="9" COLOR="#437291">non-root suite</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="9">local suite imported by another local suite</FONT></TD>'
+            in dot
+        )
+        assert (
+            '<FONT POINT-SIZE="9" COLOR="#999999">external suite</FONT></TD><TD ALIGN="LEFT"><FONT POINT-SIZE="9">imported suite not discovered locally</FONT></TD>'
+            in dot
+        )
+        assert "rank=sink;" in dot
+        assert '{ rank=same; "key_left_anchor"; "key"; }' in dot
+        assert '"key_left_anchor" -> "key" [style=invis, color="white", weight=100];' in dot
+        assert (
+            '"graph_left_anchor" -> "key_left_anchor" [style=invis, color="white", weight=100, ltail="cluster_graph", lhead="cluster_key"];'
+            in dot
+        )
+        assert (
+            '"external:sdk" -> "key" [style=invis, color="white", weight=100, ltail="cluster_graph", lhead="cluster_key"];'
+            in dot
+        )
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_without_primary_suite_places_isolated_root_at_top():
+    tmpdir = tempfile.TemporaryDirectory()
+    repo_root = tmpdir.name
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    _write_suite(repo_root, "solo", "solo")
+    try:
+        dot_path = os.path.join(repo_root, "suites.dot")
+        stdout = io.StringIO()
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None), redirect_stdout(stdout):
+            orig_mx.show_suites(["--dot", dot_path])
+
+        with open(dot_path, "r", encoding="utf-8") as fp:
+            dot = fp.read()
+
+        assert '{ rank=min; "graph_left_anchor"; "suite:solo"; }' in dot
+        assert (
+            '"suite:solo" -> "key" [style=invis, color="white", weight=100, ltail="cluster_graph", lhead="cluster_key"];'
+            in dot
+        )
+    finally:
+        tmpdir.cleanup()
+
+
+def test_show_suites_without_primary_suite_writes_valid_dot_without_isolated_roots():
+    tmpdir = tempfile.TemporaryDirectory()
+    repo_root = tmpdir.name
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    _write_suite(repo_root, "root", "root", imported_suites=["leaf"])
+    _write_suite(os.path.join(repo_root, "leaf"), "leaf", "leaf")
+    try:
+        dot_path = os.path.join(repo_root, "suites.dot")
+        with chdir(repo_root), mx_monkeypatch("_primary_suite", None):
+            orig_mx.show_suites(["--dot", dot_path])
+
+        with open(dot_path, "r", encoding="utf-8") as fp:
+            dot = fp.read()
+
+        assert '{ rank=min; "graph_left_anchor"; ; }' not in dot
+    finally:
+        tmpdir.cleanup()
+
+
 def test_show_suites_without_primary_suite_rejects_detailed_flags():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -644,7 +748,7 @@ def test_show_suites_diff_for_all_suites():
             return "uncommitted changes", changed_paths
 
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
-            "_get_repo_diff_paths", fake_get_repo_diff_paths
+            "_get_repo_diff_paths", fake_get_repo_diff_paths, module=orig_mx_repo_suite
         ), mx_opt_patch(
             all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False
         ), redirect_stdout(
@@ -667,7 +771,7 @@ def test_show_suites_diff_branch_for_all_suites():
             return "uncommitted changes", changed_paths
 
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
-            "_get_repo_diff_paths", fake_get_repo_diff_paths
+            "_get_repo_diff_paths", fake_get_repo_diff_paths, module=orig_mx_repo_suite
         ), mx_opt_patch(
             all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites=True
         ), redirect_stdout(
@@ -691,7 +795,7 @@ def test_get_repo_diff_paths_ignores_non_git_repos():
         with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_opt_patch(
             all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False
         ):
-            diff_desc, changed_paths = orig_mx._get_repo_diff_paths(discovery)
+            diff_desc, changed_paths = orig_mx_repo_suite._get_repo_diff_paths(discovery)
 
         assert diff_desc == "uncommitted changes"
         assert changed_paths == []
@@ -718,9 +822,9 @@ def test_get_repo_diff_paths_uses_only_git_repos_in_mixed_workspace():
             return "M\0compiler/mx.compiler/suite.py\0"
 
         with mx_monkeypatch("VC", type("FakeVCNamespace", (), {"get_vc": staticmethod(fake_get_vc)})), mx_monkeypatch(
-            "_git_diff_name_status_z", fake_git_diff_name_status_z
+            "_git_diff_name_status_z", fake_git_diff_name_status_z, module=orig_mx_repo_suite
         ), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=True, diff_branch_suites=False):
-            diff_desc, changed_paths = orig_mx._get_repo_diff_paths(discovery)
+            diff_desc, changed_paths = orig_mx_repo_suite._get_repo_diff_paths(discovery)
 
         assert diff_desc == "uncommitted changes"
         assert changed_paths == [
@@ -764,7 +868,7 @@ def test_diff_branch_suites_requires_configured_branch_with_fixup_message():
         ), mx_opt_patch(all_suites=False, root_suites=False, diff_suites=False, diff_branch_suites="main"):
             try:
                 with redirect_stderr(stderr):
-                    orig_mx._get_repo_diff_paths(discovery)
+                    orig_mx_repo_suite._get_repo_diff_paths(discovery)
             except SystemExit as exc:
                 assert exc.code == 1
             else:
@@ -819,7 +923,9 @@ def test_root_suites_dispatches_once_per_root_suite():
 
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch(
             "log", fake_log
-        ), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(
+        ), mx_monkeypatch(
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
+        ), argv_patch(
             ["mx", "--root-suites", "build", "--dry-run"]
         ), mx_opt_patch(
             all_suites=False,
@@ -853,7 +959,7 @@ def test_root_suites_dispatches_once_per_root_suite():
 def test_recursive_mx_args_preserve_global_option_values_matching_command_name():
     with argv_patch(["mx", "--env", "build", "build", "--dry-run"]):
         orig_mx._argParser.initialCommandAndArgs = ["build", "--dry-run"]
-        cmd = orig_mx._recursive_mx_args_for_suite("/tmp/suite")
+        cmd = orig_mx_repo_suite._recursive_mx_args_for_suite("/tmp/suite")
 
     assert cmd == [
         sys.executable,
@@ -871,7 +977,7 @@ def test_recursive_mx_args_preserve_global_option_values_matching_command_name()
 def test_recursive_mx_args_strip_diff_branch_suites_with_explicit_value():
     with argv_patch(["mx", "--diff-branch-suites=main", "build", "--dry-run"]):
         orig_mx._argParser.initialCommandAndArgs = ["build", "--dry-run"]
-        cmd = orig_mx._recursive_mx_args_for_suite("/tmp/suite")
+        cmd = orig_mx_repo_suite._recursive_mx_args_for_suite("/tmp/suite")
 
     assert cmd == [
         sys.executable,
@@ -901,7 +1007,9 @@ def test_all_suites_dispatches_once_per_discovered_suite():
 
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch(
             "log", fake_log
-        ), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(
+        ), mx_monkeypatch(
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
+        ), argv_patch(
             ["mx", "--all-suites", "custom-command", "--dry-run"]
         ), mx_opt_patch(
             all_suites=True,
@@ -948,7 +1056,7 @@ def test_bulk_suite_run_preserves_live_command_output():
             return 0
 
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch(
-            "_check_command_available_for_suite", lambda command, suite_dir: True
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
         ), argv_patch(["mx", "--all-suites", "custom-command", "--dry-run"]), mx_opt_patch(
             all_suites=True,
             root_suites=False,
@@ -988,7 +1096,7 @@ def test_bulk_suite_run_aborts_on_keyboard_interrupt():
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch(
             "log", fake_log
         ), mx_monkeypatch("abort", fake_abort), mx_monkeypatch(
-            "_check_command_available_for_suite", lambda command, suite_dir: True
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
         ), argv_patch(
             ["mx", "--all-suites", "custom-command", "--dry-run"]
         ), mx_opt_patch(
@@ -1027,7 +1135,9 @@ def test_main_dispatches_arbitrary_command_for_selected_suites():
 
         with chdir(repo_root), mx_main_state_patch(), mx_monkeypatch("run", fake_run), mx_monkeypatch(
             "log", fake_log
-        ), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(
+        ), mx_monkeypatch(
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
+        ), argv_patch(
             ["mx", "--all-suites", "custom-command", "--dry-run"]
         ), sys_module_patch(
             "mx_mx"
@@ -1067,14 +1177,17 @@ def test_main_dispatch_respects_skip_missing_imports():
         def fake_log(msg=""):
             logs.append(msg)
 
-        with chdir(repo_root), mx_main_state_patch(), mx_monkeypatch("run", fake_run), mx_monkeypatch(
-            "log", fake_log
-        ), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(
-            ["mx", "--all-suites", "--skip-missing-imports", "custom-command", "--dry-run"]
-        ), sys_module_patch(
-            "mx_mx"
-        ):
-            orig_mx.main()
+        with mx_vc_systems_patch():
+            with chdir(repo_root), mx_main_state_patch(), mx_monkeypatch("run", fake_run), mx_monkeypatch(
+                "log", fake_log
+            ), mx_monkeypatch(
+                "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
+            ), argv_patch(
+                ["mx", "--all-suites", "--skip-missing-imports", "custom-command", "--dry-run"]
+            ), sys_module_patch(
+                "mx_mx"
+            ):
+                orig_mx.main()
 
         assert len(commands) == 1
         cmd, kwargs = commands[0]
@@ -1123,7 +1236,7 @@ def test_diff_path_selection_for_all_suites():
     try:
         discovery = orig_mx._discover_repo_suites(repo_root)
         changed_paths = [os.path.join(suite_dirs["sdk"], "mx.sdk", "suite.py")]
-        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        selected = orig_mx_repo_suite._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
         assert [suite.name for suite in selected] == ["sdk"]
     finally:
         tmpdir.cleanup()
@@ -1134,7 +1247,7 @@ def test_diff_path_selection_for_root_suites():
     try:
         discovery = orig_mx._discover_repo_suites(repo_root)
         changed_paths = [os.path.join(suite_dirs["sdk"], "mx.sdk", "suite.py")]
-        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=True)
+        selected = orig_mx_repo_suite._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=True)
         assert [suite.name for suite in selected] == ["compiler", "tools", "truffle"]
     finally:
         tmpdir.cleanup()
@@ -1145,9 +1258,11 @@ def test_diff_path_selection_for_repo_level_change_selects_all():
     try:
         discovery = orig_mx._discover_repo_suites(repo_root)
         changed_paths = [os.path.join(repo_root, "mx.py")]
-        selected_all = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        selected_all = orig_mx_repo_suite._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
         assert [suite.name for suite in selected_all] == ["compiler", "sdk", "tools", "truffle"]
-        selected_roots = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=True)
+        selected_roots = orig_mx_repo_suite._select_repo_suites_by_paths(
+            discovery, changed_paths, root_suites_only=True
+        )
         assert [suite.name for suite in selected_roots] == ["compiler", "tools", "truffle"]
     finally:
         tmpdir.cleanup()
@@ -1158,7 +1273,7 @@ def test_workspace_repo_level_change_selects_only_own_repo_suites():
     try:
         discovery = orig_mx._discover_repo_suites(workspace_root)
         changed_paths = [os.path.join(repo_dirs["repo-a"], "README.md")]
-        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        selected = orig_mx_repo_suite._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
         assert [suite.name for suite in selected] == ["compiler", "sdk"]
     finally:
         tmpdir.cleanup()
@@ -1169,7 +1284,7 @@ def test_diff_path_selection_with_duplicate_names_selects_only_matching_suite():
     try:
         discovery = orig_mx._discover_repo_suites(workspace_root)
         changed_paths = [os.path.join(suite_dirs["repo-a-sdk"], "mx.sdk", "suite.py")]
-        selected = orig_mx._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
+        selected = orig_mx_repo_suite._select_repo_suites_by_paths(discovery, changed_paths, root_suites_only=False)
         assert [suite.suite_dir for suite in selected] == [suite_dirs["repo-a-sdk"]]
     finally:
         tmpdir.cleanup()
@@ -1189,8 +1304,10 @@ def test_diff_suites_dispatches_once_per_selected_suite():
             return "uncommitted changes", [os.path.join(repo_root, "sdk", "mx.sdk", "suite.py")]
 
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch(
-            "_get_repo_diff_paths", fake_get_repo_diff_paths
-        ), mx_monkeypatch("_check_command_available_for_suite", lambda command, suite_dir: True), argv_patch(
+            "_get_repo_diff_paths", fake_get_repo_diff_paths, module=orig_mx_repo_suite
+        ), mx_monkeypatch(
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
+        ), argv_patch(
             ["mx", "--diff-suites", "build", "--dry-run"]
         ), mx_opt_patch(
             all_suites=False,
@@ -1233,7 +1350,7 @@ def test_skip_missing_imports_skips_all_selected_suites():
             with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
                 "run", fake_run
             ), mx_monkeypatch("log", fake_log), mx_monkeypatch(
-                "_check_command_available_for_suite", lambda command, suite_dir: True
+                "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
             ), argv_patch(
                 ["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]
             ), mx_opt_patch(
@@ -1278,7 +1395,7 @@ def test_skip_missing_imports_allows_other_selected_suites_to_run():
             with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
                 "run", fake_run
             ), mx_monkeypatch("log", fake_log), mx_monkeypatch(
-                "_check_command_available_for_suite", lambda command, suite_dir: True
+                "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
             ), argv_patch(
                 ["mx", "--all-suites", "--skip-missing-imports", "build", "--dry-run"]
             ), mx_opt_patch(
@@ -1327,7 +1444,7 @@ def test_summary_uses_suite_paths_for_duplicate_names():
         with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
             "run", fake_run
         ), mx_monkeypatch("log", fake_log), mx_monkeypatch("abort", fake_abort), mx_monkeypatch(
-            "_check_command_available_for_suite", lambda command, suite_dir: True
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
         ), argv_patch(
             ["mx", "--all-suites", "build", "--dry-run"]
         ), mx_opt_patch(
@@ -1375,7 +1492,7 @@ def test_summary_distinguishes_missing_command_from_failure():
         with chdir(repo_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch("run", fake_run), mx_monkeypatch(
             "log", fake_log
         ), mx_monkeypatch("abort", fake_abort), mx_monkeypatch(
-            "_check_command_available_for_suite", fake_check_command_available_for_suite
+            "_check_command_available_for_suite", fake_check_command_available_for_suite, module=orig_mx_repo_suite
         ), argv_patch(
             ["mx", "--all-suites", "custom-command", "--dry-run"]
         ), mx_opt_patch(
@@ -1421,9 +1538,9 @@ def test_diff_summary_uses_suite_paths_for_duplicate_names():
         with chdir(workspace_root), mx_monkeypatch("_primary_suite", None), mx_monkeypatch(
             "run", fake_run
         ), mx_monkeypatch("log", fake_log), mx_monkeypatch(
-            "_get_repo_diff_paths", fake_get_repo_diff_paths
+            "_get_repo_diff_paths", fake_get_repo_diff_paths, module=orig_mx_repo_suite
         ), mx_monkeypatch(
-            "_check_command_available_for_suite", lambda command, suite_dir: True
+            "_check_command_available_for_suite", lambda command, suite_dir: True, module=orig_mx_repo_suite
         ), argv_patch(
             ["mx", "--diff-suites", "build", "--dry-run"]
         ), mx_opt_patch(
@@ -1503,6 +1620,9 @@ def tests():
     test_show_suites_without_primary_suite()
     test_show_suites_without_primary_suite_from_workspace_root()
     test_show_suites_without_primary_suite_with_locations()
+    test_show_suites_without_primary_suite_writes_dot()
+    test_show_suites_without_primary_suite_places_isolated_root_at_top()
+    test_show_suites_without_primary_suite_writes_valid_dot_without_isolated_roots()
     test_show_suites_without_primary_suite_rejects_detailed_flags()
     test_discover_repo_suites_with_duplicate_names_from_workspace_root()
     test_show_suites_with_duplicate_names_disambiguates_dependencies()
