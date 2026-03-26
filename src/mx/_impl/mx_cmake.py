@@ -23,8 +23,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-# pylint: disable=unspecified-encoding
-
 __all__ = [
     "CMakeNinjaProject",
     "CMakeNinjaBuildTask",
@@ -120,7 +118,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         if mx._opts.verbose:
             mx.run(["cmake"] + cmdline, *args, **kwargs)
         else:
-            with open(os.devnull, 'w') as fnull:
+            with open(os.devnull, 'w', encoding='utf-8') as fnull:
                 err = mx.OutputCapture() if silent else None
                 try:
                     mx.run(["cmake"] + cmdline, out=fnull, err=err, *args, **kwargs)
@@ -258,7 +256,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
 
     def _write_guard(self, source_dir, cmake_config):
         with mx_util.SafeFileCreation(self.guard_file()) as sfc:
-            with open(sfc.tmpPath, 'w') as fp:
+            with open(sfc.tmpPath, 'w', encoding='utf-8') as fp:
                 fp.write(self._guard_data(source_dir, cmake_config))
 
     def _guard_data(self, source_dir, cmake_config):
@@ -273,7 +271,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
             return True, "No CMake configuration found - reconfigure"
         if os.path.exists(cmake_lists) and mx.TimeStampFile(cmake_lists).isNewerThan(mx.TimeStampFile(guard_file)):
             return True, cmake_lists + " is newer than the configuration - reconfigure"
-        with open(guard_file, 'r') as fp:
+        with open(guard_file, 'r', encoding='utf-8') as fp:
             if fp.read() != self._guard_data(source_dir, cmake_config):
                 return True, "CMake configuration changed - reconfigure"
             return False, None

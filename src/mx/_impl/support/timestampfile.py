@@ -1,5 +1,3 @@
-# pylint: disable=consider-using-with,unspecified-encoding
-
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -136,5 +134,6 @@ class TimeStampFile:
             os.utime(self.path, None)
         else:
             ensure_dir_exists(ospath.dirname(self.path))
-            open(self.path, "a")
+            with open(self.path, "a", encoding="utf-8"):
+                pass
         self.timestamp = ospath.getmtime(self.path)

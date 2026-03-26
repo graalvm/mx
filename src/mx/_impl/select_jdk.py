@@ -24,8 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
-# pylint: disable=unspecified-encoding
-
 import os, tempfile, shlex, subprocess, re, sys
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath, basename, getmtime
@@ -159,12 +157,12 @@ def apply_selection(args, jdk, extra_jdks):
         print(colorize('EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks), 'cyan'))
 
     if args.shell_file:
-        with open(args.shell_file, 'w') as fp:
+        with open(args.shell_file, 'w', encoding='utf-8') as fp:
             print(get_shell_commands(args, jdk, extra_jdks), file=fp)
     else:
         env = get_suite_env_file(args.suite_path) if args.suite_path else None
         if env:
-            with open(env, 'a') as fp:
+            with open(env, 'a', encoding='utf-8') as fp:
                 print('JAVA_HOME=' + jdk, file=fp)
                 if extra_jdks:
                     print('EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks), file=fp)
@@ -273,7 +271,7 @@ class JDKInfo(object):
 def choose_jdks(jdk_cache_path=default_jdk_cache_path, only_list=False):
     jdks = {}
     if exists(jdk_cache_path):
-        with open(jdk_cache_path) as fp:
+        with open(jdk_cache_path, encoding='utf-8') as fp:
             line_num = 1
             for line in fp.readlines():
                 jdk = JDKInfo.load_from_jdk_cache(line.strip(), jdk_cache_path, line_num)
@@ -306,7 +304,7 @@ def choose_jdks(jdk_cache_path=default_jdk_cache_path, only_list=False):
 
         java_home = os.environ.get('JAVA_HOME', '')
         extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES', '').split(os.pathsep)
-        with open(tmp_cache_path, 'w') as fp:
+        with open(tmp_cache_path, 'w', encoding='utf-8') as fp:
             for index, jdk in choices:
                 col1 = f'[{index}]'
                 col2 = f'{jdk.name}-{jdk.java_specification_version}'
@@ -394,7 +392,7 @@ fi
             raise SystemExit('Following JDKs appear to be invalid (java executable not found):\n' + '\n'.join(invalid_jdks))
         if not exists(dirname(jdk_cache_path)):
             os.makedirs(dirname(jdk_cache_path))
-        with open(jdk_cache_path, 'a') as fp:
+        with open(jdk_cache_path, 'a', encoding='utf-8') as fp:
             for java_home in args.jdks:
                 jdk = JDKInfo.for_java_home(abspath(java_home))
                 if jdk:
