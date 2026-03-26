@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from . import mx, mx_util
 from . import mx_ideconfig
 from . import mx_javamodules
+from .mx_ide_eclipse import locate_eclipse_exe
 
 from .ide import project_processor
 
@@ -884,13 +885,11 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
                 miscXml.open('option', attributes={'name' : 'projectSpecificProfile'})
                 miscXml.open('ProjectSpecificProfile')
                 miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
-                custom_eclipse_exe = mx.get_env('ECLIPSE_EXE')
+                custom_eclipse_exe = locate_eclipse_exe(None)
                 if custom_eclipse_exe:
                     custom_eclipse = dirname(custom_eclipse_exe)
                     if mx.is_darwin():
                         custom_eclipse = join(dirname(custom_eclipse), 'Eclipse')
-                    if not exists(custom_eclipse_exe):
-                        mx.abort(f'Custom eclipse "{custom_eclipse_exe}" does not exist')
                     miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
                     miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
