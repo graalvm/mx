@@ -938,6 +938,8 @@ environment variables:
             # positional. We need to treat all of these as unknown optional arguments.
             while len(self.initialCommandAndArgs) > 0:
                 arg = self.initialCommandAndArgs[0]
+                if arg == '--':
+                    break
                 if arg.startswith('-'):
                     self.unknown.append(arg)
                     del self.initialCommandAndArgs[0]
@@ -18955,6 +18957,9 @@ def main():
         if hits is None:
             raise SystemExit(2)
         raise SystemExit(3)
+
+    while commandAndArgs and commandAndArgs[0] == '--':
+        commandAndArgs = commandAndArgs[1:]
 
     if len(commandAndArgs) == 0:
         print_simple_help()

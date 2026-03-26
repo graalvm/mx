@@ -1205,6 +1205,18 @@ def test_main_dispatch_respects_skip_missing_imports():
         tmpdir.cleanup()
 
 
+def test_main_accepts_command_separator_before_command_name():
+    stdout = io.StringIO()
+    with chdir(orig_mx._mx_home), mx_main_state_patch(), mx_monkeypatch(
+        "_check_stdout_encoding", lambda: None
+    ), argv_patch(["mx", "--", "help", "maven-deploy"]), sys_module_patch("mx_mx"), redirect_stdout(stdout):
+        orig_mx.main()
+
+    output = stdout.getvalue()
+    assert "mx maven-deploy" in output
+    assert "deploy jars for the primary suite to remote maven repository" in output
+
+
 def test_main_does_not_bulk_dispatch_suites():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -1643,6 +1655,7 @@ def tests():
     test_all_suites_dispatches_once_per_discovered_suite()
     test_bulk_suite_run_preserves_live_command_output()
     test_bulk_suite_run_aborts_on_keyboard_interrupt()
+    test_main_accepts_command_separator_before_command_name()
     test_main_does_not_bulk_dispatch_suites()
     test_diff_path_selection_for_all_suites()
     test_diff_path_selection_for_root_suites()
