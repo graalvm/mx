@@ -25,6 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+# pylint: disable=unspecified-encoding,consider-using-with
+
 __all__ = [
     "BuildSteps",
     "DefaultBuildStepsStrategy",
@@ -494,7 +496,7 @@ class BisectStrategy:
         self.commits_list = self.commits()
 
     def commits(self):
-        return list()
+        return []
 
     def run_setup(self, c):
         commit_hash = self.commits_list[c].commit.hash

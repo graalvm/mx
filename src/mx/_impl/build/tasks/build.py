@@ -79,7 +79,7 @@ class BuildTask(Buildable, Task):
     """A Task used to build a dependency."""
 
     def __init__(self, subject: Dependency, args: Args, parallelism: int):
-        super(BuildTask, self).__init__(subject, args, parallelism)
+        super().__init__(subject, args, parallelism)
         self._saved_config_path = path.join(subject.suite.get_mx_output_dir(), 'savedConfig', type(subject).__name__,
                                             subject._extra_artifact_discriminant(), self.name)
 
@@ -101,7 +101,7 @@ class BuildTask(Buildable, Task):
         config = self._get_config()
         if config:
             with SafeFileCreation(self._saved_config_path) as sfc:
-                with open(sfc.tmpPath, 'w') as f:
+                with open(sfc.tmpPath, 'w', encoding='utf-8') as f:
                     json.dump(config, f)
         elif path.exists(self._saved_config_path):
             os.remove(self._saved_config_path)
@@ -112,7 +112,7 @@ class BuildTask(Buildable, Task):
         and it has changed since the last time it was built.
         """
         if path.exists(self._saved_config_path):
-            with open(self._saved_config_path) as f:
+            with open(self._saved_config_path, encoding='utf-8') as f:
                 old_config = json.load(f)
         else:
             old_config = None

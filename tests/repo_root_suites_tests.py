@@ -251,7 +251,7 @@ def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None, imp
 """ % ",\n".join(
             [f"            {repr(entry)}" for entry in import_entries]
         )
-    with open(os.path.join(mx_dir, "suite.py"), "w") as fp:
+    with open(os.path.join(mx_dir, "suite.py"), "w", encoding="utf-8") as fp:
         fp.write(
             """suite = {
     "mxversion": "7.0.0",
@@ -266,7 +266,7 @@ def _write_suite(repo_root, suite_relpath, suite_name, imported_suites=None, imp
 def _create_multi_suite_repo():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = os.path.realpath(tmpdir.name)
-    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(repo_root, "compiler", "compiler", ["sdk"])
     sdk_dir = _write_suite(repo_root, "sdk", "sdk")
     tools_dir = _write_suite(repo_root, "tools", "tools", ["sdk"])
@@ -286,7 +286,7 @@ def _create_multi_suite_repo():
 def _create_repo_with_nested_imported_suite():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = os.path.realpath(tmpdir.name)
-    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(repo_root, "compiler", "compiler")
     imported_sdk_dir = _write_suite(os.path.join(repo_root, "compiler", "mx.imports", "source"), "sdk", "sdk")
     tools_dir = _write_suite(repo_root, "tools", "tools")
@@ -308,8 +308,8 @@ def _create_workspace_with_subrepos():
     repo_b = os.path.join(workspace_root, "repo-b")
     os.makedirs(repo_a, exist_ok=True)
     os.makedirs(repo_b, exist_ok=True)
-    open(os.path.join(repo_a, ".mx_vcs_root"), "w").close()
-    open(os.path.join(repo_b, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_a, ".mx_vcs_root"), "w", encoding="utf-8").close()
+    open(os.path.join(repo_b, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(repo_a, "compiler", "compiler", ["sdk"])
     sdk_dir = _write_suite(repo_a, "sdk", "sdk")
     tools_dir = _write_suite(repo_b, "tools", "tools", ["sdk"])
@@ -337,8 +337,8 @@ def _create_workspace_with_duplicate_suite_names():
     repo_b = os.path.join(workspace_root, "repo-b")
     os.makedirs(repo_a, exist_ok=True)
     os.makedirs(repo_b, exist_ok=True)
-    open(os.path.join(repo_a, ".mx_vcs_root"), "w").close()
-    open(os.path.join(repo_b, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_a, ".mx_vcs_root"), "w", encoding="utf-8").close()
+    open(os.path.join(repo_b, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(repo_a, "compiler", "compiler", ["sdk"])
     sdk_a_dir = _write_suite(repo_a, "sdk", "sdk")
     tools_dir = _write_suite(repo_b, "tools", "tools", ["sdk"])
@@ -368,9 +368,9 @@ def _create_workspace_with_ambiguous_import():
     os.makedirs(importer_repo, exist_ok=True)
     os.makedirs(repo_a, exist_ok=True)
     os.makedirs(repo_b, exist_ok=True)
-    open(os.path.join(importer_repo, ".mx_vcs_root"), "w").close()
-    open(os.path.join(repo_a, ".mx_vcs_root"), "w").close()
-    open(os.path.join(repo_b, ".mx_vcs_root"), "w").close()
+    open(os.path.join(importer_repo, ".mx_vcs_root"), "w", encoding="utf-8").close()
+    open(os.path.join(repo_a, ".mx_vcs_root"), "w", encoding="utf-8").close()
+    open(os.path.join(repo_b, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(importer_repo, "compiler", "compiler", ["sdk"])
     sdk_a_dir = _write_suite(repo_a, "sdk", "sdk")
     sdk_b_dir = _write_suite(repo_b, "sdk", "sdk")
@@ -388,7 +388,7 @@ def _create_workspace_with_ambiguous_import():
 def _create_repo_with_missing_import():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = os.path.realpath(tmpdir.name)
-    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(
         repo_root,
         "compiler",
@@ -407,7 +407,7 @@ def _create_repo_with_missing_import():
 def _create_repo_with_partial_missing_imports():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = os.path.realpath(tmpdir.name)
-    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w", encoding="utf-8").close()
     compiler_dir = _write_suite(
         repo_root,
         "compiler",
@@ -604,7 +604,7 @@ def test_show_suites_without_primary_suite_writes_dot():
 def test_show_suites_without_primary_suite_places_isolated_root_at_top():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = tmpdir.name
-    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w", encoding="utf-8").close()
     _write_suite(repo_root, "solo", "solo")
     try:
         dot_path = os.path.join(repo_root, "suites.dot")
@@ -627,7 +627,7 @@ def test_show_suites_without_primary_suite_places_isolated_root_at_top():
 def test_show_suites_without_primary_suite_writes_valid_dot_without_isolated_roots():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = tmpdir.name
-    open(os.path.join(repo_root, ".mx_vcs_root"), "w").close()
+    open(os.path.join(repo_root, ".mx_vcs_root"), "w", encoding="utf-8").close()
     _write_suite(repo_root, "root", "root", imported_suites=["leaf"])
     _write_suite(os.path.join(repo_root, "leaf"), "leaf", "leaf")
     try:
@@ -1205,6 +1205,18 @@ def test_main_dispatch_respects_skip_missing_imports():
         tmpdir.cleanup()
 
 
+def test_main_accepts_command_separator_before_command_name():
+    stdout = io.StringIO()
+    with chdir(orig_mx._mx_home), mx_main_state_patch(), mx_monkeypatch(
+        "_check_stdout_encoding", lambda: None
+    ), argv_patch(["mx", "--", "help", "maven-deploy"]), sys_module_patch("mx_mx"), redirect_stdout(stdout):
+        orig_mx.main()
+
+    output = stdout.getvalue()
+    assert "mx maven-deploy" in output
+    assert "deploy jars for the primary suite to remote maven repository" in output
+
+
 def test_main_does_not_bulk_dispatch_suites():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -1643,6 +1655,7 @@ def tests():
     test_all_suites_dispatches_once_per_discovered_suite()
     test_bulk_suite_run_preserves_live_command_output()
     test_bulk_suite_run_aborts_on_keyboard_interrupt()
+    test_main_accepts_command_separator_before_command_name()
     test_main_does_not_bulk_dispatch_suites()
     test_diff_path_selection_for_all_suites()
     test_diff_path_selection_for_root_suites()

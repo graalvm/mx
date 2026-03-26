@@ -25,6 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+# pylint: disable=unspecified-encoding,too-many-positional-arguments,consider-using-with,condition-evals-to-constant
+
 __all__ = [
     "eclipseinit_and_format_files",
     "eclipseformat",
@@ -221,8 +223,8 @@ def eclipseformat(args):
                 content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled\n', '').replace('org.eclipse.jdt.core.compiler.processAnnotations=enabled\n', '')
                 return content
 
-    modified = list()
-    batches = dict()  # all sources with the same formatting settings are formatted together
+    modified = []
+    batches = {}  # all sources with the same formatting settings are formatted together
     for p in projectsToProcess:
         if not p.isJavaProject():
             continue
@@ -1466,7 +1468,7 @@ def generate_eclipse_workingsets():
             workingSets[key].append(value)
 
     # gather working set info from project data
-    workingSets = dict()
+    workingSets = {}
     for p in mx.projects():
         if not p.isJavaProject():
             continue
@@ -1532,8 +1534,8 @@ def _copy_workingset_xml(wspath, workingSets):
         def __init__(self):
             self.current_ws_name = 'none yet'
             self.current_ws = None
-            self.seen_ws = list()
-            self.seen_projects = list()
+            self.seen_ws = []
+            self.seen_projects = []
             self.aggregate_ws = False
             self.nested_ws = False
 
@@ -1550,7 +1552,7 @@ def _copy_workingset_xml(wspath, workingSets):
                 elif ps.current_ws_name in workingSets:
                     ps.current_ws = workingSets[ps.current_ws_name]
                     ps.seen_ws.append(ps.current_ws_name)
-                    ps.seen_projects = list()
+                    ps.seen_projects = []
                 else:
                     ps.current_ws = None
             target.open(name, attributes)

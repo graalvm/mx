@@ -172,7 +172,7 @@ def _spotbugs(parsed_args, args, spotbugsArgs, suite, projectsToTest, spotbugsVe
                         cls = pkg + '.' + name[:-len('.java')]
                         ignoredClasses.add(cls)
 
-    with tempfile.NamedTemporaryFile(suffix='.xml', prefix='spotbugs_exclude_filter.', mode='w', delete=False) as fp:
+    with tempfile.NamedTemporaryFile(suffix='.xml', prefix='spotbugs_exclude_filter.', mode='w', encoding='utf-8', delete=False) as fp:
         spotbugsExcludeFilterFile = fp.name
         xmlDoc = mx.XMLDoc()
 
@@ -194,7 +194,7 @@ def _spotbugs(parsed_args, args, spotbugsArgs, suite, projectsToTest, spotbugsVe
         print(xml, file=fp)
 
     outputDirs = [mx._cygpathU2W(p.output_dir()) for p in projectsToTest]
-    javaCompliance = max([p.javaCompliance for p in projectsToTest])
+    javaCompliance = max(p.javaCompliance for p in projectsToTest)
     max_jdk_version = _max_jdk_version_supported(spotbugsVersion)
     if max_jdk_version < javaCompliance.value:
         _warn_or_abort(
@@ -218,7 +218,7 @@ def _spotbugs(parsed_args, args, spotbugsArgs, suite, projectsToTest, spotbugsVe
     finally:
         os.unlink(spotbugsExcludeFilterFile)
     if exitcode != 0:
-        with open(spotbugsResults) as fp:
+        with open(spotbugsResults, encoding='utf-8') as fp:
             mx.log(fp.read())
     os.unlink(spotbugsResults)
     return exitcode

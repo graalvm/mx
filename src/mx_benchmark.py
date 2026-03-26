@@ -33,7 +33,7 @@ DO NOT WRITE IMPLEMENTATION CODE HERE.
 See docs/package-structure.md for more details.
 """
 
-# pylint: disable=wildcard-import,unused-wildcard-import
+# pylint: disable=wildcard-import,unused-wildcard-import,duplicate-code
 from mx._impl.mx_benchmark import *
 
 # pylint: disable=unused-import

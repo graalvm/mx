@@ -94,11 +94,11 @@ def register_urlrewrites_from_env(name):
     value = mx.get_env(name, None)
     if value:
         def raiseError(msg):
-            raise Exception('Error processing URL rewrite rules denoted by environment variable ' + name + ':\n' + msg)
+            raise ValueError('Error processing URL rewrite rules denoted by environment variable ' + name + ':\n' + msg)
 
         value = value.strip()
         if value[0] not in '{[':
-            with open(value) as fp:
+            with open(value, encoding='utf-8') as fp:
                 jsonValue = fp.read().strip()
         else:
             jsonValue = value
@@ -107,7 +107,7 @@ def register_urlrewrites_from_env(name):
             try:
                 return json.loads(jsonValue)
             except ValueError as e:
-                raise Exception('Error parsing JSON object denoted by ' + name + ' environment variable:\n' + str(e))
+                raise ValueError('Error parsing JSON object denoted by ' + name + ' environment variable:\n' + str(e)) from e
 
         if jsonValue:
             rewrites = loadJson(jsonValue) # JSON root is always either list or dict

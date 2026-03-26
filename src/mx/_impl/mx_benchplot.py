@@ -1,6 +1,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=unspecified-encoding,consider-using-with,superfluous-parens
+
 # Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -372,7 +374,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                 elif entry['metric.name'] == 'final-time':
                     # ignore this value
                     pass
-                elif entry['metric.name'] == 'time' or entry['metric.name'] == 'throughput':
+                elif entry['metric.name'] in ('time', 'throughput'):
                     scores['last-score'] = score
 
         for _, entry in result.items():

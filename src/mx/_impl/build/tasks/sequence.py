@@ -36,7 +36,7 @@ class TaskSequence(Task):
     """A Task that executes a sequence of subtasks."""
 
     def __init__(self, subject: Dependency, args: Args) -> None:
-        super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
+        super().__init__(subject, args, max(t.parallelism for t in self.subtasks))
 
     def __str__(self) -> str:
         def indent(s, padding='  '):

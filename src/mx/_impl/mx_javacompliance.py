@@ -135,7 +135,8 @@ class JavaCompliance(mx.Comparable):
         :param context: the context argument if `mx.abort` is called
         """
         if parse_error is None:
-            parse_error = lambda m: mx.abort(m, context=context)
+            def parse_error(m):
+                mx.abort(m, context=context)
 
         def _error(part, index, msg):
             parse_error(f'JavaCompliance("{spec}"): Part {index} ("{part}") {msg}')

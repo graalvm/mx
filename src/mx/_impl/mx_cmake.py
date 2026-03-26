@@ -79,7 +79,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         srcDir = mx_subst.path_substitutions.substitute(srcDir, resolve=False, collectDeps=extraBuildDeps)
         self._install_targets = [mx_subst.path_substitutions.substitute(x, resolve=False, collectDeps=extraBuildDeps) for x in ninja_install_targets or []]
         self._ninja_targets = [mx_subst.path_substitutions.substitute(x, resolve=False, collectDeps=extraBuildDeps) for x in ninja_targets or []]
-        super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
+        super().__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
         self.silent = not cmake_show_warnings
         self._cmake_config_raw = args.pop('cmakeConfig', {})
         self._cmake_preset = args.pop('cmakePreset', None)
@@ -92,7 +92,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         return "cmake" if self._multitarget else None
 
     def resolveDeps(self):
-        super(CMakeNinjaProject, self).resolveDeps()
+        super().resolveDeps()
         self._cmake_toolchain = mx.distribution(self._cmake_toolchain, context=self) if self._cmake_toolchain else None
         if self._cmake_toolchain and (not isinstance(self._cmake_toolchain, mx.AbstractDistribution) or not self._cmake_toolchain.get_output()):
             mx.abort(f"Cannot generate manifest: the specified toolchain ({self._cmake_toolchain}) must be an AbstractDistribution that returns a value for get_output", context=self)
@@ -118,7 +118,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
         if mx._opts.verbose:
             mx.run(["cmake"] + cmdline, *args, **kwargs)
         else:
-            with open(os.devnull, 'w') as fnull:
+            with open(os.devnull, 'w', encoding='utf-8') as fnull:
                 err = mx.OutputCapture() if silent else None
                 try:
                     mx.run(["cmake"] + cmdline, out=fnull, err=err, *args, **kwargs)
@@ -224,7 +224,7 @@ class CMakeNinjaProject(mx_native.NinjaProject):  # pylint: disable=too-many-anc
 class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
     """A build task which executes Ninja on a project configured by CMake."""
     def __init__(self, args, project, *otherargs, **kwargs):
-        super(CMakeNinjaBuildTask, self).__init__(args, project, *otherargs, **kwargs)
+        super().__init__(args, project, *otherargs, **kwargs)
         self._cmake_config_file = os.path.join(project.suite.get_mx_output_dir(), 'cmakeConfig',
                                                mx.get_os() + '-' + mx.get_arch() if project.isPlatformDependent() else '',
                                                type(project).__name__,
@@ -236,14 +236,14 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
         need_configure, reason = self._need_configure()
         if need_configure:
             return need_configure, f"reconfigure needed by CMake ({reason})"
-        return super(CMakeNinjaBuildTask, self).needsBuild(newestInput)
+        return super().needsBuild(newestInput)
 
     def needsGenerateManifest(self):
         need_configure, _ = self._need_configure()
         return need_configure
 
     def build(self):
-        super(CMakeNinjaBuildTask, self).build()
+        super().build()
         # write guard file
         source_dir = self.subject.sourceDir()
         self._write_guard(source_dir, self.subject.cmake_config())
@@ -256,7 +256,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
 
     def _write_guard(self, source_dir, cmake_config):
         with mx_util.SafeFileCreation(self.guard_file()) as sfc:
-            with open(sfc.tmpPath, 'w') as fp:
+            with open(sfc.tmpPath, 'w', encoding='utf-8') as fp:
                 fp.write(self._guard_data(source_dir, cmake_config))
 
     def _guard_data(self, source_dir, cmake_config):
@@ -271,7 +271,7 @@ class CMakeNinjaBuildTask(mx_native.NinjaBuildTask):
             return True, "No CMake configuration found - reconfigure"
         if os.path.exists(cmake_lists) and mx.TimeStampFile(cmake_lists).isNewerThan(mx.TimeStampFile(guard_file)):
             return True, cmake_lists + " is newer than the configuration - reconfigure"
-        with open(guard_file, 'r') as fp:
+        with open(guard_file, 'r', encoding='utf-8') as fp:
             if fp.read() != self._guard_data(source_dir, cmake_config):
                 return True, "CMake configuration changed - reconfigure"
             return False, None

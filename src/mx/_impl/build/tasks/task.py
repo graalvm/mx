@@ -75,7 +75,7 @@ class Task(object, metaclass=ABCMeta):
         self.status = None
         self.statusInfo = ""
 
-    def __str__(self) -> str:
+    def __str__(self) -> str:  # pylint: disable=invalid-str-returned
         return nyi('__str__', self)
 
     def __repr__(self) -> str:

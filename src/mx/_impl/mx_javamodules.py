@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=unspecified-encoding,f-string-without-interpolation,unreachable,consider-using-dict-items,consider-using-f-string,duplicate-code
+
 __all__ = [
     "JavaModuleDescriptor",
     "lookup_package",
@@ -476,7 +478,7 @@ def get_library_as_module(dep, jdk):
     for line in lines[1:]:
         parts = line.strip().split()
         assert len(parts) >= 2, '>>>'+line+'<<<'
-        if parts[0:2] == ['qualified', 'exports'] or parts[0:2] == ['qualified', 'opens']:
+        if parts[0:2] in (['qualified', 'exports'], ['qualified', 'opens']):
             parts = parts[1:]
         a = parts[0]
         if a == 'requires':
@@ -1006,7 +1008,10 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                         target = os.readlink(dst)
                                         if path.equal(target, src):
                                             return
-                                        restore_files[dst] = lambda: os.symlink(target, dst)
+                                            def restore_link():
+                                                os.symlink(target, dst)
+
+                                            restore_files[dst] = restore_link
                                     else:
                                         restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
                                     os.remove(dst)

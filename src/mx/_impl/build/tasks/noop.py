@@ -32,7 +32,7 @@ class NoOpTask(Task):
     A task that does nothing.
     """
     def __init__(self, subject: Dependency, args: Args):
-        super(NoOpTask, self).__init__(subject, args, 1)
+        super().__init__(subject, args, 1)
 
     def __str__(self) -> str:
         return 'NoOp'

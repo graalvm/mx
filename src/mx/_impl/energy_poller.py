@@ -1,3 +1,5 @@
+# pylint: disable=raise-missing-from,consider-using-f-string,unspecified-encoding,consider-using-with
+
 import argparse
 import os
 import subprocess

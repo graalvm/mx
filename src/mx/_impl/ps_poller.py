@@ -63,8 +63,8 @@ def _poll_session(sid, out_file):
     # Get RSS for every process in session
     args = ["ps", "-g", str(sid), "-o", "rss"]
     try:
-        ps_proc = subprocess.Popen(args, stdout=out_file)
-        ps_return_code = ps_proc.wait()
+        ps_proc = subprocess.run(args, stdout=out_file, check=False)
+        ps_return_code = ps_proc.returncode
         if ps_return_code != 0:
             print(f"Command {ps_proc.args} failed with return code {ps_return_code}!")
         return ps_return_code
@@ -76,7 +76,7 @@ def _poll_session(sid, out_file):
 def main(args):
     output_file, poll_interval, target_cmd = _parse_args(args)
 
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         target_proc = _start_target_process(target_cmd)
         target_pid = target_proc.pid
 

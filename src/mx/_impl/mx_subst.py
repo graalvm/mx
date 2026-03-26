@@ -95,7 +95,7 @@ class SubstitutionEngine(object):
 
 class CompatSubstitutionEngine(SubstitutionEngine):
     def __init__(self, replaceFn):
-        super(CompatSubstitutionEngine, self).__init__()
+        super().__init__()
         self._replaceFn = replaceFn
 
     def _replace(self, m, skip_unknown_substitutions, **kwArgs):

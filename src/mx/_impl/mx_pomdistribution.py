@@ -69,7 +69,7 @@ class POMDistribution(mx.Distribution):
         return 'xml'
 
     def resolveDeps(self):
-        super(POMDistribution, self).resolveDeps()
+        super().resolveDeps()
         new_runtime_deps = []
         for runtime_dep in self.runtimeDependencies:
             new_runtime_deps.append(mx.dependency(runtime_dep, fatalIfMissing=True, context=self))
@@ -87,20 +87,20 @@ class POMDistribution(mx.Distribution):
 
 class PomBuildTask(mx.BuildTask):
     def __init__(self, subject, args):
-        super(PomBuildTask, self).__init__(subject, args, 1)
+        super().__init__(subject, args, 1)
 
     def newestOutput(self):
         return mx.TimeStampFile(self.subject.output_witness())
 
     def needsBuild(self, newestInput):
-        sup = super(PomBuildTask, self).needsBuild(newestInput)
+        sup = super().needsBuild(newestInput)
         if sup[0]:
             return sup
         newestOutput = self.newestOutput()
         if not newestOutput.exists():
-            return True, '{} does not exist'.format(newestOutput.path)
+            return True, f'{newestOutput.path} does not exist'
         if newestInput and newestOutput.isOlderThan(newestInput):
-            return True, '{} is older than {}'.format(newestOutput, newestInput)
+            return True, f'{newestOutput} is older than {newestInput}'
         return False, None
 
     def build(self):
@@ -112,4 +112,4 @@ class PomBuildTask(mx.BuildTask):
             remove(witness)
 
     def __str__(self):
-        return 'Building {}'.format(self.subject.name)
+        return f'Building {self.subject.name}'

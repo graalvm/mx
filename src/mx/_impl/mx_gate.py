@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+# pylint: disable=unspecified-encoding,consider-using-f-string,no-name-in-module,global-variable-not-assigned,consider-using-with,f-string-without-interpolation
+
 __all__ = [
     "Tags",
     "Task",
@@ -105,9 +107,9 @@ class Task:
     tags = None
     tagsExclude = False
     # map from tag to a pair [from(inclusive), to(exclusive)]
-    tags_range = dict()
+    tags_range = {}
     # map from tag to count
-    tags_count = dict()
+    tags_count = {}
 
     verbose = False
     startTime = None
@@ -180,19 +182,19 @@ class Task:
                 assert len(Task.strict_filters) == 0, "A Task cannot have both `filters` and `strict_filters`"
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
-                    self.skipped = any([f in t for t in titles for f in Task.filters])
+                    self.skipped = any(f in t for t in titles for f in Task.filters)
                 else:
-                    self.skipped = not any([f in t for t in titles for f in Task.filters])
+                    self.skipped = not any(f in t for t in titles for f in Task.filters)
             elif len(Task.strict_filters) > 0:
                 assert len(Task.filters) == 0, "A Task cannot have both `filters` and `strict_filters`"
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
-                    self.skipped = any([f == t for t in titles for f in Task.strict_filters])
+                    self.skipped = any(f == t for t in titles for f in Task.strict_filters)
                 else:
-                    self.skipped = not any([f == t for t in titles for f in Task.strict_filters])
+                    self.skipped = not any(f == t for t in titles for f in Task.strict_filters)
             if Task.tags is not None:
                 if Task.tagsExclude:
-                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False # pylint: disable=unsupported-membership-test
+                    self.skipped = all(t in Task.tags for t in self.tags) if tags else False # pylint: disable=unsupported-membership-test
                 else:
                     _tags = self.tags if self.tags else []
                     self.skipped = not self.tag_matches(_tags)
@@ -457,8 +459,8 @@ def gate(args):
 
         # build and always tags must be run by every partial gate run
         alwaysTags = [Tags.always, Tags.build]
-        buildTasks = [task for task in tasks if not task.skipped and any([f in t for t in alwaysTags for f in task.tags])]
-        nonBuildTasks = [task for task in tasks if not task.skipped and not any([f in t for t in alwaysTags for f in task.tags])]
+        buildTasks = [task for task in tasks if not task.skipped and any(f in t for t in alwaysTags for f in task.tags)]
+        nonBuildTasks = [task for task in tasks if not task.skipped and not any(f in t for t in alwaysTags for f in task.tags)]
 
         partialTasks = nonBuildTasks[selected::total]
         runTaskNames = [task.title for task in buildTasks + partialTasks]
@@ -536,13 +538,13 @@ def gate(args):
                                  f'  mx -v gate --dry-run')
             elif len(Task.filters) > 0:
                 for f in Task.filters:
-                    if not any([f in t for task in tasks for t in [task.title] + task.legacyTitles]):
+                    if not any(f in t for task in tasks for t in [task.title] + task.legacyTitles):
                         mx.abort(f'Filter "{f}" does not match any task.\n'
                                  f'Run the following command to see all available tasks and their tags:\n'
                                  f'  mx -v gate --dry-run')
             elif len(Task.strict_filters) > 0:
                 for f in Task.strict_filters:
-                    if not any([f == t for task in tasks for t in [task.title] + task.legacyTitles]):
+                    if not any(f == t for task in tasks for t in [task.title] + task.legacyTitles):
                         mx.abort(f'Strict filter "{f}" does not match any task.\n'
                                  f'Run the following command to see all available tasks and their tags:\n'
                                  f'  mx -v gate --dry-run')
@@ -564,7 +566,7 @@ def gate(args):
         # collect lengths
         maxLengths = {}
         for e in res:
-            for key in e.keys():
+            for key in e:
                 maxLengths[key + 'Max'] = max(maxLengths.get(key + 'Max', 0), len(e[key]))
         # build format string
         fmt = '  '
@@ -947,7 +949,7 @@ def _jacoco_excludes_includes():
 
     def _filter(l):
         # filter out specific classes which are already covered by a baseExclude
-        return [clazz for clazz in l if not any([clazz.startswith(package) for package in baseExcludes])]
+        return [clazz for clazz in l if not any(clazz.startswith(package) for package in baseExcludes)]
 
     for p in mx.projects():
         if p.isJavaProject() and p.name not in excluded_projects and _jacoco_is_package_whitelisted(p.name):
@@ -1108,7 +1110,8 @@ def _make_coverage_report(output_directory,
                 includedprojects.append(p.name)
 
     def _run_reporter(exec_files, output_directory, extra_args=None):
-        sink = lambda line: line
+        def sink(line):
+            return line
         out = None if mx.get_opts().verbose else sink
 
         files_arg = []
@@ -1736,7 +1739,7 @@ def sonarqube_upload(args):
         exclude_dirs.extend(p.source_dirs())
         exclude_dirs.append(p.source_gen_dir())
 
-    javaCompliance = max([p.javaCompliance for p in includes]) if includes else JavaCompliance('1.7')
+    javaCompliance = max((p.javaCompliance for p in includes), default=JavaCompliance('1.7'))
 
     jacoco_exec = get_jacoco_dest_file()
     if not os.path.exists(jacoco_exec) and not args.skip_coverage:
@@ -1791,7 +1794,7 @@ def _get_repo_name(suite):
     if vc is None:
         return ''
     repo_url = vc.default_pull(suite.vc_dir)
-    return str(repo_url).split('.git')[0].split('/')[-1]
+    return str(repo_url).split('.git', 1)[0].rsplit('/', 1)[-1]
 
 def _get_commit(suite):
     """
@@ -1878,7 +1881,7 @@ def make_test_report(test_results, task, component=None, tags=None, fatalIfUploa
     build = mx.get_env("BUILD_NAME", "unclassified")
 
     if tags is None:
-        tags = dict()
+        tags = {}
 
     # Ensure tags has a job_type entry
     if 'job_type' not in tags:

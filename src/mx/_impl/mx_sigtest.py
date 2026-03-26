@@ -65,7 +65,7 @@ def _sigtest_generate(args, suite=None, projects=None):
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
-    javaCompliance = max([p.javaCompliance for p in nonTestProjects])
+    javaCompliance = max(p.javaCompliance for p in nonTestProjects)
 
     for p in nonTestProjects:
         sigtestlib = p.suite.getMxCompatibility().get_sigtest_jar()
@@ -113,7 +113,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 1
-    javaCompliance = max([p.javaCompliance for p in nonTestProjects])
+    javaCompliance = max(p.javaCompliance for p in nonTestProjects)
 
     if checktype != 'all':
         print('Running sigtest with checktype=' + checktype + '. For a full check, pass \'--check all\'.')
@@ -144,7 +144,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         print('Checking ' + checktype + ' signature changes against ' + sigtestResults)
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance), out=out, err=out)
         mx_util.ensure_dir_exists(p.get_output_root())
-        with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w') as f:
+        with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w', encoding='utf-8') as f:
             f.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
             f.write('<testsuite tests="1" name="' + p.name + '.sigtest.' + checktype + '">\n')
             f.write('<testcase classname="' + p.name + '" name="sigtest.' + checktype + '">\n')

@@ -24,7 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-
 try:
     # Use more secure defusedxml library, if available
     from defusedxml.ElementTree import parse as etreeParse
@@ -146,7 +145,7 @@ def intellijinit(config: IntellijConfig):
         mx_ideconfig.fsckprojects([])
 
 def intellij_read_sdks():
-    sdks = dict()
+    sdks = {}
     # https://www.jetbrains.com/help/idea/2023.2/directories-used-by-the-ide-to-store-settings-caches-plugins-and-logs.html
     if mx.is_linux() or mx.is_openbsd() or mx.is_sunos():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
@@ -861,7 +860,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
                 print('# GENERATED -- DO NOT EDIT', file=out)
                 for source in corePrefsSources:
                     print('# Source:', source, file=out)
-                    with open(source) as fileName:
+                    with open(source, encoding='utf-8') as fileName:
                         for line in fileName:
                             if line.startswith('org.eclipse.jdt.core.formatter.'):
                                 print(line.strip(), file=out)
@@ -873,7 +872,7 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
                     print('# GENERATED -- DO NOT EDIT', file=out)
                     for source in uiPrefsSources:
                         print('# Source:', source, file=out)
-                        with open(source) as fileName:
+                        with open(source, encoding='utf-8') as fileName:
                             for line in fileName:
                                 if line.startswith('org.eclipse.jdt.ui.importorder') \
                                         or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \

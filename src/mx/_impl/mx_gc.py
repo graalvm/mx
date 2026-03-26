@@ -96,7 +96,7 @@ class TimeAction(argparse.Action):
     def __init__(self, option_strings, dest, nargs=None, **kwargs):
         if nargs is not None:
             raise ValueError("nargs not allowed")
-        super(TimeAction, self).__init__(option_strings, dest, **kwargs)
+        super().__init__(option_strings, dest, **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
         m = TimeAction.pattern.match(values)
@@ -118,7 +118,7 @@ class TimeAction(argparse.Action):
             elif unit.startswith('mo'):
                 minutes = value * 30 * minutes_per_day
             elif unit.startswith('w'):
-                value += 7 * minutes_per_day
+                minutes = value * 7 * minutes_per_day
             elif unit.startswith('d'):
                 minutes = value * minutes_per_day
             elif unit.startswith('mi'):

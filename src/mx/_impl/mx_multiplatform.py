@@ -1,6 +1,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=raising-bad-type
+
 # Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -71,7 +73,7 @@ See mx archive-pd-layouts and --multi-platform-layout-directories.""")
     local_os_arch = _local_os_arch()
     with mx.TempDir(parent_dir=mx.primary_suite().dir) as tmp:
         mx.Extractor.create(args.path).extract(tmp)
-        with open(join(tmp, 'os-arch'), 'r') as f:
+        with open(join(tmp, 'os-arch'), 'r', encoding='utf-8') as f:
             os_arch = f.read().strip()
         if local_os_arch == os_arch:
             mx.warn("Restoring archive from the current platform")

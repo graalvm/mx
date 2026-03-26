@@ -24,7 +24,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-
 import os, sys
 from os.path import join, exists
 from io import StringIO
@@ -514,7 +513,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         files.append(join(nbproject_dir, 'project.properties'))
 
     for source in p.suite.netbeans_settings_sources().get('cfg_hints.xml'):
-        with open(source) as fp:
+        with open(source, encoding='utf-8') as fp:
             content = fp.read()
     mx.update_file(join(nbproject_dir, 'cfg_hints.xml'), content)
 
