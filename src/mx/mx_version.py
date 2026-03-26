@@ -1,2 +1,2 @@
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = "7.77.0"  # [GR-74350] reduce pylint exclusions
+version = "7.77.1"  # GR-74348 - Use a writable Eclipse configuration for eclipseformat

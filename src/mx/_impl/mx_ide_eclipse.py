@@ -45,7 +45,7 @@ __all__ = [
     "override_suite_eclipse_settings",
 ]
 
-import json, os, re, time, zipfile, tempfile
+import json, os, re, shutil, time, zipfile, tempfile
 
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
@@ -64,20 +64,21 @@ from . import mx_javamodules
 
 
 def eclipseinit_and_format_files(eclipse_exe, config, files):
-    """Wrapper for :func:`_format_files` that automatically initializes the workspace and eclipse ini
-    with a temporary configuration"""
+    """Wrapper for :func:`_format_files` that automatically initializes the workspace and eclipse launch state."""
 
     wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
-    with _TempEclipseIni(eclipse_exe) as tmp_eclipseini:
-        _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, config, files)
+    with _TempEclipseWorkspaceMetadata(wsroot):
+        with _TempEclipseLaunch(eclipse_exe) as eclipse_launch:
+            _format_files(eclipse_exe, wsroot, eclipse_launch.eclipse_ini, eclipse_launch.configuration_dir, config, files)
 
 
-def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
+def _format_files(eclipse_exe, wsroot, eclipse_ini, eclipse_configuration, config, files):
     """Formats a list of files with the given Eclipse instance
 
     :param eclipse_exe the eclipse executable to use for formatting
     :param wsroot an initialized eclipse workspace root
     :param eclipse_ini the eclipse ini configuration file to use
+    :param eclipse_configuration a writable Eclipse configuration directory
     :param config the JavaCodeFormatter config to use
     :param files a list of file paths to format
     :param jdk the JDK used to run the formatter
@@ -88,6 +89,7 @@ def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
     rc = mx.run([eclipse_exe,
                  '--launcher.ini', eclipse_ini,
                  '-nosplash',
+                 '-configuration', eclipse_configuration,
                  '-application',
                  '-consolelog',
                  '-data', wsroot,
@@ -100,19 +102,22 @@ def _format_files(eclipse_exe, wsroot, eclipse_ini, config, files):
         mx.abort("Error while running formatter")
 
 
-class _TempEclipseIni:
-    """Context manager that initializes a temporary eclipse ini file for the given eclipse executable.
-    Upon exit, the temporary configuration file is automatically removed."""
+class _TempEclipseLaunch:
+    """Context manager that prepares temporary Eclipse launch state for formatter invocations."""
 
     def __init__(self, eclipse_exe):
         self.eclipse_exe = eclipse_exe
         self.tmp_eclipseini = tempfile.NamedTemporaryFile(mode='w')
+        self.tmp_configuration_dir = tempfile.TemporaryDirectory(prefix='mx-eclipse-')
+        self.eclipse_ini = None
+        self.configuration_dir = None
 
     def __enter__(self):
         # Use an ExitStack to make sure that the NamedTemporaryFile is closed in case
         # there is an exception while writing its content
         with ExitStack() as stack:
             stack.enter_context(self.tmp_eclipseini)
+            stack.enter_context(self.tmp_configuration_dir)
             with open(join(dirname(self.eclipse_exe),
                            join('..', 'Eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
                 locking_added = False
@@ -124,13 +129,31 @@ class _TempEclipseIni:
                 if not locking_added:
                     self.tmp_eclipseini.write('-vmargs\n-Dosgi.locking=none\n')
             self.tmp_eclipseini.flush()
+            self.eclipse_ini = self.tmp_eclipseini.name
+            self.configuration_dir = self.tmp_configuration_dir.name
 
             # Everything went fine, we will close the NamedTemporaryFile in our own exit method
             stack.pop_all()
-            return self.tmp_eclipseini
+            return self
 
     def __exit__(self, *args):
+        self.tmp_configuration_dir.__exit__(*args)
         self.tmp_eclipseini.__exit__(*args)
+
+
+class _TempEclipseWorkspaceMetadata:
+    """Tracks workspace metadata created by formatter launches and removes it if it did not exist beforehand."""
+
+    def __init__(self, wsroot):
+        self.metadata_dir = join(wsroot, '.metadata')
+        self.had_metadata = exists(self.metadata_dir)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        if not self.had_metadata and exists(self.metadata_dir):
+            shutil.rmtree(self.metadata_dir)
 
 
 _eclipseformat_attribute_name = 'eclipseformat'
@@ -141,6 +164,28 @@ def _is_enabled_for_project(p):
     if not isinstance(eclipseformat_attribute_value, bool):
         mx.abort(f'The {_eclipseformat_attribute_name} attribute must be a boolean value (True or False)', context=p)
     return eclipseformat_attribute_value
+
+
+def _include_in_default_eclipseformat_suite(suite):
+    return mx.primary_suite() is mx._mx_suite or suite is not mx._mx_suite
+
+
+def _default_eclipseformat_candidates(include_distributions=False):
+    projects_to_process = [p for p in mx.projects(opt_limit_to_suite=True) if _include_in_default_eclipseformat_suite(p.suite)]
+    if include_distributions:
+        projects_to_process += _eclipseformat_distributions()
+    return projects_to_process
+
+
+def _eclipseformat_distributions(limit_to_primary=False):
+    distributions = [
+        d
+        for d in mx.distributions(opt_limit_to_suite=True)
+        if hasattr(d, 'isJavaProject') and hasattr(d, 'dir') and _include_in_default_eclipseformat_suite(d.suite)
+    ]
+    if limit_to_primary:
+        distributions = [d for d in distributions if d.suite is mx.primary_suite()]
+    return distributions
 
 
 @mx.command('mx', 'eclipseformat')
@@ -182,10 +227,12 @@ def eclipseformat(args):
     elif args.primary:
         projectsToProcess = mx.projects(limit_to_primary=True)
     else:
-        projectsToProcess = mx.projects(opt_limit_to_suite=True)
+        projectsToProcess = _default_eclipseformat_candidates(include_distributions=args.distributions)
 
-    if args.distributions:
-        projectsToProcess += [d for d in mx.distributions(opt_limit_to_suite=True) if hasattr(d, 'isJavaProject') and hasattr(d, 'dir')]
+    if args.distributions and args.projects is not None:
+        projectsToProcess += _eclipseformat_distributions()
+    elif args.distributions and args.primary:
+        projectsToProcess += _eclipseformat_distributions(limit_to_primary=True)
 
     class Batch:
         def __init__(self, settingsDir):
@@ -256,16 +303,17 @@ def eclipseformat(args):
 
     mx.log("we have: " + str(len(batches)) + " batches")
     batch_num = 0
-    for batch, javafiles in batches.items():
-        batch_num += 1
-        mx.log(f"Processing batch {batch_num} ({len(javafiles)} files)...")
+    with _TempEclipseWorkspaceMetadata(wsroot):
+        with _TempEclipseLaunch(eclipse_exe) as eclipse_launch:
+            for batch, javafiles in batches.items():
+                batch_num += 1
+                mx.log(f"Processing batch {batch_num} ({len(javafiles)} files)...")
 
-        with _TempEclipseIni(eclipse_exe) as tmp_eclipseini:
-            for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-                _format_files(eclipse_exe, wsroot, tmp_eclipseini.name, batch.path, [f.path for f in chunk])
-                for fi in chunk:
-                    if fi.update(batch.removeTrailingWhitespace, args.restore):
-                        modified.append(fi)
+                for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
+                    _format_files(eclipse_exe, wsroot, eclipse_launch.eclipse_ini, eclipse_launch.configuration_dir, batch.path, [f.path for f in chunk])
+                    for fi in chunk:
+                        if fi.update(batch.removeTrailingWhitespace, args.restore):
+                            modified.append(fi)
 
     mx.log(f'{len(modified)} files were modified')
 
@@ -326,18 +374,21 @@ def locate_eclipse_exe(eclipse_exe):
                     fallback = candidate
         return fallback
 
+    use_builtin_eclipse = False
     if eclipse_exe is None:
         eclipse_exe = os.environ.get('ECLIPSE_EXE')
     if eclipse_exe is None or eclipse_exe == "builtin":
         eclipse_lib = mx.library('ECLIPSE')
         eclipse_exe = eclipse_lib.get_path(resolve=True)
+        use_builtin_eclipse = True
     # Maybe an Eclipse installation dir was specified - look for the executable in it
     if isdir(eclipse_exe):
         resolved_exe = find_eclipse_exe_in_dir(eclipse_exe)
         if resolved_exe is None:
             mx.abort('Could not find an Eclipse executable under directory: ' + eclipse_exe)
         eclipse_exe = resolved_exe
-        mx.warn("The eclipse-exe was a directory, now using " + eclipse_exe)
+        if not use_builtin_eclipse:
+            mx.warn("The eclipse-exe was a directory, now using " + eclipse_exe)
     if not os.path.isfile(eclipse_exe):
         mx.abort('File does not exist: ' + eclipse_exe)
     if not os.access(eclipse_exe, os.X_OK):
