@@ -1017,6 +1017,8 @@ class _ArchiveStager(object):
             selfLicense = [l.name for l in dist.theLicense] if dist.theLicense else ['??']
             report(f"Incompatible licenses: distribution {dist} ({', '.join(selfLicense)}) can not contain {dep} ({', '.join(depLicense)})")
         if dep.isLibrary() or dep.isJARDistribution():
+            jarPath = None
+            jarSourcePath = None
             if dep.isLibrary():
                 l = dep
                 # optional libraries and their dependents should already have been removed
