@@ -185,6 +185,7 @@ def test_maven_project():
         assert not os.path.exists(os.path.join(project.get_output_root(), "pom.xml"))
         maven_runs = []
         maven_deployments = []
+
         def mp_run_maven(*args, **kwargs):
             maven_runs.append([args, kwargs])
             defaultjarpath.touch()

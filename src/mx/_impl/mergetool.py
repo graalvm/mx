@@ -229,9 +229,7 @@ def mergetool_suite_import(args):
     )
 
     mismatches = [
-        s
-        for s in local_import_dict.keys()
-        if local_import_dict[s] not in (remote_import_dict[s], base_import_dict[s])
+        s for s in local_import_dict.keys() if local_import_dict[s] not in (remote_import_dict[s], base_import_dict[s])
     ]
     _assert_or_fallback(mismatches, "Not import mismatches. Falling back to diff3")
 
