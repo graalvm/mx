@@ -112,7 +112,21 @@ def _discover_repo_suites(start_dir=None):
 
     discovered = []
     discovered_repo_roots = set()
-    skip_dirs = {'.git', '.hg', '.svn', '__pycache__', 'mxbuild', 'mx.imports'}
+    skip_dirs = {
+        '.git',
+        '.hg',
+        '.svn',
+        '.idea',
+        '.metadata',
+        '.mypy_cache',
+        '.pytest_cache',
+        '.tox',
+        '.venv',
+        '__pycache__',
+        '__pypackages__',
+        'mx.imports',
+        'mxbuild',
+    }
     for dirpath, dirnames, filenames in os.walk(str(repo_root)):
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
         dirpath = Path(dirpath)
@@ -463,11 +477,15 @@ def _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only):
     if not root_suites_only:
         return [suite_info for suite_info in discovery.suites if suite_info.suite_key in touched_suite_keys]
 
+    return _select_affected_root_suites(discovery, touched_suite_keys)
+
+
+def _select_affected_root_suites(discovery, affected_suite_keys):
     reverse_edges = {}
     for importer, imported in discovery.local_edges:
         reverse_edges.setdefault(imported, set()).add(importer)
-    affected = set(touched_suite_keys)
-    worklist = deque(touched_suite_keys)
+    affected = set(affected_suite_keys)
+    worklist = deque(affected_suite_keys)
     while worklist:
         suite_key = worklist.popleft()
         for importer in reverse_edges.get(suite_key, ()):
@@ -513,6 +531,36 @@ def _select_repo_suites(discovery, default_all=False):
         return _select_repo_suites_by_paths(discovery, changed_paths, root_suites_only), diff_desc, root_suites_only
 
     _mx.abort(f'Unexpected repo suite selection mode: {selection_mode}')
+
+
+def _optimize_repo_suite_selection(command, discovery, selected_suites, diff_desc, root_suites_only):
+    if root_suites_only:
+        return selected_suites, diff_desc, root_suites_only, None
+
+    _mx = _mx_module()
+    selection_mode = _repo_suite_selection_mode()
+    dispatch_behavior = _mx._mx_commands.get_command_property(command, _mx.SUITE_DISPATCH_SCOPE_PROP)
+    if dispatch_behavior != _mx._SUITE_DISPATCH_ROOT_SUITES:
+        return selected_suites, diff_desc, root_suites_only, None
+
+    if selection_mode == 'all':
+        return (
+            discovery.root_suites,
+            diff_desc,
+            True,
+            f'Command `{command}` already traverses imported suites; running only for root suites.',
+        )
+
+    if selection_mode in ('diff', 'diff-branch'):
+        selected_suites = _select_affected_root_suites(discovery, {suite_info.suite_key for suite_info in selected_suites})
+        return (
+            selected_suites,
+            diff_desc,
+            True,
+            f'Command `{command}` already traverses imported suites; reducing diff-selected suites to affected root suites.',
+        )
+
+    return selected_suites, diff_desc, root_suites_only, None
 
 
 def _recursive_mx_base_args(primary_suite_path):
@@ -620,7 +668,9 @@ def _run_command_for_repo_suites(command, discovery):
         _mx.abort('No suites found in this directory tree.')
 
     selected_suites, diff_desc, root_suites_only = _select_repo_suites(discovery)
-    selection_mode = _repo_suite_selection_mode()
+    selected_suites, diff_desc, root_suites_only, optimization_note = _optimize_repo_suite_selection(
+        command, discovery, selected_suites, diff_desc, root_suites_only
+    )
     name_counts = {}
     for suite_info in discovery.suites:
         name_counts[suite_info.name] = name_counts.get(suite_info.name, 0) + 1
@@ -632,9 +682,11 @@ def _run_command_for_repo_suites(command, discovery):
 
     suite_kind = 'root suites' if root_suites_only else 'suites'
     selected_names = ', '.join(_suite_run_label(suite_info) for suite_info in selected_suites) if selected_suites else '<none>'
+    if optimization_note is not None:
+        _mx.log(optimization_note)
     if diff_desc is not None:
         _mx.log(f'Diff filter ({diff_desc}) selected {suite_kind}: {selected_names}')
-    elif selection_mode == 'root':
+    elif root_suites_only:
         _mx.log(f'Selected root suites: {selected_names}')
     else:
         _mx.log(f'Selected suites: {selected_names}')

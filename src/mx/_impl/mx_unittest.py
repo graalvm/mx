@@ -618,6 +618,7 @@ def parse_split_args(args, parser, delimiter):
             command_name='unittest',
             usage_msg='[unittest options] [--] [VM options] [filters...]',
             doc_function=lambda: unittestHelpSuffix,
+            props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS,
             auto_add=False)
 def unittest(args, test_report_tags=None):
     """run the JUnit tests

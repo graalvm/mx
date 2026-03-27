@@ -100,8 +100,8 @@ def _readurl(args):
         for f in os.listdir(args.url.replace("file://", "")):
             print(f)
     else:
-        f = urlopen(args.url)
-        text = f.read()
+        with urlopen(args.url) as f:
+            text = f.read()
         parser = MyHTMLParser() if args.print_tags else DirHTMLParser()
         parser.feed(text)
         if not args.print_tags:

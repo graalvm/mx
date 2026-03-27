@@ -111,7 +111,7 @@ def _zip_files(files, baseDir, zipPath):
         zf.close()
 
 
-@mx.command('mx', 'ideclean')
+@mx.command('mx', 'ideclean', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def ideclean(args):
     """remove all IDE project configurations"""
     def rm(path):
@@ -148,7 +148,7 @@ def ideclean(args):
         if d.get_ide_project_dir():
             shutil.rmtree(d.get_ide_project_dir(), ignore_errors=True)
 
-@mx.command('mx', 'ideinit')
+@mx.command('mx', 'ideinit', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     """(re)generate IDE project configurations"""
     parser = ArgumentParser(prog='mx ideinit')

@@ -71,7 +71,7 @@ class MxCommands(object):
 
     def get_command_property(self, command, property_name):
         c = self._commands.get(command)
-        if c.props:
+        if c is not None and c.props:
             if property_name in c.props:
                 return c.props[property_name]
         return None

@@ -661,7 +661,7 @@ class _MavenBuildTask(BuildTask):
         pom.write(self.subject.build_pom())
 
 
-@mx.command("mx", "maventests")
+@mx.command("mx", "maventests", props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def mvn_tests(args: List[str]):
     """
     Run tests for maven projects in all suites.

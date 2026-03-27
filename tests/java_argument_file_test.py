@@ -1,4 +1,6 @@
-from mx._impl.support import java_argument_file
+import importlib
+
+java_argument_file = importlib.import_module("mx._impl.support.java_argument_file")
 
 
 def test_no_escape():

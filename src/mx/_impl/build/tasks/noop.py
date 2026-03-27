@@ -38,4 +38,4 @@ class NoOpTask(Task):
         return 'NoOp'
 
     def execute(self) -> None:
-        pass
+        self.status = "skipped"

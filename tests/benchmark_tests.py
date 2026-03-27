@@ -1,12 +1,13 @@
+import importlib
 from os.path import dirname, realpath, sep
 import sys
 
 file_dir = dirname(realpath(__file__))
 sys.path.append(file_dir + sep + "..")
 
-import mx
-import mx_benchmark
-from mx_benchmark import gate_mx_benchmark
+mx = importlib.import_module("mx")
+mx_benchmark = importlib.import_module("mx_benchmark")
+gate_mx_benchmark = mx_benchmark.gate_mx_benchmark
 
 # setup the primary suite
 _suite = mx.Suite(
@@ -58,7 +59,7 @@ def check(command, included, excluded):
     exit_code, _, results = gate_mx_benchmark([command, "--tracker", "none"], nonZeroIsFatal=False)
 
     if exit_code != 0:
-        mx.abort("{} exit code was {}".format(command, exit_code))
+        mx.abort(f"{command} exit code was {exit_code}")
 
     executed_benchmarks = set([point["benchmark"] for point in results])
 

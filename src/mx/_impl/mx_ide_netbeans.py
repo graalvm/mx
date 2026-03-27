@@ -32,7 +32,7 @@ from . import mx, mx_util
 from . import mx_ideconfig
 from . import mx_ide_eclipse
 
-@mx.command('mx', 'netbeansinit')
+@mx.command('mx', 'netbeansinit', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 

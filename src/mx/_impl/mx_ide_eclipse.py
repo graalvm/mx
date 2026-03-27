@@ -188,7 +188,7 @@ def _eclipseformat_distributions(limit_to_primary=False):
     return distributions
 
 
-@mx.command('mx', 'eclipseformat')
+@mx.command('mx', 'eclipseformat', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
 
@@ -566,6 +566,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
 @mx.command(
     'mx',
     'vscodeinit',
+    props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS,
     usage_msg="Generate Eclipse project configuration suitable for using with VSCode.\nThis differs from normal Eclipse config only in how annotation processors paths are set up, to account for differences in the VSCode Eclipse language server versus full Eclipse."
 )
 def vscodeinit(args):
@@ -647,7 +648,7 @@ Note that setting MX_BUILD_EXPLODED=true can improve build times. See "Exploded 
     ''')
 
 
-@mx.command("mx", "opencodeinit")
+@mx.command("mx", "opencodeinit", props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def opencodeinit(args):
     """Generate an OpenCode configuration in the current working directory.
 
@@ -795,7 +796,7 @@ Make sure you have `pyright-langserver` and `jdtls` on your PATH for opencode to
     """)
 
 
-@mx.command('mx', 'eclipseinit')
+@mx.command('mx', 'eclipseinit', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
     parser = ArgumentParser(prog='mx eclipseinit')
