@@ -15574,17 +15574,27 @@ def _find_pyfiles(find_all, primary, walk):
     :param walk: If `True`, use a tree walk instead of `<vc> locate`
     :return: List of `.py` files
     """
-    def walk_suite(suite):
-        for root, dirs, files in os.walk(suite.dir if find_all else suite.mxDir):
+    def add_pyfile(pyfile):
+        if exists(pyfile) and pyfile not in pyfiles:
+            pyfiles.append(pyfile)
+
+    def walk_root(root_dir):
+        if not root_dir or not exists(root_dir):
+            return
+        for root, dirs, files in os.walk(root_dir):
             for f in files:
                 if f.endswith('.py'):
-                    pyfile = join(root, f)
-                    pyfiles.append(pyfile)
+                    add_pyfile(join(root, f))
             if 'bin' in dirs:
                 dirs.remove('bin')
             if 'lib' in dirs:
                 # avoids downloaded .py files
                 dirs.remove('lib')
+
+    def walk_suite(suite):
+        walk_root(suite.dir if find_all else suite.mxDir)
+        if not find_all:
+            walk_root(join(suite.dir, 'tests'))
 
     def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
@@ -15599,14 +15609,15 @@ def _find_pyfiles(find_all, primary, walk):
             if not suite.vc:
                 walk_suite(suite)
                 continue
-            suite_location = os.path.relpath(suite.dir if find_all else suite.mxDir, suite.vc_dir)
-            files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
+            locate_patterns = [join(os.path.relpath(suite.dir if find_all else suite.mxDir, suite.vc_dir), '**.py')]
+            if not find_all and exists(join(suite.dir, 'tests')):
+                locate_patterns.append(join(os.path.relpath(join(suite.dir, 'tests'), suite.vc_dir), '**.py'))
+            files = suite.vc.locate(suite.vc_dir, locate_patterns)
             compat = suite.getMxCompatibility()
             if compat.makePylintVCInputsAbsolute():
                 files = [join(suite.vc_dir, f) for f in files]
             for pyfile in files:
-                if exists(pyfile):
-                    pyfiles.append(pyfile)
+                add_pyfile(pyfile)
 
     pyfiles = []
     # Process mxtool's own py files only if mx is the primary suite
@@ -15615,8 +15626,7 @@ def _find_pyfiles(find_all, primary, walk):
         # deeper), the mx package files are checked separately
         for f in os.listdir(_src_path):
             if f.endswith('.py'):
-                pyfile = join(_src_path, f)
-                pyfiles.append(pyfile)
+                add_pyfile(join(_src_path, f))
 
     if walk:
         findfiles_by_walk(pyfiles)

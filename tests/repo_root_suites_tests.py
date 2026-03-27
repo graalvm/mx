@@ -1,16 +1,22 @@
+# pylint: disable=consider-using-with,use-implicit-booleaness-not-comparison,useless-return
+
+import importlib
 import io
 import os
+import pathlib
 import sys
 import tempfile
 from types import SimpleNamespace
 
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
-from mx._impl import mx as orig_mx
-from mx._impl import mx_benchmark as orig_mx_benchmark
-from mx._impl import mx_native as orig_mx_native
-from mx._impl import mx_pomdistribution as orig_mx_pomdistribution
-from mx._impl import mx_repo_suite as orig_mx_repo_suite
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+
+orig_mx = importlib.import_module("mx._impl.mx")
+orig_mx_benchmark = importlib.import_module("mx._impl.mx_benchmark")
+orig_mx_native = importlib.import_module("mx._impl.mx_native")
+orig_mx_pomdistribution = importlib.import_module("mx._impl.mx_pomdistribution")
+orig_mx_repo_suite = importlib.import_module("mx._impl.mx_repo_suite")
 
 
 @contextmanager
@@ -458,7 +464,7 @@ def test_discover_repo_suites():
 
 
 def test_discover_repo_suites_from_workspace_root():
-    tmpdir, workspace_root, repo_dirs, suite_dirs = _create_workspace_with_subrepos()
+    tmpdir, workspace_root, repo_dirs, _ = _create_workspace_with_subrepos()
     try:
         discovery = orig_mx._discover_repo_suites(workspace_root)
         assert discovery is not None
@@ -646,6 +652,84 @@ def test_show_suites_without_primary_suite_writes_dot():
         )
     finally:
         tmpdir.cleanup()
+
+
+def test_find_pyfiles_includes_suite_tests_with_vc_locate():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        suite_dir = os.path.join(tmpdir, "suite")
+        mx_dir = os.path.join(suite_dir, "mx.fake")
+        tests_dir = os.path.join(suite_dir, "tests")
+        os.makedirs(mx_dir)
+        os.makedirs(tests_dir)
+        suite_file = os.path.join(mx_dir, "suite_tool.py")
+        test_file = os.path.join(tests_dir, "test_tool.py")
+        with open(suite_file, "w", encoding="utf-8") as fp:
+            fp.write("pass\n")
+        with open(test_file, "w", encoding="utf-8") as fp:
+            fp.write("pass\n")
+
+        locate_patterns = []
+
+        class _Compat:
+            @staticmethod
+            def makePylintVCInputsAbsolute():
+                return True
+
+        class _VC:
+            @staticmethod
+            def locate(vc_dir, patterns):
+                locate_patterns.append((vc_dir, tuple(patterns)))
+                return [suite_file, test_file]
+
+        def _compat():
+            return _Compat()
+
+        fake_suite = SimpleNamespace(
+            dir=suite_dir,
+            mxDir=mx_dir,
+            vc=_VC(),
+            vc_dir=suite_dir,
+            primary=True,
+            getMxCompatibility=_compat,
+        )
+
+        with mx_monkeypatch("suites", lambda limit_to_primary=False, includeBinary=False: [fake_suite]), mx_monkeypatch(
+            "primary_suite", lambda: fake_suite
+        ):
+            pyfiles = orig_mx._find_pyfiles(find_all=False, primary=True, walk=False)
+
+        assert pyfiles == [suite_file, test_file]
+        assert locate_patterns == [(suite_dir, ("mx.fake/**.py", "tests/**.py"))]
+
+
+def test_find_pyfiles_includes_suite_tests_with_walk():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        suite_dir = os.path.join(tmpdir, "suite")
+        mx_dir = os.path.join(suite_dir, "mx.fake")
+        tests_dir = os.path.join(suite_dir, "tests")
+        os.makedirs(mx_dir)
+        os.makedirs(tests_dir)
+        suite_file = os.path.join(mx_dir, "suite_tool.py")
+        test_file = os.path.join(tests_dir, "test_tool.py")
+        with open(suite_file, "w", encoding="utf-8") as fp:
+            fp.write("pass\n")
+        with open(test_file, "w", encoding="utf-8") as fp:
+            fp.write("pass\n")
+
+        fake_suite = SimpleNamespace(
+            dir=suite_dir,
+            mxDir=mx_dir,
+            vc=None,
+            vc_dir=suite_dir,
+            primary=True,
+        )
+
+        with mx_monkeypatch("suites", lambda limit_to_primary=False, includeBinary=False: [fake_suite]), mx_monkeypatch(
+            "primary_suite", lambda: fake_suite
+        ):
+            pyfiles = orig_mx._find_pyfiles(find_all=False, primary=True, walk=True)
+
+        assert pyfiles == [suite_file, test_file]
 
 
 def test_show_suites_without_primary_suite_places_isolated_root_at_top():
@@ -1789,6 +1873,8 @@ def tests():
     test_show_suites_without_primary_suite_with_locations()
     test_show_suites_with_pom_distribution_locations()
     test_show_suites_without_primary_suite_writes_dot()
+    test_find_pyfiles_includes_suite_tests_with_vc_locate()
+    test_find_pyfiles_includes_suite_tests_with_walk()
     test_show_suites_without_primary_suite_places_isolated_root_at_top()
     test_show_suites_without_primary_suite_writes_valid_dot_without_isolated_roots()
     test_show_suites_without_primary_suite_rejects_detailed_flags()

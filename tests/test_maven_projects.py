@@ -1,6 +1,8 @@
+import importlib
 import os
 import pathlib
 import re
+import sys
 import tempfile
 
 from argparse import Namespace
@@ -8,15 +10,16 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import cast
 
-import mx
-from mx._impl.build.tasks.noop import NoOpTask
-from mx._impl.mavenproject import ETMavenPOM
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+
+mx = importlib.import_module("mx")
+NoOpTask = importlib.import_module("mx._impl.build.tasks.noop").NoOpTask
+ETMavenPOM = importlib.import_module("mx._impl.mavenproject").ETMavenPOM
+orig_mx = importlib.import_module("mx._impl.mx")
 
 
 @contextmanager
 def mx_monkeypatch(name, value):
-    from mx._impl import mx as orig_mx
-
     previous = getattr(orig_mx, name)
     setattr(orig_mx, name, value)
     try:

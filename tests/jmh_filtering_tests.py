@@ -1,9 +1,9 @@
+import importlib
 from os.path import dirname, realpath, sep
 import os
 import re
-import sys
 
-from mx._impl import mx
+mx = importlib.import_module("mx._impl.mx")
 
 file_dir = dirname(realpath(__file__))
 

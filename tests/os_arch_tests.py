@@ -1,5 +1,4 @@
 import mx
-from mx import Suite
 
 
 def test_os_arch():
@@ -14,8 +13,8 @@ def test_os_arch():
             },
         },
     }
-    os_arch = Suite._pop_os_arch(config, "context")
-    config = Suite._merge_os_arch_attrs(config, os_arch, "context")
+    os_arch = mx.Suite._pop_os_arch(config, "context")
+    config = mx.Suite._merge_os_arch_attrs(config, os_arch, "context")
     if mx.is_windows():
         assert os_arch == {"b": "bar"}
         assert config == {"a": "foo", "b": "bar"}
@@ -36,8 +35,8 @@ def test_os():
             },
         },
     }
-    os_arch = Suite._pop_os_arch(config, "context")
-    config = Suite._merge_os_arch_attrs(config, os_arch, "context")
+    os_arch = mx.Suite._pop_os_arch(config, "context")
+    config = mx.Suite._merge_os_arch_attrs(config, os_arch, "context")
     if mx.is_windows():
         assert os_arch == {"b": "bar"}
         assert config == {"a": "foo", "b": "bar"}
@@ -58,8 +57,8 @@ def test_arch():
             },
         },
     }
-    os_arch = Suite._pop_os_arch(config, "context")
-    config = Suite._merge_os_arch_attrs(config, os_arch, "context")
+    os_arch = mx.Suite._pop_os_arch(config, "context")
+    config = mx.Suite._merge_os_arch_attrs(config, os_arch, "context")
     if mx.get_arch() == "amd64":
         assert os_arch == {"b": "bar"}
         assert config == {"a": "foo", "b": "bar"}

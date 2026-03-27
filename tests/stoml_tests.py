@@ -1,9 +1,6 @@
-import atexit
-import os
-import shutil
-import tempfile
+import importlib
 
-from mx_codeowners import stoml_parse_rules
+stoml_parse_rules = importlib.import_module("mx_codeowners").stoml_parse_rules
 
 
 def test_parsing_generate_cases():

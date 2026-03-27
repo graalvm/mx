@@ -1,13 +1,15 @@
+# pylint: disable=fixme,consider-using-f-string
+
 import atexit
+import importlib
 import json
 import os
 import shutil
 import sys
 import tempfile
-import unittest.mock as mock
 
-from mx._impl import mx_codeowners
-from mx._impl import mx
+mx_codeowners = importlib.import_module("mx._impl.mx_codeowners")
+mx = importlib.import_module("mx._impl.mx")
 
 # Note for future maintainer: if this is ever converted to pytest,
 # the TempFileTree class would work well as a fixture:
@@ -957,7 +959,7 @@ def test_get_changed_file_paths_generate_cases():
 
 
 def test_parse_git_diff_output():
-    for test_name, git_output, extra_args, expected_relative_paths in test_get_changed_file_paths_generate_cases():
+    for test_name, git_output, _, expected_relative_paths in test_get_changed_file_paths_generate_cases():
         print("test_parse_git_diff_output('" + test_name + "')")
 
         actual_paths = mx_codeowners.parse_git_diff_output(git_output)
