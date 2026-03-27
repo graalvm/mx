@@ -46,6 +46,7 @@ def _should_test_project(p):
 @mx.command(suite_name="mx",
             command_name='jackpot',
             usage_msg='[--apply]',
+            props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS,
             auto_add=False)
 def jackpot(args, suite=None, nonZeroIsFatal=False):
     """run Jackpot 11.1 against non-test Java projects"""

@@ -69,7 +69,7 @@ class IntellijConfig:
     args: ... = None
 
 
-@mx.command('mx', 'intellijinit')
+@mx.command('mx', 'intellijinit', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def intellijinit_cli(args):
     """(re)generate Intellij project configurations"""
     parser = ArgumentParser(prog='mx ideinit')

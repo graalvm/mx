@@ -40,6 +40,7 @@ __all__ = [
     "command_function",
     "update_commands",
     "command",
+    "SUITE_DISPATCH_ROOT_SUITES_PROPS",
     "DynamicVar",
     "DynamicVarScope",
     "ArgParser",
@@ -729,13 +730,14 @@ def update_commands(suite, new_commands):
     Using the decorator mx_command is preferred over this function.
 
     :param suite: for which the command is added.
-    :param new_commands: keys are command names, value are lists: [<function>, <usage msg>, <format doc function>]
+    :param new_commands: keys are command names, value are lists:
+        [<function>, <usage msg>, <format doc function>, <props>]
         if any of the format args are instances of callable, then they are called with an 'env' are before being
         used in the call to str.format().
     """
     suite_name = suite if isinstance(suite, str) else suite.name
 
-    _length_of_command = 4
+    _length_of_command = 5
     for command_name, command_list in new_commands.items():
         assert len(command_list) > 0 and command_list[0] is not None
         args = [suite_name, command_name] + command_list[1:_length_of_command]
@@ -755,6 +757,11 @@ def command(suite_name, command_name, usage_msg='', doc_function=None, props=Non
     :param usage_msg: message to display usage.
     :param doc_function: function to render the documentation for this feature.
     :param props: a dictionary of properties attributed to this command.
+                  Use ``SUITE_DISPATCH_ROOT_SUITES_PROPS`` for commands
+                  that already traverse imported suites when run for a root suite. This
+                  lets repo-suite dispatch reduce all or diff-selected suites to the
+                  affected root suites instead of invoking the command redundantly for
+                  every local suite.
     :param auto_add: automatically it to the commands.
     :return: the decorator factory for the function.
     """
@@ -765,6 +772,19 @@ def command(suite_name, command_name, usage_msg='', doc_function=None, props=Non
         return mx_command
 
     return mx_command_decorator_factory
+
+
+# Property key understood by mx_repo_suite when deciding how repo-suite selection
+# flags dispatch a command across local suites in the current repository tree.
+SUITE_DISPATCH_SCOPE_PROP = 'suite_dispatch_scope'
+
+# Property value for commands that already traverse imported suites when invoked
+# for a root suite, so repo-suite dispatch can reduce the selection to root suites.
+_SUITE_DISPATCH_ROOT_SUITES = 'root-suites'
+
+SUITE_DISPATCH_ROOT_SUITES_PROPS = {
+    SUITE_DISPATCH_SCOPE_PROP: _SUITE_DISPATCH_ROOT_SUITES,
+}
 
 ### ~~~~~~~~~~~~~ Language support
 
@@ -18155,7 +18175,12 @@ def show_suites(args):
             if isinstance(e, Library):
                 return join(e.suite.dir, e.path)
             if isinstance(e, Distribution):
-                return e.path
+                if hasattr(e, "path"):
+                    return e.path
+                if hasattr(e, "output_directory"):
+                    return e.output_directory()
+                if hasattr(e, "output_witness"):
+                    return e.output_witness()
             if isinstance(e, Project):
                 return e.dir
         return None
@@ -18682,7 +18707,7 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 
 update_commands("mx", {
-    'autopep8': [autopep8, '[options]'],
+    'autopep8': [autopep8, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'pyformat': [pyformat, '[options]'],
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
@@ -18690,29 +18715,29 @@ update_commands("mx", {
     'benchtable': [mx_benchplot.benchtable, '[options]'],
     'benchplot': [mx_benchplot.benchplot, '[options]'],
     'binary-url': [binary_url, '<repository id> <distribution name>'],
-    'build': [build, '[options]'],
-    'canonicalizeprojects': [canonicalizeprojects, ''],
-    'checkcopyrights': [checkcopyrights, '[options]'],
+    'build': [build, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'canonicalizeprojects': [canonicalizeprojects, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'checkcopyrights': [checkcopyrights, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'checkmarkdownlinks': [checkmarkdownlinks, '[paths]'],
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
-    'checkstyle': [checkstyle, ''],
+    'checkstyle': [checkstyle, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'classpath': [classpath_cli, '[dependency...]'],
-    'clean': [clean, ''],
+    'clean': [clean, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'deploy-artifacts': [deploy_artifacts, ''],
     'deploy-binary' : [deploy_binary, ''],
     'envs': [show_envs, '[options]'],
     'verifymultireleaseprojects' : [verifyMultiReleaseProjects, ''],
     'flattenmultireleasesources' : [flattenMultiReleaseSources, 'version'],
-    'spotbugs': [mx_spotbugs.spotbugs, ''],
-    'findclass': [findclass, ''],
+    'spotbugs': [mx_spotbugs.spotbugs, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'findclass': [findclass, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'gate': [mx_gate.gate, '[options]'],
     'help': [help_, '[command]'],
-    'hg': [hg_command, '[options]'],
+    'hg': [hg_command, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'init' : [suite_init_cmd, '[options] name'],
     'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml,lcov}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
-    'javadoc': [javadoc, '[options]'],
+    'javadoc': [javadoc, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'javap': [javap, '[options] <class name patterns>'],
     'lcov-report' : [mx_gate.lcov_report, '[options]'],
     'maven-deploy' : [maven_deploy, ''],
@@ -18721,32 +18746,32 @@ update_commands("mx", {
     'mergetool-suite-import': [mergetool.mergetool_suite_import, ''],
     'mx-sync-common-ci': [sync_ci.mx_sync_common_ci, 'Download common CI files from github'],
     'minheap' : [run_java_min_heap, ''],
-    'projectgraph': [projectgraph, ''],
-    'projects': [show_projects, ''],
-    'jar-distributions': [show_jar_distributions, ''],
-    'pylint': [pylint, ''],
+    'projectgraph': [projectgraph, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'projects': [show_projects, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'jar-distributions': [show_jar_distributions, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'pylint': [pylint, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'quiet-run': [quiet_run, ''],
-    'sbookmarkimports': [sbookmarkimports, '[options]'],
-    'scheckimports': [scheckimports, '[options]'],
+    'sbookmarkimports': [sbookmarkimports, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'scheckimports': [scheckimports, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'sclone': [sclone, '[options]'],
     'scloneimports': [scloneimports, '[options]'],
-    'sforceimports': [sforceimports, ''],
+    'sforceimports': [sforceimports, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'sha1': [sha1, ''],
     'sigtest': [mx_sigtest.sigtest, ''],
-    'sincoming': [sincoming, ''],
-    'site': [site, '[options]'],
+    'sincoming': [sincoming, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'site': [site, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'sonarqube-upload': [mx_gate.sonarqube_upload, '[options]'],
     'coverage-upload': [mx_gate.coverage_upload, '[options]'],
-    'spull': [spull, '[options]'],
-    'stip': [stip, ''],
+    'spull': [spull, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'stip': [stip, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'suites': [show_suites, ''],
     'paths': [show_paths, ''],
-    'supdate': [supdate, ''],
-    'sversions': [sversions, '[options]'],
+    'supdate': [supdate, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
+    'sversions': [sversions, '[options]', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
     'thirdpartydeps': [_thirdpartydeps, ''],
     'update': [update, ''],
-    'update-digests': [_update_digests, ''],
+    'update-digests': [_update_digests, '', None, SUITE_DISPATCH_ROOT_SUITES_PROPS],
     'unstrip': [_unstrip, '[options]'],
     'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'verifylibraryurls': [verify_library_urls, ''],
