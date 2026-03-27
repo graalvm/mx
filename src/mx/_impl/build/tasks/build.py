@@ -82,6 +82,7 @@ class BuildTask(Buildable, Task):
         super().__init__(subject, args, parallelism)
         self._saved_config_path = path.join(subject.suite.get_mx_output_dir(), 'savedConfig', type(subject).__name__,
                                             subject._extra_artifact_discriminant(), self.name)
+        self._cached_build_state: Optional[Tuple[bool, str | None]] = None
 
     def _get_config(self) -> dict:
         """
@@ -123,14 +124,43 @@ class BuildTask(Buildable, Task):
         """
         Execute the build task.
         """
+        buildNeeded, reason = self.getBuildState()
+        if buildNeeded:
+            if self.args.clean and not self.cleanForbidden():
+                self.logClean()
+                self.clean()
+            elif not self.cleanForbidden():
+                self.clean(forBuild=True)
+            start_time = time.time()
+            self.logBuild(reason)
+            try:
+                _built = self.build()
+            except:
+                # In concurrent builds, this helps identify on the console which build failed
+                log(self._timestamp() + f"{self}: Failed due to error: {sys.exc_info()[1]}")
+                raise
+            self._persist_config()
+            # The build task is `built` if the `build()` function returns True or None (legacy)
+            self.built = _built or _built is None
+            self.logBuildDone(time.time() - start_time)
+            logv(f'Finished {self}')
+        else:
+            self.logSkip(reason)
+
+    def getBuildState(self) -> Tuple[bool, str | None]:
+        if self._cached_build_state is None:
+            self._cached_build_state = self._computeBuildState()
+        return self._cached_build_state
+
+    def canSkipPrepare(self) -> bool:
+        return False
+
+    def _computeBuildState(self) -> Tuple[bool, str | None]:
         if self.buildForbidden():
-            self.logSkip()
-            return
+            return False, None
         buildNeeded = False
         reason = "unknown"
         if self.args.clean and not self.cleanForbidden():
-            self.logClean()
-            self.clean()
             buildNeeded = True
             reason = 'clean'
         if not buildNeeded:
@@ -167,24 +197,7 @@ class BuildTask(Buildable, Task):
             if __name__ != self.__module__ and not self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
                 newestInput = newestInput.timestamp if newestInput else float(0)
             buildNeeded, reason = self.needsBuild(newestInput)
-        if buildNeeded:
-            if not self.args.clean and not self.cleanForbidden():
-                self.clean(forBuild=True)
-            start_time = time.time()
-            self.logBuild(reason)
-            try:
-                _built = self.build()
-            except:
-                # In concurrent builds, this helps identify on the console which build failed
-                log(self._timestamp() + f"{self}: Failed due to error: {sys.exc_info()[1]}")
-                raise
-            self._persist_config()
-            # The build task is `built` if the `build()` function returns True or None (legacy)
-            self.built = _built or _built is None
-            self.logBuildDone(time.time() - start_time)
-            logv(f'Finished {self}')
-        else:
-            self.logSkip(reason)
+        return buildNeeded, reason
 
     def _timestamp(self) -> str:
         if self.args.print_timing:

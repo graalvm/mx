@@ -5201,6 +5201,9 @@ class AbstractArchiveTask(BuildTask):
 
 
 class JARArchiveTask(AbstractArchiveTask):
+    def canSkipPrepare(self):
+        return True
+
     def buildForbidden(self):
         if super(JARArchiveTask, self).buildForbidden():
             return True
@@ -7366,6 +7369,9 @@ class JavaBuildTask(ProjectBuildTask):
         if exists(join(self.subject.dir, 'plugin.xml')):  # eclipse plugin project
             return True
         return False
+
+    def canSkipPrepare(self):
+        return True
 
     def cleanForbidden(self):
         if ProjectBuildTask.cleanForbidden(self):
@@ -15063,6 +15069,17 @@ def _build_with_report(cmd_args, build_report, parser=None):
             logv('[Disabling use of compile daemon for single build task]')
             args.no_daemon = True
     daemons = {}
+
+    def _can_precheck_without_prepare(task):
+        return isinstance(task, BuildTask) and task.canSkipPrepare()
+
+    def _mark_task_skipped(task):
+        task._start_time = time.time()
+        _, reason = task.getBuildState()
+        task.logSkip(reason)
+        task._finished = True
+        task._end_time = time.time()
+
     if args.parallelize and onlyDeps is None:
         _before_fork()
 
@@ -15087,7 +15104,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
 
         def remainingDepsDepth(task):
             if task._d is None:
-                incompleteDeps = [d for d in task.deps if d.proc is None or not d._finished]
+                incompleteDeps = [d for d in task.deps if not getattr(d, '_finished', False)]
                 if len(incompleteDeps) == 0:
                     task._d = 0
                 else:
@@ -15212,7 +15229,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
 
             def depsDone(task):
                 for d in task.deps:
-                    if d.proc is None or not d._finished:
+                    if not getattr(d, '_finished', False):
                         return False
                 return True
 
@@ -15226,9 +15243,15 @@ def _build_with_report(cmd_args, build_report, parser=None):
 
             added_new_tasks = False
             worklist.sort(key=lambda task: task.build_time, reverse=True)
-            for task in worklist:
+            for task in worklist[:]:
                 if depsDone(task) and _activeCpus(active) + task.parallelism <= cpus:
                     worklist.remove(task)
+                    if _can_precheck_without_prepare(task):
+                        buildNeeded, _ = task.getBuildState()
+                        if not buildNeeded:
+                            _mark_task_skipped(task)
+                            added_new_tasks = True
+                            continue
                     task.initSharedMemoryState()
                     task.prepare(daemons)
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
@@ -15281,7 +15304,14 @@ def _build_with_report(cmd_args, build_report, parser=None):
 
     else:  # not parallelize
         for t in sortedTasks:
-            t.prepare(daemons)
+            if isinstance(t, BuildTask):
+                buildNeeded = True
+                if _can_precheck_without_prepare(t):
+                    buildNeeded, _ = t.getBuildState()
+                if buildNeeded:
+                    t.prepare(daemons)
+            else:
+                t.prepare(daemons)
             t.execute()
 
     for daemon in daemons.values():

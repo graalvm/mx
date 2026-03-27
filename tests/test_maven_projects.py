@@ -3,10 +3,13 @@ import pathlib
 import re
 import tempfile
 
+from argparse import Namespace
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import cast
 
 import mx
+from mx._impl.build.tasks.noop import NoOpTask
 from mx._impl.mavenproject import ETMavenPOM
 
 
@@ -229,6 +232,15 @@ def test_maven_project():
         test_project(project)
 
 
+def test_noop_task_is_skipped():
+    task = NoOpTask(SimpleNamespace(name="NOOP"), Namespace())
+    task.enter()
+    task.execute()
+    task.leave()
+    assert task.status == "skipped"
+
+
 def tests():
     test_pom_helper()
     test_maven_project()
+    test_noop_task_is_skipped()
