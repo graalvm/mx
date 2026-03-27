@@ -699,7 +699,15 @@ def test_find_pyfiles_includes_suite_tests_with_vc_locate():
             pyfiles = orig_mx._find_pyfiles(find_all=False, primary=True, walk=False)
 
         assert pyfiles == [suite_file, test_file]
-        assert locate_patterns == [(suite_dir, ("mx.fake/**.py", "tests/**.py"))]
+        assert locate_patterns == [
+            (
+                suite_dir,
+                (
+                    os.path.join("mx.fake", "**.py"),
+                    os.path.join("tests", "**.py"),
+                ),
+            )
+        ]
 
 
 def test_find_pyfiles_includes_suite_tests_with_walk():
