@@ -9061,6 +9061,8 @@ Potentially long running operations should log the command. If '-v' is set
 the command should be logged.
 """
 class VC(object, metaclass=ABCMeta):
+    _vc_root_cache = {}
+
     """
     base class for all supported Distributed Version Control abstractions
 
@@ -9120,6 +9122,14 @@ class VC(object, metaclass=ABCMeta):
         determined followed by the root of the repository or None.
         :rtype: :class:`VC`, str
         """
+        cache_key = realpath(os.path.abspath(directory))
+        cached = VC._vc_root_cache.get(cache_key)
+        if cached is not None:
+            best_vc, best_root = cached
+            if abortOnError and best_root is None:
+                abort('cannot determine VC and root for ' + directory)
+            return best_vc, best_root
+
         best_root = None
         best_vc = None
         for vcs in _vc_systems:
@@ -9131,6 +9141,7 @@ class VC(object, metaclass=ABCMeta):
             if best_root is None or len(root) > len(best_root):  # prefer more nested vcs roots
                 best_root = root
                 best_vc = vcs
+        VC._vc_root_cache[cache_key] = (best_vc, best_root)
         if abortOnError and best_root is None:
             abort('cannot determine VC and root for ' + directory)
         return best_vc, best_root
@@ -9929,6 +9940,8 @@ class GitConfig(VC):
         VC.__init__(self, 'git', 'Git')
         self.missing = 'No Git executable found. You must install Git in order to proceed!'
         self.object_cache_mode = get_env('MX_GIT_CACHE') or None
+        self._parent_cache = {}
+        self._root_cache = {}
         if self.object_cache_mode not in [None, 'reference', 'dissociated', 'refcache']:
             abort("MX_GIT_CACHE was '{}' expected '', 'reference', 'dissociated' or 'refcache'")
 
@@ -10020,13 +10033,18 @@ class GitConfig(VC):
         """
         self.check_for_git()
         # We don't use run because this can be called very early before _opts is set
+        cache_key = realpath(os.path.abspath(vcdir))
+        if cache_key in self._parent_cache:
+            return self._parent_cache[cache_key]
         if exists(join(vcdir, self.metadir(), 'MERGE_HEAD')):
             if abortOnError:
                 abort('More than one parent exist during merge')
             return None
         try:
             out = _check_output_str(['git', 'show', '--pretty=format:%H', "-s", 'HEAD'], cwd=vcdir)
-            return out.strip()
+            parent = out.strip()
+            self._parent_cache[cache_key] = parent
+            return parent
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git show failed')
@@ -10686,16 +10704,27 @@ class GitConfig(VC):
             return False
 
     def root(self, directory, abortOnError=True):
-        if VC._find_metadata_dir(directory, '.git'):
+        metadata_dir = VC._find_metadata_dir(directory, '.git')
+        cache_key = realpath(os.path.abspath(metadata_dir)) if metadata_dir else realpath(os.path.abspath(directory))
+        if cache_key in self._root_cache:
+            root = self._root_cache[cache_key]
+            if root is None and abortOnError:
+                abort('No .git directory')
+            return root
+        if metadata_dir:
             if self.check_for_git(abortOnError=True):
                 try:
                     out = _check_output_str(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
-                    return _maybe_fix_external_cygwin_path(out.strip())
+                    root = _maybe_fix_external_cygwin_path(out.strip())
+                    self._root_cache[cache_key] = root
+                    return root
                 except subprocess.CalledProcessError:
                     if abortOnError:
                         abort('`git rev-parse --show-toplevel` (root) failed')
-        elif abortOnError:
-            abort('No .git directory')
+        else:
+            self._root_cache[cache_key] = None
+            if abortOnError:
+                abort('No .git directory')
         return None
 
 
