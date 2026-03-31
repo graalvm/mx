@@ -45,13 +45,13 @@ __all__ = [
     "override_suite_eclipse_settings",
 ]
 
-import json, os, re, shutil, time, zipfile, tempfile
+import json, os, re, time, zipfile, tempfile
 
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from os.path import join, basename, dirname, exists, isdir, abspath
 from pathlib import Path
 from io import StringIO
@@ -66,8 +66,7 @@ from . import mx_javamodules
 def eclipseinit_and_format_files(eclipse_exe, config, files):
     """Wrapper for :func:`_format_files` that automatically initializes the workspace and eclipse launch state."""
 
-    wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
-    with _TempEclipseWorkspaceMetadata(wsroot):
+    with _eclipseformat_workspace() as wsroot:
         with _TempEclipseLaunch(eclipse_exe) as eclipse_launch:
             _format_files(eclipse_exe, wsroot, eclipse_launch.eclipse_ini, eclipse_launch.configuration_dir, config, files)
 
@@ -87,6 +86,7 @@ def _format_files(eclipse_exe, wsroot, eclipse_ini, eclipse_configuration, confi
     capture = mx.OutputCapture()
     jdk = mx.get_tools_jdk(purpose='eclipseformat')
     rc = mx.run([eclipse_exe,
+                 '--launcher.suppressErrors',
                  '--launcher.ini', eclipse_ini,
                  '-nosplash',
                  '-configuration', eclipse_configuration,
@@ -141,19 +141,13 @@ class _TempEclipseLaunch:
         self.tmp_eclipseini.__exit__(*args)
 
 
-class _TempEclipseWorkspaceMetadata:
-    """Tracks workspace metadata created by formatter launches and removes it if it did not exist beforehand."""
+@contextmanager
+def _eclipseformat_workspace():
+    """Refreshes formatter project metadata and yields a fresh temporary workspace for headless formatter runs."""
 
-    def __init__(self, wsroot):
-        self.metadata_dir = join(wsroot, '.metadata')
-        self.had_metadata = exists(self.metadata_dir)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        if not self.had_metadata and exists(self.metadata_dir):
-            shutil.rmtree(self.metadata_dir)
+    eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
+    with tempfile.TemporaryDirectory(prefix='mx-eclipse-workspace-') as wsroot:
+        yield wsroot
 
 
 _eclipseformat_attribute_name = 'eclipseformat'
@@ -219,91 +213,89 @@ def eclipseformat(args):
         filelist = [abspath(line.strip()) for line in args.filelist.readlines()]
         args.filelist.close()
 
-    wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
+    with _eclipseformat_workspace() as wsroot:
+        # build list of projects to be processed
+        if args.projects is not None:
+            projectsToProcess = [mx.project(name) for name in args.projects.split(',')]
+        elif args.primary:
+            projectsToProcess = mx.projects(limit_to_primary=True)
+        else:
+            projectsToProcess = _default_eclipseformat_candidates(include_distributions=args.distributions)
 
-    # build list of projects to be processed
-    if args.projects is not None:
-        projectsToProcess = [mx.project(name) for name in args.projects.split(',')]
-    elif args.primary:
-        projectsToProcess = mx.projects(limit_to_primary=True)
-    else:
-        projectsToProcess = _default_eclipseformat_candidates(include_distributions=args.distributions)
+        if args.distributions and args.projects is not None:
+            projectsToProcess += _eclipseformat_distributions()
+        elif args.distributions and args.primary:
+            projectsToProcess += _eclipseformat_distributions(limit_to_primary=True)
 
-    if args.distributions and args.projects is not None:
-        projectsToProcess += _eclipseformat_distributions()
-    elif args.distributions and args.primary:
-        projectsToProcess += _eclipseformat_distributions(limit_to_primary=True)
+        class Batch:
+            def __init__(self, settingsDir):
+                self.path = join(settingsDir, 'org.eclipse.jdt.core.prefs')
+                self.cachedHash = None
+                self.removeTrailingWhitespace = False
 
-    class Batch:
-        def __init__(self, settingsDir):
-            self.path = join(settingsDir, 'org.eclipse.jdt.core.prefs')
-            self.cachedHash = None
-            self.removeTrailingWhitespace = False
+                jdtUiPrefsPath = join(settingsDir, 'org.eclipse.jdt.ui.prefs')
+                if not os.path.exists(jdtUiPrefsPath):
+                    return
+                with open(jdtUiPrefsPath) as fp:
+                    jdtUiPrefs = fp.read()
+                self.removeTrailingWhitespace = 'sp_cleanup.remove_trailing_whitespaces_all=true' in jdtUiPrefs
+                if self.removeTrailingWhitespace:
+                    assert 'sp_cleanup.remove_trailing_whitespaces=true' in jdtUiPrefs and 'sp_cleanup.remove_trailing_whitespaces_ignore_empty=false' in jdtUiPrefs
 
-            jdtUiPrefsPath = join(settingsDir, 'org.eclipse.jdt.ui.prefs')
-            if not os.path.exists(jdtUiPrefsPath):
-                return
-            with open(jdtUiPrefsPath) as fp:
-                jdtUiPrefs = fp.read()
-            self.removeTrailingWhitespace = 'sp_cleanup.remove_trailing_whitespaces_all=true' in jdtUiPrefs
-            if self.removeTrailingWhitespace:
-                assert 'sp_cleanup.remove_trailing_whitespaces=true' in jdtUiPrefs and 'sp_cleanup.remove_trailing_whitespaces_ignore_empty=false' in jdtUiPrefs
+            def __hash__(self):
+                if not self.cachedHash:
+                    self.cachedHash = (self.read_core_prefs_file(), self.removeTrailingWhitespace).__hash__()
+                return self.cachedHash
 
-        def __hash__(self):
-            if not self.cachedHash:
-                self.cachedHash = (self.read_core_prefs_file(), self.removeTrailingWhitespace).__hash__()
-            return self.cachedHash
+            def __eq__(self, other):
+                if not isinstance(other, Batch):
+                    return False
+                if self.removeTrailingWhitespace != other.removeTrailingWhitespace:
+                    return False
+                if self.path == other.path:
+                    return True
+                return self.read_core_prefs_file() == other.read_core_prefs_file()
 
-        def __eq__(self, other):
-            if not isinstance(other, Batch):
-                return False
-            if self.removeTrailingWhitespace != other.removeTrailingWhitespace:
-                return False
-            if self.path == other.path:
-                return True
-            return self.read_core_prefs_file() == other.read_core_prefs_file()
+            def read_core_prefs_file(self):
+                with open(self.path) as fp:
+                    content = fp.read()
+                    # processAnnotations does not matter for eclipseformat, ignore its value as otherwise we would create extra batches and slow down eclipseformat
+                    content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled\n', '').replace('org.eclipse.jdt.core.compiler.processAnnotations=enabled\n', '')
+                    return content
 
-        def read_core_prefs_file(self):
-            with open(self.path) as fp:
-                content = fp.read()
-                # processAnnotations does not matter for eclipseformat, ignore its value as otherwise we would create extra batches and slow down eclipseformat
-                content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled\n', '').replace('org.eclipse.jdt.core.compiler.processAnnotations=enabled\n', '')
-                return content
+        modified = []
+        batches = {}  # all sources with the same formatting settings are formatted together
+        for p in projectsToProcess:
+            if not p.isJavaProject():
+                continue
+            if not _is_enabled_for_project(p):
+                mx.logv(f'[not formatting {p.name} because "{_eclipseformat_attribute_name}" is False in suite.py]')
+                continue
+            sourceDirs = p.source_dirs()
 
-    modified = []
-    batches = {}  # all sources with the same formatting settings are formatted together
-    for p in projectsToProcess:
-        if not p.isJavaProject():
-            continue
-        if not _is_enabled_for_project(p):
-            mx.logv(f'[not formatting {p.name} because "{_eclipseformat_attribute_name}" is False in suite.py]')
-            continue
-        sourceDirs = p.source_dirs()
+            batch = Batch(join(p.dir, '.settings'))
 
-        batch = Batch(join(p.dir, '.settings'))
+            if not exists(batch.path):
+                if mx._opts.verbose:
+                    mx.log(f'[no Eclipse Code Formatter preferences at {batch.path} - skipping]')
+                continue
 
-        if not exists(batch.path):
-            if mx._opts.verbose:
-                mx.log(f'[no Eclipse Code Formatter preferences at {batch.path} - skipping]')
-            continue
+            javafiles = []
+            for sourceDir in sourceDirs:
+                for root, _, files in os.walk(sourceDir):
+                    for f in [join(root, name) for name in files if name.endswith('.java')]:
+                        if filelist is None or f in filelist:
+                            javafiles.append(mx.FileInfo(f))
+            if len(javafiles) == 0:
+                mx.logv(f'[no Java sources in {p.name} - skipping]')
+                continue
 
-        javafiles = []
-        for sourceDir in sourceDirs:
-            for root, _, files in os.walk(sourceDir):
-                for f in [join(root, name) for name in files if name.endswith('.java')]:
-                    if filelist is None or f in filelist:
-                        javafiles.append(mx.FileInfo(f))
-        if len(javafiles) == 0:
-            mx.logv(f'[no Java sources in {p.name} - skipping]')
-            continue
+            res = batches.setdefault(batch, javafiles)
+            if res is not javafiles:
+                res.extend(javafiles)
 
-        res = batches.setdefault(batch, javafiles)
-        if res is not javafiles:
-            res.extend(javafiles)
-
-    mx.log("we have: " + str(len(batches)) + " batches")
-    batch_num = 0
-    with _TempEclipseWorkspaceMetadata(wsroot):
+        mx.log("we have: " + str(len(batches)) + " batches")
+        batch_num = 0
         with _TempEclipseLaunch(eclipse_exe) as eclipse_launch:
             for batch, javafiles in batches.items():
                 batch_num += 1

@@ -112,7 +112,8 @@ local with(platform, java_release, timelimit="15:00") = {
     mx_unit_test:: self.with_name("unit-tests") + {
         run: [
             ['set-export', 'PYTHONPATH', '${PWD}/src:${PYTHONPATH}'],
-            ['python3', path('tests/benchmark_tests.py')]
+            ['python3', path('tests/benchmark_tests.py')],
+            ['python3', path('tests/eclipseformat_tests.py')],
         ],
     },
 
