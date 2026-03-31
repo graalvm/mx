@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2019, 2026, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -366,7 +366,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             compliance = self._compliance_for_build()
             if compliance is not None and compliance >= '9':
                 jdk = mx.get_jdk(compliance)
-                jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
+                jmd = mx_javamodules.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
                 if jmd:
                     setattr(self, '.javaModule', jmd)
 
@@ -540,11 +540,11 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 f.writelines((l + os.linesep for l in self.stripConfig))
         else:
             cp_entries = mx.classpath_entries(self, includeSelf=False)
-            self_jmd = mx.as_java_module(self, jdk) if mx_javamodules.get_java_module_info(self) else None
+            self_jmd = mx_javamodules.as_java_module(self, jdk) if mx_javamodules.get_java_module_info(self) else None
             dep_modules = frozenset(e for e in cp_entries if e.isJARDistribution() and mx_javamodules.get_java_module_info(e))
             dep_module_names = frozenset((mx_javamodules.get_java_module_info(e)[0] for e in dep_modules))
 
-            dep_jmds = frozenset((mx.as_java_module(e, jdk) for e in cp_entries if e.isJARDistribution() and mx_javamodules.get_java_module_info(e)))
+            dep_jmds = frozenset((mx_javamodules.as_java_module(e, jdk) for e in cp_entries if e.isJARDistribution() and mx_javamodules.get_java_module_info(e)))
             dep_jars = mx.classpath(self, includeSelf=False, includeBootClasspath=False, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
 
             # Add jmods from the JDK except those overridden by dependencies
