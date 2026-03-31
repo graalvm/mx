@@ -11464,6 +11464,81 @@ def _run_batched_maven_deploy(specs, repo, settingsXml, dryRun=False):
         os.unlink(batch_pom)
 
 
+def _create_maven_repo_metadata_file(dists, dryRun, cleanup_paths):
+    repo_metadata_xml = XMLDoc()
+    repo_metadata_xml.open('suite-revisions')
+
+    includes_primary = False
+    loaded_suites = suites()
+    for s_ in loaded_suites:
+        if s_.vc:
+            if s_.name == _primary_suite.name:
+                includes_primary = True
+            commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
+            repo_metadata_xml.element('suite', attributes={
+                "name": s_.name,
+                "revision": s_.vc.parent(s_.vc_dir),
+                "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
+                "kind": s_.vc.kind
+            })
+    if not includes_primary:
+        warn(f"Primary suite '{_primary_suite.name}' is not included in the loaded suites. {[s_.name for s_ in loaded_suites]}")
+
+    for d_ in dists:
+        for extra_data_tag, extra_data_attributes in d_.extra_suite_revisions_data():
+            repo_metadata_xml.element(extra_data_tag, attributes=extra_data_attributes)
+
+    repo_metadata_xml.close('suite-revisions')
+    repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
+    cleanup_paths.append(repo_metadata_name)
+    repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
+    if _opts.very_verbose or (dryRun and _opts.verbose):
+        log(repo_metadata)
+    with os.fdopen(repo_metadata_fd, 'w') as f:
+        f.write(repo_metadata)
+    return repo_metadata_name
+
+
+def _create_maven_javadoc_jar(dist, generateDummyJavadoc, validateMetadata, cleanup_paths):
+    tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+    tmpJavadocJar.close()
+    javadocPath = tmpJavadocJar.name
+    if getattr(dist, "noMavenJavadoc", False) or generateDummyJavadoc:
+        with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+            arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
+    else:
+        projects = [p for p in dist.archived_deps() if p.isJavaProject()]
+        tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
+        javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
+        if dist.javadocType == 'implementation':
+            javadocArgs += ['--implementation']
+        else:
+            assert dist.javadocType == 'api'
+        if dist.allowsJavadocWarnings:
+            javadocArgs += ['--allow-warnings']
+        javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
+
+        emptyJavadoc = True
+        with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+            javadocDir = join(tmpDir, 'javadoc')
+            for (dirpath, _, filenames) in os.walk(javadocDir):
+                for filename in filenames:
+                    emptyJavadoc = False
+                    src = join(dirpath, filename)
+                    dst = os.path.relpath(src, javadocDir)
+                    arc.write(src, dst)
+        shutil.rmtree(tmpDir)
+        if emptyJavadoc:
+            os.unlink(javadocPath)
+            if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
+                raise abort(f"Missing javadoc for {dist.name}")
+            javadocPath = None
+            warn(f'Javadoc for {dist.name} was empty')
+    if javadocPath:
+        cleanup_paths.append(javadocPath)
+    return javadocPath
+
+
 def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
                          srcPath=None,
                          description=None,
@@ -11761,40 +11836,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
     cleanup_paths = []
     deploy_specs = []
     try:
-        if deployRepoMetadata:
-            repo_metadata_xml = XMLDoc()
-            repo_metadata_xml.open('suite-revisions')
-
-            includes_primary = False
-            loaded_suites = suites()
-            for s_ in loaded_suites:
-                if s_.vc:
-                    if s_.name == _primary_suite.name:
-                        includes_primary = True
-                    commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
-                    repo_metadata_xml.element('suite', attributes={
-                        "name": s_.name,
-                        "revision": s_.vc.parent(s_.vc_dir),
-                        "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
-                        "kind": s_.vc.kind
-                    })
-            if not includes_primary:
-                warn(f"Primary suite '{_primary_suite.name}' is not included in the loaded suites. {[s_.name for s_ in loaded_suites]}")
-
-            for d_ in dists:
-                for extra_data_tag, extra_data_attributes in d_.extra_suite_revisions_data():
-                    repo_metadata_xml.element(extra_data_tag, attributes=extra_data_attributes)
-
-            repo_metadata_xml.close('suite-revisions')
-            repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
-            cleanup_paths.append(repo_metadata_name)
-            repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
-            if _opts.very_verbose or (dryRun and _opts.verbose):
-                log(repo_metadata)
-            with os.fdopen(repo_metadata_fd, 'w') as f:
-                f.write(repo_metadata)
-        else:
-            repo_metadata_name = None
+        repo_metadata_name = _create_maven_repo_metadata_file(dists, dryRun, cleanup_paths) if deployRepoMetadata else None
 
         for dist in dists:
             for platform in dist.platforms:
@@ -11821,42 +11863,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                     if dist.isJARDistribution():
                         javadocPath = None
                         if generateJavadoc:
-                            tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
-                            tmpJavadocJar.close()
-                            javadocPath = tmpJavadocJar.name
-                            if getattr(dist, "noMavenJavadoc", False) or generateDummyJavadoc:
-                                with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
-                                    arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
-                            else:
-                                projects = [p for p in dist.archived_deps() if p.isJavaProject()]
-                                tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
-                                javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
-                                if dist.javadocType == 'implementation':
-                                    javadocArgs += ['--implementation']
-                                else:
-                                    assert dist.javadocType == 'api'
-                                if dist.allowsJavadocWarnings:
-                                    javadocArgs += ['--allow-warnings']
-                                javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
-
-                                emptyJavadoc = True
-                                with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
-                                    javadocDir = join(tmpDir, 'javadoc')
-                                    for (dirpath, _, filenames) in os.walk(javadocDir):
-                                        for filename in filenames:
-                                            emptyJavadoc = False
-                                            src = join(dirpath, filename)
-                                            dst = os.path.relpath(src, javadocDir)
-                                            arc.write(src, dst)
-                                shutil.rmtree(tmpDir)
-                                if emptyJavadoc:
-                                    os.unlink(javadocPath)
-                                    if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
-                                        raise abort(f"Missing javadoc for {dist.name}")
-                                    javadocPath = None
-                                    warn(f'Javadoc for {dist.name} was empty')
-                        if javadocPath:
-                            cleanup_paths.append(javadocPath)
+                            javadocPath = _create_maven_javadoc_jar(dist, generateDummyJavadoc, validateMetadata, cleanup_paths)
 
                         extraFiles = []
                         if deployMapFiles and dist.is_stripped():
