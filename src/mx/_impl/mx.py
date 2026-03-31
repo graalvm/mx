@@ -3774,7 +3774,6 @@ from . import mergetool
 from . import sync_ci
 from .pyformat import pyformat
 
-from .mx_javamodules import make_java_module, as_java_module # pylint: disable=unused-import
 from .mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
                            get_module_name, parse_requiresConcealed_attribute
 
