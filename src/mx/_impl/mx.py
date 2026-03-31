@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2022, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2026, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -323,6 +323,7 @@ __all__ = [
 import sys
 import uuid
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
 from typing import Callable, IO, AnyStr, Union, Iterable, Any, Optional, overload, Literal
 
 from mx._impl.support import java_argument_file
@@ -11325,6 +11326,144 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     return tmp.name
 
 
+@dataclass
+class _MavenDeploySpec:
+    group_id: str
+    artifact_id: str
+    version: str
+    file_path: str
+    extension: str
+    pom_file: str | None = None
+    src_path: str | None = None
+    javadoc_path: str | None = None
+    extra_files: list[tuple[str, str, str]] | None = None
+
+
+def _create_maven_deploy_spec(groupId, artifactId, filePath, version,
+                              srcPath=None,
+                              extension='jar',
+                              pomFile=None,
+                              javadocPath=None,
+                              extraFiles=None):
+    return _MavenDeploySpec(group_id=groupId,
+                            artifact_id=artifactId,
+                            version=version,
+                            file_path=filePath,
+                            extension=extension,
+                            pom_file=pomFile,
+                            src_path=srcPath,
+                            javadoc_path=javadocPath,
+                            extra_files=extraFiles)
+
+
+def _maven_batch_command(settingsXml):
+    cmd = ['--batch-mode']
+
+    if not _opts.verbose:
+        cmd.append('--quiet')
+
+    if _opts.verbose:
+        cmd.append('--errors')
+
+    if _opts.very_verbose:
+        cmd.append('--debug')
+
+    if settingsXml:
+        cmd += ['-s', settingsXml]
+
+    return cmd
+
+
+def _write_batched_maven_deploy_pom(specs, repo):
+    plugin_group_id = 'org.apache.maven.plugins'
+    plugin_artifact_id = 'maven-install-plugin' if repo == maven_local_repository() else 'maven-deploy-plugin'
+    plugin_goal = 'install-file' if repo == maven_local_repository() else 'deploy-file'
+    plugin_version = '3.1.4'
+
+    pom = XMLDoc()
+    pom.open('project', attributes={
+        'xmlns': "http://maven.apache.org/POM/4.0.0",
+        'xmlns:xsi': "http://www.w3.org/2001/XMLSchema-instance",
+        'xsi:schemaLocation': "http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+    })
+    pom.element('modelVersion', data='4.0.0')
+    pom.element('groupId', data='mx.internal')
+    pom.element('artifactId', data='mx-batch-maven-deploy')
+    pom.element('version', data='1')
+    pom.element('packaging', data='pom')
+    pom.open('build')
+    pom.open('plugins')
+    pom.open('plugin')
+    pom.element('groupId', data=plugin_group_id)
+    pom.element('artifactId', data=plugin_artifact_id)
+    pom.element('version', data=plugin_version)
+    pom.open('executions')
+    for i, spec in enumerate(specs):
+        pom.open('execution')
+        pom.element('id', data=f'mx-batch-deploy-{i}')
+        pom.element('phase', data='validate')
+        pom.open('goals')
+        pom.element('goal', data=plugin_goal)
+        pom.close('goals')
+        pom.open('configuration')
+        if repo != maven_local_repository():
+            pom.element('repositoryId', data=repo.get_maven_id())
+            pom.element('url', data=repo.get_url(spec.version))
+            pom.element('retryFailedDeploymentCount', data='10')
+        pom.element('groupId', data=spec.group_id)
+        pom.element('artifactId', data=spec.artifact_id)
+        pom.element('version', data=spec.version)
+        pom.element('file', data=spec.file_path)
+        pom.element('packaging', data=spec.extension)
+        if spec.pom_file:
+            pom.element('pomFile', data=spec.pom_file)
+        else:
+            pom.element('generatePom', data='true')
+        if spec.src_path:
+            pom.element('sources', data=spec.src_path)
+        if spec.javadoc_path:
+            pom.element('javadoc', data=spec.javadoc_path)
+        if spec.extra_files:
+            pom.element('files', data=','.join(ef[0] for ef in spec.extra_files))
+            pom.element('classifiers', data=','.join(ef[1] for ef in spec.extra_files))
+            pom.element('types', data=','.join(ef[2] for ef in spec.extra_files))
+        pom.close('configuration')
+        pom.close('execution')
+    pom.close('executions')
+    pom.close('plugin')
+    pom.close('plugins')
+    pom.close('build')
+    pom.close('project')
+
+    tmp = tempfile.NamedTemporaryFile('w', suffix='.pom', delete=False)
+    tmp.write(pom.xml(indent='  ', newl='\n'))
+    tmp.close()
+    return tmp.name
+
+
+def _run_batched_maven_deploy(specs, repo, settingsXml, dryRun=False):
+    if not specs:
+        return
+
+    action = 'Installing' if repo == maven_local_repository() else 'Deploying'
+    for spec in specs:
+        log(f'{action} {spec.group_id}:{spec.artifact_id}...')
+
+    batch_pom = _write_batched_maven_deploy_pom(specs, repo)
+    try:
+        cmd = _maven_batch_command(settingsXml)
+        cmd += ['-f', batch_pom, 'validate']
+        if _opts.very_verbose or (dryRun and _opts.verbose):
+            with open(batch_pom) as f:
+                log(f.read())
+        if dryRun:
+            logv(' '.join((shlex.quote(t) for t in cmd)))
+        else:
+            run_maven(cmd)
+    finally:
+        os.unlink(batch_pom)
+
+
 def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
                          srcPath=None,
                          description=None,
@@ -11618,176 +11757,198 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
             for distLicense in dist.theLicense:
                 if distLicense not in repo.licenses:
                     abort(f'Distribution with {distLicense.name} license are not cleared for upload to {repo.name}: can not upload {dist.name}')
-    if deployRepoMetadata:
-        repo_metadata_xml = XMLDoc()
-        repo_metadata_xml.open('suite-revisions')
 
-        includes_primary = False
-        loaded_suites = suites()
-        for s_ in loaded_suites:
-            if s_.vc:
-                if s_.name == _primary_suite.name:
-                    includes_primary = True
-                commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
-                repo_metadata_xml.element('suite', attributes={
-                    "name": s_.name,
-                    "revision": s_.vc.parent(s_.vc_dir),
-                    "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
-                    "kind": s_.vc.kind
-                })
-        if not includes_primary:
-            warn(f"Primary suite '{_primary_suite.name}' is not included in the loaded suites. {[s_.name for s_ in loaded_suites]}")
+    cleanup_paths = []
+    deploy_specs = []
+    try:
+        if deployRepoMetadata:
+            repo_metadata_xml = XMLDoc()
+            repo_metadata_xml.open('suite-revisions')
 
-        for d_ in dists:
-            for extra_data_tag, extra_data_attributes in d_.extra_suite_revisions_data():
-                repo_metadata_xml.element(extra_data_tag, attributes=extra_data_attributes)
+            includes_primary = False
+            loaded_suites = suites()
+            for s_ in loaded_suites:
+                if s_.vc:
+                    if s_.name == _primary_suite.name:
+                        includes_primary = True
+                    commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
+                    repo_metadata_xml.element('suite', attributes={
+                        "name": s_.name,
+                        "revision": s_.vc.parent(s_.vc_dir),
+                        "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
+                        "kind": s_.vc.kind
+                    })
+            if not includes_primary:
+                warn(f"Primary suite '{_primary_suite.name}' is not included in the loaded suites. {[s_.name for s_ in loaded_suites]}")
 
-        repo_metadata_xml.close('suite-revisions')
-        repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
-        repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
-        if _opts.very_verbose or (dryRun and _opts.verbose):
-            log(repo_metadata)
-        with os.fdopen(repo_metadata_fd, 'w') as f:
-            f.write(repo_metadata)
-    else:
-        repo_metadata_name = None
-    for dist in dists:
-        for platform in dist.platforms:
-            if dist.maven_artifact_id() != dist.maven_artifact_id(platform):
-                full_maven_name = f"{dist.maven_group_id()}:{dist.maven_artifact_id(platform)}"
-                if repo == maven_local_repository():
-                    log(f"Installing dummy {full_maven_name}")
-                    # Allow installing local dummy platform dependend artifacts for other platforms
-                    foreign_platform_dummy_tarball = tempfile.NamedTemporaryFile('w', suffix='.tar.gz', delete=False)
-                    foreign_platform_dummy_tarball.close()
-                    with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
-                        arc.add_str(f"Dummy artifact {full_maven_name} for local maven install\n", full_maven_name + ".README", None)
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
-                    os.unlink(foreign_platform_dummy_tarball.name)
-                else:
-                    logv(f"Skip deploying {full_maven_name}")
-            else:
-                pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
-                if _opts.very_verbose or (dryRun and _opts.verbose):
-                    with open(pomFile) as f:
-                        log(f.read())
-                if dist.isJARDistribution():
-                    javadocPath = None
-                    if generateJavadoc:
-                        tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
-                        tmpJavadocJar.close()
-                        javadocPath = tmpJavadocJar.name
-                        if getattr(dist, "noMavenJavadoc", False) or generateDummyJavadoc:
-                            with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
-                                arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
-                        else:
-                            projects = [p for p in dist.archived_deps() if p.isJavaProject()]
-                            tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
-                            javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
-                            if dist.javadocType == 'implementation':
-                                javadocArgs += ['--implementation']
-                            else:
-                                assert dist.javadocType == 'api'
-                            if dist.allowsJavadocWarnings:
-                                javadocArgs += ['--allow-warnings']
-                            javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
+            for d_ in dists:
+                for extra_data_tag, extra_data_attributes in d_.extra_suite_revisions_data():
+                    repo_metadata_xml.element(extra_data_tag, attributes=extra_data_attributes)
 
-                            emptyJavadoc = True
-                            with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
-                                javadocDir = join(tmpDir, 'javadoc')
-                                for (dirpath, _, filenames) in os.walk(javadocDir):
-                                    for filename in filenames:
-                                        emptyJavadoc = False
-                                        src = join(dirpath, filename)
-                                        dst = os.path.relpath(src, javadocDir)
-                                        arc.write(src, dst)
-                            shutil.rmtree(tmpDir)
-                            if emptyJavadoc:
-                                os.unlink(javadocPath)
-                                if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
-                                    raise abort(f"Missing javadoc for {dist.name}")
-                                javadocPath = None
-                                warn(f'Javadoc for {dist.name} was empty')
+            repo_metadata_xml.close('suite-revisions')
+            repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
+            cleanup_paths.append(repo_metadata_name)
+            repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
+            if _opts.very_verbose or (dryRun and _opts.verbose):
+                log(repo_metadata)
+            with os.fdopen(repo_metadata_fd, 'w') as f:
+                f.write(repo_metadata)
+        else:
+            repo_metadata_name = None
 
-                    extraFiles = []
-                    if deployMapFiles and dist.is_stripped():
-                        extraFiles.append((dist.strip_mapping_file(), 'proguard', 'map'))
-                    if repo_metadata_name:
-                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
-
-                    jar_to_deploy = dist.path
-                    if isinstance(dist.maven, dict):
-                        deployment_module_info = dist.maven.get('moduleInfo')
-                        if deployment_module_info:
-                            jdk = get_jdk(dist.maxJavaCompliance())
-                            if jdk.javaCompliance <= '1.8':
-                                warn('Distribution with "moduleInfo" sub-attribute of the "maven" attribute deployed with JAVA_HOME <= 8', context=dist)
-                            else:
-                                jmd = as_java_module(dist, jdk)
-                                if not jmd.alternatives:
-                                    abort('"moduleInfo" sub-attribute of the "maven" attribute specified but distribution does not contain any "moduleInfo:*" attributes', context=dist)
-                                alt_jmd = jmd.alternatives.get(deployment_module_info)
-                                if not alt_jmd:
-                                    abort(f'"moduleInfo" sub-attribute of the "maven" attribute specifies non-existing "moduleInfo:{deployment_module_info}" attribute', context=dist)
-                                jar_to_deploy = alt_jmd.jarpath
-
-                    pushed_file = dist.prePush(jar_to_deploy)
-                    if getattr(dist, "noMavenSources", False):
-                        tmpSourcesJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
-                        tmpSourcesJar.close()
-                        pushed_src_file = tmpSourcesJar.name
-                        with zipfile.ZipFile(pushed_src_file, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
-                            with StringIO() as license_file_content:
-                                license_ids = dist.theLicense
-                                if not license_ids:
-                                    license_ids = dist.suite.defaultLicense
-                                for resolved_license in get_license(license_ids):
-                                    print(f'{resolved_license.name}    {resolved_license.url}\n', file=license_file_content)
-                                arc.writestr("LICENSE", license_file_content.getvalue())
+        for dist in dists:
+            for platform in dist.platforms:
+                if dist.maven_artifact_id() != dist.maven_artifact_id(platform):
+                    full_maven_name = f"{dist.maven_group_id()}:{dist.maven_artifact_id(platform)}"
+                    if repo == maven_local_repository():
+                        log(f"Installing dummy {full_maven_name}")
+                        # Allow installing local dummy platform dependend artifacts for other platforms
+                        foreign_platform_dummy_tarball = tempfile.NamedTemporaryFile('w', suffix='.tar.gz', delete=False)
+                        foreign_platform_dummy_tarball.close()
+                        cleanup_paths.append(foreign_platform_dummy_tarball.name)
+                        with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
+                            arc.add_str(f"Dummy artifact {full_maven_name} for local maven install\n", full_maven_name + ".README", None)
+                        deploy_specs.append(_create_maven_deploy_spec(dist.maven_group_id(), dist.maven_artifact_id(platform), foreign_platform_dummy_tarball.name,
+                                                                      versionGetter(dist.suite), extension=dist.remoteExtension()))
                     else:
-                        pushed_src_file = dist.prePush(dist.sourcesPath)
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo,
-                                         srcPath=pushed_src_file,
-                                         settingsXml=settingsXml,
-                                         extension=dist.remoteExtension(),
-                                         dryRun=dryRun,
-                                         pomFile=pomFile,
-                                         gpg=gpg, keyid=keyid,
-                                         javadocPath=javadocPath,
-                                         extraFiles=extraFiles)
-                    if pushed_file != jar_to_deploy:
-                        os.unlink(pushed_file)
-                    if pushed_src_file != dist.sourcesPath:
-                        os.unlink(pushed_src_file)
-                    if javadocPath:
-                        os.unlink(javadocPath)
-                elif dist.isTARDistribution() or dist.isZIPDistribution():
-                    extraFiles = []
-                    if repo_metadata_name:
-                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo,
-                                         settingsXml=settingsXml,
-                                         extension=dist.remoteExtension(),
-                                         dryRun=dryRun,
-                                         pomFile=pomFile,
-                                         gpg=gpg, keyid=keyid,
-                                         extraFiles=extraFiles)
-                elif dist.isPOMDistribution():
-                    extraFiles = []
-                    if repo_metadata_name:
-                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pomFile, versionGetter(dist.suite), repo,
-                                         settingsXml=settingsXml,
-                                         extension=dist.remoteExtension(),
-                                         dryRun=dryRun,
-                                         pomFile=pomFile,
-                                         gpg=gpg, keyid=keyid,
-                                         extraFiles=extraFiles)
+                        logv(f"Skip deploying {full_maven_name}")
                 else:
-                    abort_or_warn('Unsupported distribution: ' + dist.name, dist.suite.getMxCompatibility().maven_deploy_unsupported_is_error())
-                os.unlink(pomFile)
-    if repo_metadata_name:
-        os.unlink(repo_metadata_name)
+                    pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
+                    cleanup_paths.append(pomFile)
+                    if _opts.very_verbose or (dryRun and _opts.verbose):
+                        with open(pomFile) as f:
+                            log(f.read())
+                    if dist.isJARDistribution():
+                        javadocPath = None
+                        if generateJavadoc:
+                            tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+                            tmpJavadocJar.close()
+                            javadocPath = tmpJavadocJar.name
+                            if getattr(dist, "noMavenJavadoc", False) or generateDummyJavadoc:
+                                with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                                    arc.writestr("index.html", "<html><body>No Javadoc</body></html>")
+                            else:
+                                projects = [p for p in dist.archived_deps() if p.isJavaProject()]
+                                tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
+                                javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
+                                if dist.javadocType == 'implementation':
+                                    javadocArgs += ['--implementation']
+                                else:
+                                    assert dist.javadocType == 'api'
+                                if dist.allowsJavadocWarnings:
+                                    javadocArgs += ['--allow-warnings']
+                                javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
+
+                                emptyJavadoc = True
+                                with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                                    javadocDir = join(tmpDir, 'javadoc')
+                                    for (dirpath, _, filenames) in os.walk(javadocDir):
+                                        for filename in filenames:
+                                            emptyJavadoc = False
+                                            src = join(dirpath, filename)
+                                            dst = os.path.relpath(src, javadocDir)
+                                            arc.write(src, dst)
+                                shutil.rmtree(tmpDir)
+                                if emptyJavadoc:
+                                    os.unlink(javadocPath)
+                                    if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
+                                        raise abort(f"Missing javadoc for {dist.name}")
+                                    javadocPath = None
+                                    warn(f'Javadoc for {dist.name} was empty')
+                        if javadocPath:
+                            cleanup_paths.append(javadocPath)
+
+                        extraFiles = []
+                        if deployMapFiles and dist.is_stripped():
+                            extraFiles.append((dist.strip_mapping_file(), 'proguard', 'map'))
+                        if repo_metadata_name:
+                            extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
+
+                        jar_to_deploy = dist.path
+                        if isinstance(dist.maven, dict):
+                            deployment_module_info = dist.maven.get('moduleInfo')
+                            if deployment_module_info:
+                                jdk = get_jdk(dist.maxJavaCompliance())
+                                if jdk.javaCompliance <= '1.8':
+                                    warn('Distribution with "moduleInfo" sub-attribute of the "maven" attribute deployed with JAVA_HOME <= 8', context=dist)
+                                else:
+                                    jmd = as_java_module(dist, jdk)
+                                    if not jmd.alternatives:
+                                        abort('"moduleInfo" sub-attribute of the "maven" attribute specified but distribution does not contain any "moduleInfo:*" attributes', context=dist)
+                                    alt_jmd = jmd.alternatives.get(deployment_module_info)
+                                    if not alt_jmd:
+                                        abort(f'"moduleInfo" sub-attribute of the "maven" attribute specifies non-existing "moduleInfo:{deployment_module_info}" attribute', context=dist)
+                                    jar_to_deploy = alt_jmd.jarpath
+
+                        pushed_file = dist.prePush(jar_to_deploy)
+                        if pushed_file != jar_to_deploy:
+                            cleanup_paths.append(pushed_file)
+                        if getattr(dist, "noMavenSources", False):
+                            tmpSourcesJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+                            tmpSourcesJar.close()
+                            pushed_src_file = tmpSourcesJar.name
+                            with zipfile.ZipFile(pushed_src_file, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
+                                with StringIO() as license_file_content:
+                                    license_ids = dist.theLicense
+                                    if not license_ids:
+                                        license_ids = dist.suite.defaultLicense
+                                    for resolved_license in get_license(license_ids):
+                                        print(f'{resolved_license.name}    {resolved_license.url}\n', file=license_file_content)
+                                    arc.writestr("LICENSE", license_file_content.getvalue())
+                        else:
+                            pushed_src_file = dist.prePush(dist.sourcesPath)
+                        if pushed_src_file != dist.sourcesPath:
+                            cleanup_paths.append(pushed_src_file)
+                        deploy_specs.append(_create_maven_deploy_spec(dist.maven_group_id(), dist.maven_artifact_id(), pushed_file,
+                                                                      versionGetter(dist.suite),
+                                                                      srcPath=pushed_src_file,
+                                                                      extension=dist.remoteExtension(),
+                                                                      pomFile=pomFile,
+                                                                      javadocPath=javadocPath,
+                                                                      extraFiles=extraFiles))
+                    elif dist.isTARDistribution() or dist.isZIPDistribution():
+                        extraFiles = []
+                        if repo_metadata_name:
+                            extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
+                        pushed_file = dist.prePush(dist.path)
+                        if pushed_file != dist.path:
+                            cleanup_paths.append(pushed_file)
+                        deploy_specs.append(_create_maven_deploy_spec(dist.maven_group_id(), dist.maven_artifact_id(), pushed_file,
+                                                                      versionGetter(dist.suite),
+                                                                      extension=dist.remoteExtension(),
+                                                                      pomFile=pomFile,
+                                                                      extraFiles=extraFiles))
+                    elif dist.isPOMDistribution():
+                        extraFiles = []
+                        if repo_metadata_name:
+                            extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
+                        deploy_specs.append(_create_maven_deploy_spec(dist.maven_group_id(), dist.maven_artifact_id(), pomFile,
+                                                                      versionGetter(dist.suite),
+                                                                      extension=dist.remoteExtension(),
+                                                                      pomFile=pomFile,
+                                                                      extraFiles=extraFiles))
+                    else:
+                        abort_or_warn('Unsupported distribution: ' + dist.name, dist.suite.getMxCompatibility().maven_deploy_unsupported_is_error())
+
+        if not gpg and len(deploy_specs) > 1:
+            _run_batched_maven_deploy(deploy_specs, repo, settingsXml, dryRun=dryRun)
+        else:
+            for spec in deploy_specs:
+                _deploy_binary_maven(None, spec.artifact_id, spec.group_id, spec.file_path, spec.version, repo,
+                                     srcPath=spec.src_path,
+                                     settingsXml=settingsXml,
+                                     extension=spec.extension,
+                                     dryRun=dryRun,
+                                     pomFile=spec.pom_file,
+                                     gpg=gpg, keyid=keyid,
+                                     javadocPath=spec.javadoc_path,
+                                     extraFiles=spec.extra_files)
+    finally:
+        for path in reversed(cleanup_paths):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 def _deploy_dists(uploader, dists, version_getter, snapshot_id, primary_revision, skip_existing=False, dry_run=False):
