@@ -200,7 +200,7 @@ org.eclipse.jdt.core.formatter.comment.format_line_comments=true
 org.eclipse.jdt.core.formatter.comment.format_source_code=true
 org.eclipse.jdt.core.formatter.comment.indent_parameter_description=true
 org.eclipse.jdt.core.formatter.comment.indent_root_tags=true
-org.eclipse.jdt.core.formatter.comment.insert_new_line_before_root_tags=insert
+org.eclipse.jdt.core.formatter.comment.insert_new_line_before_root_tags=do not insert
 org.eclipse.jdt.core.formatter.comment.insert_new_line_for_parameter=do not insert
 org.eclipse.jdt.core.formatter.comment.line_length=100
 org.eclipse.jdt.core.formatter.comment.new_lines_at_block_boundaries=true
@@ -407,7 +407,7 @@ org.eclipse.jdt.core.formatter.insert_space_between_empty_parens_in_constructor_
 org.eclipse.jdt.core.formatter.insert_space_between_empty_parens_in_enum_constant=do not insert
 org.eclipse.jdt.core.formatter.insert_space_between_empty_parens_in_method_declaration=do not insert
 org.eclipse.jdt.core.formatter.insert_space_between_empty_parens_in_method_invocation=do not insert
-org.eclipse.jdt.core.formatter.join_lines_in_comments=true
+org.eclipse.jdt.core.formatter.join_lines_in_comments=false
 org.eclipse.jdt.core.formatter.join_wrapped_lines=false
 org.eclipse.jdt.core.formatter.keep_else_statement_on_same_line=false
 org.eclipse.jdt.core.formatter.keep_empty_array_initializer_on_one_line=true
