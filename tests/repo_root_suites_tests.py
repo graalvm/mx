@@ -393,6 +393,67 @@ def _create_workspace_with_ambiguous_import():
     )
 
 
+def _create_workspace_with_conflicting_import_versions():
+    tmpdir = tempfile.TemporaryDirectory()
+    workspace_root = os.path.realpath(tmpdir.name)
+    importer_repo = os.path.join(workspace_root, "importer")
+    repo_a = os.path.join(workspace_root, "a")
+    repo_b = os.path.join(workspace_root, "b")
+    shared_repo = os.path.join(workspace_root, "shared")
+    tail_repo = os.path.join(workspace_root, "tail")
+    for repo in [importer_repo, repo_a, repo_b, shared_repo, tail_repo]:
+        os.makedirs(repo, exist_ok=True)
+        open(os.path.join(repo, ".mx_vcs_root"), "w", encoding="utf-8").close()
+
+    importer_dir = _write_suite(
+        importer_repo,
+        "",
+        "importer",
+        import_entries=[
+            {"name": "a", "version": "importer-a", "urls": [{"url": "https://example.invalid/a.git", "kind": "git"}]},
+            {"name": "b", "version": "importer-b", "urls": [{"url": "https://example.invalid/b.git", "kind": "git"}]},
+        ],
+    )
+    a_dir = _write_suite(
+        repo_a,
+        "",
+        "a",
+        import_entries=[
+            {
+                "name": "shared",
+                "version": "111111",
+                "urls": [{"url": "https://example.invalid/shared.git", "kind": "git"}],
+            },
+        ],
+    )
+    b_dir = _write_suite(
+        repo_b,
+        "",
+        "b",
+        import_entries=[
+            {
+                "name": "shared",
+                "version": "222222",
+                "urls": [{"url": "https://example.invalid/shared.git", "kind": "git"}],
+            },
+            {"name": "tail", "version": "333333", "urls": [{"url": "https://example.invalid/tail.git", "kind": "git"}]},
+        ],
+    )
+    shared_dir = _write_suite(shared_repo, "", "shared")
+    tail_dir = _write_suite(tail_repo, "", "tail")
+    return (
+        tmpdir,
+        workspace_root,
+        {
+            "importer": importer_dir,
+            "a": a_dir,
+            "b": b_dir,
+            "shared": shared_dir,
+            "tail": tail_dir,
+        },
+    )
+
+
 def _create_repo_with_missing_import():
     tmpdir = tempfile.TemporaryDirectory()
     repo_root = os.path.realpath(tmpdir.name)
@@ -1450,6 +1511,32 @@ def test_main_accepts_command_separator_before_command_name():
     assert "deploy jars for the primary suite to remote maven repository" in output
 
 
+def test_discover_suites_defers_conflict_resolution_until_after_traversal():
+    tmpdir, _, suite_dirs = _create_workspace_with_conflicting_import_versions()
+    importer_mx_dir = os.path.join(suite_dirs["importer"], "mx.importer")
+    discovered_imports = []
+    original_find_suite_import = orig_mx._find_suite_import
+    try:
+
+        def fake_find_suite_import(importing_suite, suite_import, *args, **kwargs):
+            discovered_imports.append((importing_suite.name, suite_import.name))
+            return original_find_suite_import(importing_suite, suite_import, *args, **kwargs)
+
+        def fake_resolve_suite_version_conflict(*args, **kwargs):
+            assert ("b", "tail") in discovered_imports
+            assert kwargs.get("dry_run") is True
+            return None
+
+        with mx_main_state_patch(), mx_monkeypatch(
+            "_primary_suite_path", suite_dirs["importer"]
+        ), mx_vc_systems_patch(), mx_monkeypatch("_find_suite_import", fake_find_suite_import), mx_monkeypatch(
+            "_resolve_suite_version_conflict", fake_resolve_suite_version_conflict
+        ):
+            orig_mx._discover_suites(importer_mx_dir, load=False, register=False)
+    finally:
+        tmpdir.cleanup()
+
+
 def test_main_does_not_bulk_dispatch_suites():
     tmpdir, repo_root, _ = _create_multi_suite_repo()
     try:
@@ -1908,6 +1995,7 @@ def tests():
     test_bulk_suite_run_preserves_live_command_output()
     test_bulk_suite_run_aborts_on_keyboard_interrupt()
     test_main_accepts_command_separator_before_command_name()
+    test_discover_suites_defers_conflict_resolution_until_after_traversal()
     test_main_does_not_bulk_dispatch_suites()
     test_diff_path_selection_for_all_suites()
     test_diff_path_selection_for_root_suites()

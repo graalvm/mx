@@ -3459,6 +3459,19 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     original_version = {}
     vc_dir_to_suite_names = {}
     versions_from = {}
+    PendingVersionConflict = namedtuple(
+        'PendingVersionConflict',
+        [
+            'suite_import_name',
+            'importing_suite_name',
+            'discovered_suite_name',
+            'collocated_suite_name',
+            'other_importer_name',
+            'allow_repo_update',
+        ],
+    )
+    pending_version_conflicts = []
+    pending_version_conflict_keys = set()
 
 
     class VersionType:
@@ -3531,6 +3544,21 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
     def _was_cloned_or_updated_during_discovery(_discovered_suite):
         return _discovered_suite.vc_dir is not None and _discovered_suite.vc_dir in original_version
+
+    def _rollback_discovery_side_effects():
+        """Revert any repo updates or clones performed during this discovery run."""
+        cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
+        if cloned_during_discovery:
+            log_error("There was an error, removing " + ', '.join(("'" + d + "'" for d in cloned_during_discovery)))
+            for d in cloned_during_discovery:
+                shutil.rmtree(d)
+        for d, (t, v) in original_version.items():
+            if t == VersionType.REVISION:
+                log_error(f"Reverting '{d}' to version '{v}'")
+                VC.get_vc(d).update(d, v)
+            elif t == VersionType.BRANCH:
+                log_error(f"Reverting '{d}' to branch '{v}'")
+                VC.get_vc(d).update_to_branch(d, v)
 
     def _update_repo(_discovered_suite, update_version, forget=False, update_reason="to resolve conflict"):
         if not _discovered_suite.vc:
@@ -3643,24 +3671,107 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery(f"Re-reached {collocated_suite_name} from {_importing_suite.name} with conflicting version compared to {other_importer_name}")
                     else:
                         _log_discovery(f"Re-reached {collocated_suite_name} (collocated with {_suite_import.name}) from {_importing_suite.name} with conflicting version compared to {other_importer_name}")
-                    if update_existing or _was_cloned_or_updated_during_discovery(_discovered_suite):
+                    allow_repo_update = update_existing or _was_cloned_or_updated_during_discovery(_discovered_suite)
+                    if update_existing:
                         resolved = _resolve_suite_version_conflict(_discovered_suite.name, _discovered_suite, other_importers_import.version, other_importer, _suite_import, _importing_suite)
                         if resolved and _update_repo(_discovered_suite, resolved, forget=True):
                             return False
                     else:
-                        # This suite was already present
-                        resolution = _resolve_suite_version_conflict(_discovered_suite.name, _discovered_suite, other_importers_import.version, other_importer, _suite_import, _importing_suite, dry_run=True)
-                        if resolution is not None:
-                            if _suite_import.name == collocated_suite_name:
-                                warn(f"{_importing_suite.name} and {other_importer_name} import different versions of {collocated_suite_name}: {_suite_import.version} vs. {other_importers_import.version}")
-                            else:
-                                warn(f"{_importing_suite.name} and {other_importer_name} import different versions of {collocated_suite_name} (collocated with {_suite_import.name}): {_suite_import.version} vs. {other_importers_import.version}")
+                        conflict = PendingVersionConflict(
+                            _suite_import.name,
+                            _importing_suite.name,
+                            _discovered_suite.name,
+                            collocated_suite_name,
+                            other_importer_name,
+                            allow_repo_update,
+                        )
+                        if conflict not in pending_version_conflict_keys:
+                            pending_version_conflict_keys.add(conflict)
+                            pending_version_conflicts.append(conflict)
                 else:
                     if _suite_import.name == collocated_suite_name:
                         _log_discovery(f"Re-reached {collocated_suite_name} from {_importing_suite.name} with same version as {other_importer_name}")
                     else:
                         _log_discovery(f"Re-reached {collocated_suite_name} (collocated with {_suite_import.name}) from {_importing_suite.name} with same version as {other_importer_name}")
         return True
+
+    def _warn_conflicting_versions(_suite_import, _importing_suite, _collocated_suite_name, _other_importer_name, _other_importers_import):
+        """Emit the existing version-conflict warning format for a recorded mismatch."""
+        if _suite_import.name == _collocated_suite_name:
+            warn(f"{_importing_suite.name} and {_other_importer_name} import different versions of {_collocated_suite_name}: {_suite_import.version} vs. {_other_importers_import.version}")
+        else:
+            warn(f"{_importing_suite.name} and {_other_importer_name} import different versions of {_collocated_suite_name} (collocated with {_suite_import.name}): {_suite_import.version} vs. {_other_importers_import.version}")
+
+    def _process_pending_version_conflicts():
+        """Resolve all recorded cross-repo version conflicts after discovery traversal finishes."""
+        repos_to_update = OrderedDict()
+        resolution_cache = {}
+        for conflict in pending_version_conflicts:
+            discovered_suite = discovered.get(conflict.discovered_suite_name)
+            importing_suite = discovered.get(conflict.importing_suite_name)
+            other_importer = discovered.get(conflict.other_importer_name)
+            if discovered_suite is None or importing_suite is None or other_importer is None:
+                continue
+            if discovered_suite.vc_dir in repos_to_update:
+                continue
+            suite_import = importing_suite.get_import(conflict.suite_import_name)
+            other_importers_import = other_importer.get_import(conflict.collocated_suite_name)
+            if suite_import is None or other_importers_import is None:
+                continue
+            if not other_importers_import.version or not suite_import.version or other_importers_import.version == suite_import.version:
+                continue
+            effective_conflict_resolution = getattr(_opts, 'version_conflict_resolution', 'suite')
+            if effective_conflict_resolution == 'suite':
+                effective_conflict_resolution = importing_suite.versionConflictResolution
+            cache_key = None
+            if effective_conflict_resolution in ('latest', 'latest_all'):
+                cache_key = (
+                    discovered_suite.vc_dir,
+                    other_importers_import.version,
+                    suite_import.version,
+                    bool(suite_import.dynamicImport),
+                    effective_conflict_resolution,
+                )
+            if conflict.allow_repo_update:
+                if cache_key is not None and cache_key in resolution_cache:
+                    resolved = resolution_cache[cache_key]
+                else:
+                    resolved = _resolve_suite_version_conflict(
+                        discovered_suite.name,
+                        discovered_suite,
+                        other_importers_import.version,
+                        other_importer,
+                        suite_import,
+                        importing_suite,
+                    )
+                    if cache_key is not None:
+                        resolution_cache[cache_key] = resolved
+                if resolved:
+                    repos_to_update[discovered_suite.vc_dir] = (discovered_suite, resolved)
+            else:
+                if cache_key is not None and cache_key in resolution_cache:
+                    resolution = resolution_cache[cache_key]
+                else:
+                    resolution = _resolve_suite_version_conflict(
+                        discovered_suite.name,
+                        discovered_suite,
+                        other_importers_import.version,
+                        other_importer,
+                        suite_import,
+                        importing_suite,
+                        dry_run=True,
+                    )
+                    if cache_key is not None:
+                        resolution_cache[cache_key] = resolution
+                if resolution is not None:
+                    _warn_conflicting_versions(
+                        suite_import,
+                        importing_suite,
+                        conflict.collocated_suite_name,
+                        conflict.other_importer_name,
+                        other_importers_import,
+                    )
+        return repos_to_update
 
     try:
 
@@ -3724,19 +3835,19 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     _add_discovered_suite(discovered_suite, importing_suite.name)
             _maybe_add_dynamic_imports()
     except SystemExit as se:
-        cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
-        if cloned_during_discovery:
-            log_error("There was an error, removing " + ', '.join(("'" + d + "'" for d in cloned_during_discovery)))
-            for d in cloned_during_discovery:
-                shutil.rmtree(d)
-        for d, (t, v) in original_version.items():
-            if t == VersionType.REVISION:
-                log_error(f"Reverting '{d}' to version '{v}'")
-                VC.get_vc(d).update(d, v)
-            elif t == VersionType.BRANCH:
-                log_error(f"Reverting '{d}' to branch '{v}'")
-                VC.get_vc(d).update_to_branch(d, v)
+        _rollback_discovery_side_effects()
         raise se
+
+    if not update_existing:
+        repos_to_update = _process_pending_version_conflicts()
+        if repos_to_update:
+            try:
+                for discovered_suite, resolved_version in repos_to_update.values():
+                    _update_repo(discovered_suite, resolved_version, update_reason="to resolve deferred conflict")
+                return _discover_suites(primary_suite_dir, load=load, register=register, update_existing=update_existing)
+            except SystemExit as se:
+                _rollback_discovery_side_effects()
+                raise se
 
     _log_discovery("Discovery finished")
 
