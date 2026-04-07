@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -24,7 +27,10 @@ class MergetoolFixtureTest(unittest.TestCase):
 
             for repo in (simple_repo, complex_repo):
                 with self.subTest(repo=repo.name):
-                    mergetool_cmd = f'{mx} -p {repo_root} mergetool-suite-import "$LOCAL" "$BASE" "$REMOTE" "$MERGED"'
+                    mergetool_cmd = (
+                        f"{shlex.quote(str(mx))} -p {shlex.quote(str(repo_root))} "
+                        'mergetool-suite-import "$LOCAL" "$BASE" "$REMOTE" "$MERGED"'
+                    )
                     subprocess.run(
                         ["git", "config", "mergetool.mx-suite-import.cmd", mergetool_cmd],
                         cwd=repo,

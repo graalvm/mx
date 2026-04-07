@@ -55,7 +55,7 @@ local with(platform, java_release, timelimit="15:00") = {
 
     # Specific gate builders are defined by the following functions
 
-    gate:: self.with_name("gate") + common.deps.black + common.deps.spotbugs +{
+    gate:: self.with_name("gate") + common.deps.black + common.deps.spotbugs + common.deps.maven + {
         environment+: {
             MX_ALT_OUTPUT_ROOT: path("$BUILD_DIR/alt_output_root"),
             JDT: "builtin",
