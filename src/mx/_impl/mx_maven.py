@@ -510,7 +510,7 @@ def _write_batched_maven_deploy_pom(specs, repo):
     plugin_group_id = 'org.apache.maven.plugins'
     plugin_artifact_id = 'maven-install-plugin' if repo == maven_local_repository() else 'maven-deploy-plugin'
     plugin_goal = 'install-file' if repo == maven_local_repository() else 'deploy-file'
-    plugin_version = '3.1.4'
+    plugin_version = '3.1.1'  # Requires Maven 3.2.5+
 
     pom = mx.XMLDoc()
     pom.open('project', attributes={
