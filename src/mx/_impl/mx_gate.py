@@ -57,6 +57,7 @@ __all__ = [
 import os, re, time, json
 import tempfile
 import atexit
+import unittest
 import zipfile
 import urllib.parse
 import urllib.request
@@ -613,6 +614,11 @@ def _run_mx_suite_tests():
     """
     Mx suite specific tests.
     """
+
+    def _run_unittest_module(module):
+        result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(module))
+        assert result.wasSuccessful(), f"{module.__name__} failed"
+
     mx_javacompliance._test()
 
     # Ensure mx_util.py only imports from the Python standard library
@@ -630,13 +636,19 @@ def _run_mx_suite_tests():
     bench_rules_tests.tests()
     java_argument_file_test.tests()
 
-    from tests import code_owners_tests, stoml_tests
+    from tests import code_owners_tests, stoml_tests, eclipseformat_tests
     code_owners_tests.tests()
     stoml_tests.tests()
+    eclipseformat_tests.tests()
 
     from tests import test_maven_projects, repo_root_suites_tests
     test_maven_projects.tests()
     repo_root_suites_tests.tests()
+
+    from tests import test_git_parent_cache, test_maven_deploy, test_mergetool
+    _run_unittest_module(test_git_parent_cache)
+    _run_unittest_module(test_maven_deploy)
+    _run_unittest_module(test_mergetool)
 
     mx.checkmarkdownlinks(['--no-external', './**/*.md'])
 

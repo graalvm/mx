@@ -1,4 +1,5 @@
 import importlib
+import io
 import os
 import pathlib
 import re
@@ -6,7 +7,7 @@ import sys
 import tempfile
 
 from argparse import Namespace
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr
 from types import SimpleNamespace
 from typing import cast
 
@@ -145,12 +146,13 @@ def test_maven_project():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print("test_maven_projects('wrong artifact ID')")
-        try:
-            create_project(pomtext_basic, tmpdir, ["JUNIT", "JUNIT_TOOL"], [])
-        except SystemExit:
-            pass
-        else:
-            assert False, "artifactid and project name must match"
+        with redirect_stderr(io.StringIO()):
+            try:
+                create_project(pomtext_basic, tmpdir, ["JUNIT", "JUNIT_TOOL"], [])
+            except SystemExit:
+                pass
+            else:
+                assert False, "artifactid and project name must match"
 
     def test_project(project):
         assert project.javaCompliance.highest_specified_value() == 17
@@ -165,12 +167,13 @@ def test_maven_project():
         assert project.isJavaProject()
         assert project.remoteExtension() == "jar"
         assert project.localExtension() == "jar"
-        try:
-            assert project.classpath_repr()
-        except SystemExit:
-            pass
-        else:
-            assert False, "expected mx.abort error: classpath needs a built artifact"
+        with redirect_stderr(io.StringIO()):
+            try:
+                assert project.classpath_repr()
+            except SystemExit:
+                pass
+            else:
+                assert False, "expected mx.abort error: classpath needs a built artifact"
         os.makedirs(project.get_output_root(), exist_ok=True)
         defaultjarpath = pathlib.Path(project.get_output_root()) / project.default_filename()
         defaultjarpath.touch()

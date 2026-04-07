@@ -1,4 +1,4 @@
-# pylint: disable=consider-using-with,use-implicit-booleaness-not-comparison,useless-return
+# pylint: disable=consider-using-with,use-implicit-booleaness-not-comparison,useless-return,duplicate-code
 
 import importlib
 import io

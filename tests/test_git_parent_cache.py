@@ -24,6 +24,9 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+# pylint: disable=duplicate-code
+
+from __future__ import annotations
 
 import importlib
 import subprocess
@@ -36,6 +39,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 orig_mx = importlib.import_module("mx._impl.mx")
+
+
+@contextmanager
+def monkeypatch_attr(obj, name, value):
+    previous = getattr(obj, name)
+    setattr(obj, name, value)
+    try:
+        yield value
+    finally:
+        setattr(obj, name, previous)
 
 
 def run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -59,8 +72,21 @@ def mx_run_opts():
     previous = {name: getattr(orig_mx._opts, name, sentinel) for name in overrides}
     for name, value in overrides.items():
         setattr(orig_mx._opts, name, value)
+
+    real_run = orig_mx.run
+
+    def quiet_run(args, *run_args, **run_kwargs):
+        if args and args[0] == "git":
+            if run_kwargs.get("out") is None:
+                run_kwargs["out"] = orig_mx.OutputCapture()
+            if run_kwargs.get("err") is None:
+                run_kwargs["err"] = orig_mx.OutputCapture()
+        return real_run(args, *run_args, **run_kwargs)
+
     try:
-        yield
+        with monkeypatch_attr(orig_mx, "run", quiet_run):
+            with monkeypatch_attr(orig_mx, "log", lambda *args, **kwargs: None):
+                yield
     finally:
         for name, value in previous.items():
             if value is sentinel:
@@ -73,7 +99,8 @@ class GitParentCacheInvalidationTest(unittest.TestCase):
     def init_repo(self, root: Path, name: str) -> Path:
         repo = root / name
         repo.mkdir()
-        run_git(repo, "init", "-q", "--initial-branch=master")
+        run_git(repo, "init", "-q")
+        run_git(repo, "symbolic-ref", "HEAD", "refs/heads/master")
         run_git(repo, "config", "user.name", "Test User")
         run_git(repo, "config", "user.email", "test@example.com")
         (repo / "tracked.txt").write_text("one\n")

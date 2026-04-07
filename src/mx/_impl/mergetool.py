@@ -179,7 +179,7 @@ def mergetool_suite_import(args):
     def _run_diff3(local, base, remote, merged):
         out = mx.OutputCapture()
         ret = mx.run(["diff3", "-m", local, base, remote], nonZeroIsFatal=False, out=out)
-        with open(merged, "w", encoding="utf-8") as fp:
+        with open(merged, "w", encoding="utf-8", newline="") as fp:
             fp.write(out.data)
         return ret
 
