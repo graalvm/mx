@@ -9846,6 +9846,13 @@ class GitConfig(VC):
         if self.object_cache_mode not in [None, 'reference', 'dissociated', 'refcache']:
             abort("MX_GIT_CACHE was '{}' expected '', 'reference', 'dissociated' or 'refcache'")
 
+    @staticmethod
+    def _cache_key(vcdir):
+        return realpath(os.path.abspath(vcdir))
+
+    def _invalidate_head_cache(self, vcdir):
+        self._parent_cache.pop(self._cache_key(vcdir), None)
+
     def check(self, abortOnError=True):
         return self
 
@@ -9900,6 +9907,7 @@ class GitConfig(VC):
         return self.run(['git', 'add', path], cwd=vcdir, out=out) == 0
 
     def commit(self, vcdir, msg, abortOnError=True):
+        self._invalidate_head_cache(vcdir)
         return self.run(['git', 'commit', '-a', '-m', msg], cwd=vcdir) == 0
 
     def tip(self, vcdir, abortOnError=True):
@@ -9934,7 +9942,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         # We don't use run because this can be called very early before _opts is set
-        cache_key = realpath(os.path.abspath(vcdir))
+        cache_key = self._cache_key(vcdir)
         if cache_key in self._parent_cache:
             return self._parent_cache[cache_key]
         if exists(join(vcdir, self.metadir(), 'MERGE_HEAD')):
@@ -10171,11 +10179,11 @@ class GitConfig(VC):
         return rc == 0
 
     def _reset_rev(self, rev, dest=None, abortOnError=True, **extra_args):
-        cmd = ['git']
-        cwd = None if dest is None else dest
-        cmd.extend(['reset', '--hard', rev])
+        cmd = ['git', 'reset', '--hard', rev]
+        vcdir = dest if dest is not None else os.getcwd()
+        self._invalidate_head_cache(vcdir)
         out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=cwd, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
         logvv(out.data)
         return rc == 0
 
@@ -10267,6 +10275,7 @@ class GitConfig(VC):
 
     def update_to_branch(self, vcdir, branch, abortOnError=True):
         cmd = ['git', 'checkout', branch, '--']
+        self._invalidate_head_cache(vcdir)
         return self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir) == 0
 
     def incoming(self, vcdir, abortOnError=True):
@@ -10320,6 +10329,7 @@ class GitConfig(VC):
         if update and not rev:
             cmd = ['git', 'pull']
             self._log_pull(vcdir, rev)
+            self._invalidate_head_cache(vcdir)
             out = OutputCapture()
             rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
             logvv(out.data)
@@ -10490,6 +10500,7 @@ class GitConfig(VC):
                 cmd.append('-q')
         else:
             cmd.extend(['master', '--'])
+        self._invalidate_head_cache(vcdir)
         return self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
