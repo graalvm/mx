@@ -1161,7 +1161,7 @@ def suite_context_free(func):
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
 # This cannot be used outside of mx because of implementation restrictions
-_optional_suite_context = ['help', 'paths', 'suites', 'build', 'checkstyle', 'clean']
+_optional_suite_context = ['help', 'paths', 'suites', 'build', 'checkstyle', 'clean', 'ideinit']
 
 
 def optional_suite_context(func):
@@ -1318,6 +1318,10 @@ class SuiteModel:
     def siblings_dir(suite_dir):
         if exists(suite_dir):
             _, primary_vc_root = SuiteModel.get_vc(suite_dir)
+            if primary_vc_root is None:
+                # Workspace discovery must also work when there is no primary_vc_root.
+                # Keep sibling resolution anchored at the current suite_dir.
+                return suite_dir
         else:
             primary_vc_root = suite_dir
         return dirname(primary_vc_root)
@@ -1574,6 +1578,7 @@ _suites = {}
 _primary_suite_path = None
 _primary_suite = None
 _mx_suite = None
+WORKSPACE_PRIMARY_SUITE_MARKER = '.mx-workspace-primary'
 
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
@@ -2685,6 +2690,11 @@ class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, foreign=None, **kwArgs):
         candidate_root_dir = realpath(mxDir if foreign else dirname(mxDir))
         vc, vc_dir = SuiteModel.get_vc(candidate_root_dir)
+        if primary and vc_dir is None and mxDir and exists(join(mxDir, WORKSPACE_PRIMARY_SUITE_MARKER)):
+            # Marker => synthetic workspace primary suite.
+            # Still assign vc_dir to the workspace root: existing import/path logic and
+            # the primary-suite invariant expect a non-None root anchor even without VCS.
+            vc_dir = candidate_root_dir
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, foreign=foreign, **kwArgs)
         logvv(f"SourceSuite.__init__({mxDir}), got vc={self.vc}, vc_dir={self.vc_dir}")
         self.projects = []

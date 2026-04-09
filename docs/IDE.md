@@ -17,7 +17,51 @@ Open IntelliJ and go to **Preferences > Plugins > Browse Repositories**. Install
 * [Python Plugin](https://plugins.jetbrains.com/idea/plugin/631-python): python plugin
 * [Markdown Navigator](https://plugins.jetbrains.com/plugin/7896-markdown-navigator): markdown plugin
 
-Make sure you have [`mx`](https://github.com/graalvm/mx) installed and updated (`mx update`). Then, to initialize IntelliJ project files, go to the root of your project and invoke: `mx intellijinit`
+Make sure you have [`mx`](https://github.com/graalvm/mx) installed and updated (`mx update`).
+Then, to initialize IntelliJ project files, go to the root of your project and invoke: `mx intellijinit`.
+
+`mx intellijinit` (or `MX_IDE=intellij mx ideinit`) run from a suite root already resolves imported suite links across repositories.
+
+#### Workspace mode (`mx ideinit --workspace`)
+
+Use `mx ideinit --workspace` when you want IntelliJ project files to be generated in a parent directory that contains multiple repositories/suites.
+
+```bash
+cd <workspace-root>
+MX_IDE=intellij mx ideinit --workspace \
+  --workspace-repos graal,mx
+```
+
+Workspace mode creates a synthetic suite at `<workspace-root>/mx.workspace/suite.py` (plus an internal marker file).
+Workspace mode also generates IntelliJ files at `<workspace-root>/.idea`.
+
+Useful workspace filters:
+
+- `--workspace-repositories` / `--workspace-repos`: repositories to scan (default: direct child repositories containing suites)
+- `--workspace-suites`: include only the listed suites
+- `--workspace-exclude-suites`: exclude selected suites
+
+Use `--workspace-suites` when creating a parent-level workspace that should focus on a single suite.
+For example, from a parent directory that contains `graal/` and `mx/`, you can initialize only the `compiler` suite.
+
+```bash
+cd <workspace-root>
+MX_IDE=intellij mx ideinit --workspace \
+  --workspace-repos graal,mx \
+  --workspace-suites compiler
+```
+
+Workspace initialization can have side effects if selected suites import non-local dependencies or execute heavy import-time logic.
+In particular:
+
+- static imports to non-local suites can trigger additional repository clone/fetch operations;
+- import-time Python dependencies in some suite extension modules can fail or slow down generation;
+- broad suite selection may include suites that are not needed for the target IDE view.
+
+When working in large multi-repo trees, start with explicit repositories and suites.
+Exclude known problematic suites via `--workspace-exclude-suites`.
+Prefer explicit `--workspace-suites` selection and add suites incrementally.
+For related import behavior, see [dynamic imports](dynamic-imports.md).
 
 Open the folder of your freshly initialized project from IntelliJ (**IntelliJ IDEA > File > Open…**). All depending projects will be included automatically.
 
