@@ -369,7 +369,7 @@ from .build.report import BuildReport
 from .support.comparable import compare, Comparable
 from .support.envvars import env_var_to_bool, get_env
 from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, log_error, nyi, warn, \
-    _check_stdout_encoding, getLogTask, setLogTask
+    _check_stdout_encoding, _pad_and_truncate_for_terminal, getLogTask, setLogTask
 from .support.options import _opts, _opts_parsed_deferrables
 from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
@@ -389,6 +389,7 @@ from .mx_repo_suite import (  # pylint: disable=unused-import
     _select_repo_suites,
 )
 from . import mx_suite_version_conflicts
+
 
 _mx_commands = MxCommands("mx")
 
@@ -14107,8 +14108,7 @@ def _build_with_report(cmd_args, build_report, parser=None):
                 if lastLine:
                     statusline += " | " + lastLine
             columns = shutil.get_terminal_size(fallback=(120,50)).columns
-            aligned = statusline + columns * " "
-            aligned = aligned[0:columns]
+            aligned = _pad_and_truncate_for_terminal(statusline, columns)
             sys.stdout.write(aligned + "\r")
             if done == totalTasks:
                 sys.stdout.write(statusline + " done\n")
