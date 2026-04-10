@@ -1,2 +1,2 @@
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = "7.78.7"  # PR-2022 Update mx documentation
+version = "7.79.0"  # Add workspace mode for ideinit in multi-repository IntelliJ setups
