@@ -308,6 +308,98 @@ def _mavenGroupId(suite):
     return 'com.oracle.' + _map_to_maven_dist_name(name)
 
 
+def _maven_direct_pom_dependencies(dist):
+    directDistDeps = [d for d in dist.deps if d.isDistribution() and not d.isLayoutDirDistribution()]
+    directLibDeps = dist.excludedLibs
+    return directDistDeps, directLibDeps
+
+
+def _maven_emitted_direct_pom_dependencies(dist):
+    directDistDeps, directLibDeps = _maven_direct_pom_dependencies(dist)
+    emittedDistDeps = [dep for dep in directDistDeps if not dep.suite.internal]
+    emittedLibDeps = []
+    for lib in directLibDeps:
+        if (lib.isJdkLibrary() or lib.isJreLibrary()) and lib.is_provided_by(mx.get_jdk()) and lib.is_provided_by(mx.get_jdk(dist.maxJavaCompliance())):
+            continue
+        emittedLibDeps.append(lib)
+    return emittedDistDeps, emittedLibDeps
+
+
+def _deployment_module_requires_for_maven(dist):
+    if not dist.isJARDistribution():
+        return None, None
+
+    from . import mx_javamodules
+
+    module_name = mx_javamodules.get_module_name(dist)
+    if not module_name:
+        return None, None
+
+    deployment_module_info = dist.maven.get('moduleInfo') if isinstance(dist.maven, dict) else None
+    jdk = mx.get_jdk(tag='default')
+    if jdk.javaCompliance > '1.8':
+        jmd = as_java_module(dist, jdk, fatalIfNotCreated=False)
+        if jmd:
+            if deployment_module_info:
+                if not jmd.alternatives:
+                    return module_name, None
+                alt_jmd = jmd.alternatives.get(deployment_module_info)
+                if not alt_jmd:
+                    return module_name, None
+                jmd = alt_jmd
+            return jmd.name, jmd.requires
+
+    module_info_attr = 'moduleInfo'
+    if deployment_module_info:
+        module_info_attr += ':' + deployment_module_info
+    module_info = getattr(dist, module_info_attr, None)
+    if not module_info:
+        return module_name, None
+
+    requires = {}
+    for entry in module_info.get('requires', []):
+        parts = entry.split()
+        if parts:
+            requires[parts[-1]] = set(parts[:-1])
+    return module_name, requires
+
+
+def _lint_maven_optional_dependencies(dist, overrides):
+    module_name, requires = _deployment_module_requires_for_maven(dist)
+    if not module_name or not requires:
+        return
+
+    from . import mx_javamodules
+
+    for dep, meta in overrides.items():
+        if not meta.get('optional', False) or not dep.isDistribution():
+            continue
+        dep_module_name = mx_javamodules.get_module_name(dep)
+        if not dep_module_name:
+            continue
+        modifiers = requires.get(dep_module_name)
+        if modifiers is not None and 'static' not in modifiers:
+            dist.warn(f'Maven dependency {dep.qualifiedName()} is marked optional, but deployed module {module_name} requires {dep_module_name} without "static". Downstream JPMS consumers may need to add this dependency explicitly.')
+
+
+def _validated_maven_dependency_metadata(dist):
+    metadata = getattr(dist, '.validated_maven_dependency_metadata', None)
+    if metadata is not None:
+        return metadata
+
+    directDistDeps, directLibDeps = _maven_emitted_direct_pom_dependencies(dist)
+    directPomDeps = directDistDeps + directLibDeps
+
+    metadata = {}
+    for dep in getattr(dist, 'optionalDependencies', []):
+        if dep in directPomDeps:
+            metadata[dep] = {'optional': True}
+
+    _lint_maven_optional_dependencies(dist, metadata)
+    setattr(dist, '.validated_maven_dependency_metadata', metadata)
+    return metadata
+
+
 def _genPom(dist, versionGetter, validateMetadata='none'):
     """
     :type dist: Distribution
@@ -388,8 +480,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         if dist.suite.getMxCompatibility().supportsLicenses() or validateMetadata == 'full':
             dist.abort("Distribution is missing 'license' attribute")
         dist.warn("Distribution's suite version is too old to have the 'license' attribute")
-    directDistDeps = [d for d in dist.deps if d.isDistribution() and not d.isLayoutDirDistribution()]
-    directLibDeps = dist.excludedLibs
+    directDistDeps, directLibDeps = _maven_direct_pom_dependencies(dist)
+    mavenDependencyMetadata = _validated_maven_dependency_metadata(dist)
     if directDistDeps or directLibDeps:
         pom.open('dependencies')
         for dep in directDistDeps:
@@ -414,6 +506,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                     pom.element('type', data=dep.remoteExtension())
                 if dist.isPOMDistribution() and dist.is_runtime_dependency(dep):
                     pom.element('scope', data='runtime')
+                if mavenDependencyMetadata.get(dep, {}).get('optional', False):
+                    pom.element('optional', data='true')
                 pom.close('dependency')
         for l in directLibDeps:
             if (l.isJdkLibrary() or l.isJreLibrary()) and l.is_provided_by(mx.get_jdk()) and l.is_provided_by(mx.get_jdk(dist.maxJavaCompliance())):
@@ -432,6 +526,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 else:
                     if 'suffix' in mavenMetaData:
                         pom.element('classifier', data=mavenMetaData['suffix'])
+                if mavenDependencyMetadata.get(l, {}).get('optional', False):
+                    pom.element('optional', data='true')
                 pom.close('dependency')
             elif validateMetadata != 'none':
                 if 'library-coordinates' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
