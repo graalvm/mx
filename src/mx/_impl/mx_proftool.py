@@ -1185,8 +1185,8 @@ class PerfOutput:
         for event in self.events:
             e = events_by_address.get(event.pc)
             if e:
-                e.period = e.period + event.period
-                e.samples = e.samples + event.samples
+                e.period += event.period
+                e.samples += event.samples
             else:
                 # avoid mutating the underlying raw event
                 events_by_address[event.pc] = copy.copy(event)
@@ -1201,7 +1201,7 @@ class PerfOutput:
                 count = hot_symbols.get(key)
                 if count is None:
                     count = 0
-                count = count + event.period
+                count += event.period
                 hot_symbols[key] = count
             entries = [(s, d, c) for (s, d), c in hot_symbols.items()]
 
