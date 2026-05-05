@@ -72,6 +72,11 @@ def fetch_jdk(args, force=None):
             mx.log(jdk)
         # cannot use mx.abort as it always adds a newline
         raise SystemExit(0)
+    if settings["list-cache-paths"]:
+        for pattern in list_jdk_binary_cache_path_patterns(settings["jdk-binaries"]):
+            mx.log(pattern)
+        # cannot use mx.abort as it always adds a newline
+        raise SystemExit(0)
 
     jdk_binary = settings["jdk-binary"]
     jdks_dir = settings["jdks-dir"]
@@ -390,6 +395,8 @@ def _parse_args(args):
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     parser.add_argument('--list', action='store_true', help='list the defined JDKs and exit')
+    parser.add_argument('--list-cache-paths', action='store_true',
+                        help='list mx download cache path patterns for JDK archives defined by the current configuration and exit. Patterns end with * because the digest suffix is only known after download.')
     parser.add_argument('--skip-digest-check', dest='digest_check', action='store_false', help='''
         Only check for existence of the destination directory and skip verifying the digest of the downloaded archive.
         This is useful to avoid redownloading when the download cache has been deleted.
@@ -405,8 +412,9 @@ def _parse_args(args):
     jdk_binaries, jdk_defs, jdk_defs_location, jdk_binaries_locations, default_jdk_ids = _get_jdk_binaries(args.arch, args.jdk_binaries, args.configuration)
 
     settings["list"] = args.list
+    settings["list-cache-paths"] = args.list_cache_paths
 
-    if args.list:
+    if args.list or args.list_cache_paths:
         settings["jdk-defs"] = jdk_defs
         settings["jdk-binaries"] = jdk_binaries
         return settings
@@ -442,6 +450,15 @@ def _parse_args(args):
     settings["digest-check"] = args.digest_check
 
     return settings
+
+
+def list_jdk_binary_cache_path_patterns(jdk_binaries, cache_dir=None):
+    if cache_dir is None:
+        cache_dir = mx._cache_dir()
+    return sorted(
+        join(cache_dir, jdk_binary.cache_entry_prefix() + '*')
+        for jdk_binary in jdk_binaries.values()
+    )
 
 
 def _add_shared_args(parser):
@@ -833,6 +850,9 @@ class _JdkBinary(object):
 
     def __repr__(self):
         return f'{self._jdk_id}: files={self._filenames}, urls={self._url_template}'
+
+    def cache_entry_prefix(self):
+        return self._folder_name + "_"
 
     SELECTOR_EXTRA_ATTRS = ("build_id",)
     def selector(self):
