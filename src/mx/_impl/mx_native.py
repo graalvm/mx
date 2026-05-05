@@ -101,6 +101,22 @@ class lazy_class_default(object):  # pylint: disable=invalid-name
         except KeyError:
             return vars(self).setdefault(self.init.__name__, self.init(owner))
 
+
+_ignored_source_file_names = frozenset(['.DS_Store', '.swp'])
+
+
+_default_native_project_supported_source_file_extensions = frozenset(['.h', '.hpp', '.c', '.cc', '.cpp', '.S'])
+
+
+def _unsupported_default_native_source_files(source_files):
+    return sorted(
+        source_file
+        for extension, files in source_files.items()
+        if extension not in _default_native_project_supported_source_file_extensions
+        for source_file in files
+    )
+
+
 class TargetSpec(object):
     """Description of a native target.
 
@@ -755,6 +771,8 @@ class NinjaProject(MultitargetProject):
                 # group files by extension
                 grouping = collections.defaultdict(list)
                 for f in files:
+                    if f in _ignored_source_file_names:
+                        continue
                     grouping[os.path.splitext(f)[1]].append(os.path.join(rel_root, f))
                 for ext in grouping:
                     source_files[ext] += grouping[ext]
@@ -1083,9 +1101,9 @@ class DefaultNativeProject(NinjaProject):
         return self._source['files'].get('.S', [])
 
     def generate_manifest_for_task(self, task, output_dir, filename):
-        unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.hpp', '.c', '.cc', '.cpp', '.S', '.swp'})
+        unsupported_source_files = _unsupported_default_native_source_files(self._source['files'])
         if unsupported_source_files:
-            mx.abort(f'{unsupported_source_files} source files are not supported by default native projects')
+            mx.abort('Unsupported source files for default native project: ' + ', '.join(unsupported_source_files))
 
         with NinjaManifestGenerator(self, output_dir, filename, toolchain=task.toolchain) as gen:
             gen.comment("Toolchain configuration")
