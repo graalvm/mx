@@ -45,6 +45,10 @@ Internally, JAR distributions still flatten `dependencies` and `distDependencies
 The split is therefore mainly a cue to human readers about packaging intent: `dependencies` usually contribute contents to the JAR, while `distDependencies` are meant to stay as separate companion artifacts.
 A JAR with `mainClass` is therefore best thought of as an _entry-point JAR_, not automatically as a self-contained launcher image.
 
+A distribution can list direct dependencies or excluded libraries in `optionalDependencies` when they are useful for some consumers but are not required by all downstream consumers.
+Runtime class paths and module paths omit optional dependency edges by default unless the optional dependency is also a root; build class paths include them.
+When such a dependency is emitted in a generated Maven POM, mx marks it with `<optional>true</optional>`.
+
 ### Layout distributions
 
 A distribution with a `layout` attribute becomes a layout distribution.

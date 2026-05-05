@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from contextlib import contextmanager
 
@@ -52,6 +53,124 @@ def monkeypatch_opt(**kwargs):
                 delattr(orig_mx._opts, name)
             else:
                 setattr(orig_mx._opts, name, value)
+
+
+class _MockMxCompatibility:
+    def mavenSupportsClassifier(self):
+        return True
+
+
+class _MockSuite:
+    name = "test-suite"
+    internal = False
+    url = None
+    developer = None
+
+    def __init__(self):
+        setattr(self, "vc", None)
+
+    def getMxCompatibility(self):
+        return _MockMxCompatibility()
+
+
+class _MockDistribution:
+    def __init__(self, name, deps=None, excluded_libs=None, optional_dependencies=None, maven=True, suite=None):
+        self.name = name
+        self.deps = deps or []
+        self.excludedLibs = excluded_libs or []
+        self.optionalDependencies = optional_dependencies or []
+        self.maven = maven
+        self.suite = suite or _MockSuite()
+        self.theLicense = []
+        self.description = name
+        self.platforms = [None]
+
+    def isDistribution(self):
+        return True
+
+    def isLayoutDirDistribution(self):
+        return False
+
+    def isJARDistribution(self):
+        return True
+
+    def isPOMDistribution(self):
+        return False
+
+    def is_runtime_dependency(self, dep):
+        return False
+
+    def remoteExtension(self):
+        return "jar"
+
+    def maven_group_id(self):
+        return "org.example"
+
+    def maven_artifact_id(self, platform=None):
+        return self.name.lower().replace("_", "-")
+
+    def qualifiedName(self):
+        return f"{self.suite.name}:{self.name}"
+
+    def abort(self, message):
+        raise AssertionError(message)
+
+    def warn(self, message):
+        raise AssertionError(message)
+
+    def __str__(self):
+        return self.qualifiedName()
+
+
+class _MockLibrary:
+    def __init__(self, name):
+        self.name = name
+        self.maven = {
+            "groupId": "org.example.libs",
+            "artifactId": name.lower().replace("_", "-"),
+            "version": "1.2.3",
+        }
+
+    def isJdkLibrary(self):
+        return False
+
+    def isJreLibrary(self):
+        return False
+
+    def isDistribution(self):
+        return False
+
+    def qualifiedName(self):
+        return f"library:{self.name}"
+
+    def abort(self, message):
+        raise AssertionError(message)
+
+
+class MavenOptionalDependencyPomTest(unittest.TestCase):
+    def test_gen_pom_marks_mx_optional_dependencies_optional(self):
+        required_dist = _MockDistribution("REQUIRED_DIST")
+        optional_dist = _MockDistribution("OPTIONAL_DIST")
+        optional_lib = _MockLibrary("OPTIONAL_LIB")
+        dist = _MockDistribution(
+            "MAIN_DIST",
+            deps=[required_dist, optional_dist],
+            excluded_libs=[optional_lib],
+            optional_dependencies=[optional_dist, optional_lib],
+        )
+
+        with monkeypatch_attr(orig_mx_maven, "_deployment_module_requires_for_maven", lambda _dist: (None, None)):
+            pom_xml = orig_mx_maven._genPom(dist, lambda _suite: "1.0")
+
+        root = ET.fromstring(pom_xml)
+        namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+        dependencies = {
+            dependency.findtext("m:artifactId", namespaces=namespace): dependency.findtext(
+                "m:optional", namespaces=namespace
+            )
+            for dependency in root.findall("./m:dependencies/m:dependency", namespace)
+        }
+        self.assertEqual({"required-dist": None, "optional-dist": "true", "optional-lib": "true"}, dependencies)
 
 
 class BatchedMavenDeployIntegrationTest(unittest.TestCase):

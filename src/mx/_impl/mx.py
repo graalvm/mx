@@ -4830,12 +4830,16 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param bool jdkDependent: specifies if the built artifact is JDK dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    :param list optionalDependencies: direct dependencies or excluded libraries that downstream consumers can omit
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, optionalDependencies=None, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
+        self.optionalDependencies = [] if optionalDependencies is None else optionalDependencies
+        if not isinstance(self.optionalDependencies, list):
+            abort('Attribute "optionalDependencies" must be a list', context=self)
         self.platformDependent = platformDependent
         self.jdkDependent = kwArgs.pop('jdkDependent', None)
         if platforms == 'local':
@@ -4874,6 +4878,11 @@ class Distribution(Dependency):
             self.deps.remove(dep)
         if dep in self.buildDependencies:
             self.buildDependencies.remove(dep)
+        if dep in self.optionalDependencies:
+            self.optionalDependencies.remove(dep)
+
+    def is_optional_dependency(self, dep):
+        return dep in self.optionalDependencies
 
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
@@ -4890,6 +4899,10 @@ class Distribution(Dependency):
             self.deps = new_deps
         self._resolveDepsHelper(self.buildDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
+        self._resolveDepsHelper(self.optionalDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        invalid_optional_deps = [d for d in self.optionalDependencies if d not in self.deps and d not in self.excludedLibs]
+        if invalid_optional_deps:
+            abort('Attribute "optionalDependencies" can only contain direct dependencies or excluded libraries: ' + ', '.join(d.name for d in invalid_optional_deps), context=self)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
         overlaps = getattr(self, 'overlaps', [])
         if not isinstance(overlaps, list):
@@ -7437,7 +7450,7 @@ class JavaBuildTask(ProjectBuildTask):
                 sourceFiles=[_cygpathU2W(f) for f in sorted(javafiles.keys())],
                 project=self.subject,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk, ignoreStripped=True, forBuild=True)),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk, ignoreStripped=True, forBuild=True, includeOptionalDependencies=True)),
                 sourceGenDir=self.subject.source_gen_dir(),
                 jnigenDir=self.subject.jni_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
@@ -11298,7 +11311,7 @@ def library(name, fatalIfMissing=True, context=None):
     return l
 
 
-def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None, forBuild=False):
+def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None, forBuild=False, includeOptionalDependencies=False):
     """
     Gets the transitive set of dependencies that need to be on the class path
     given the root set of projects and distributions in `names`.
@@ -11309,6 +11322,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
     :param bool preferProjects: for a JARDistribution dependency, specifies whether to include
             it in the returned list (False) or to instead put its constituent dependencies on the
             the return list (True)
+    :param bool includeOptionalDependencies: whether optional dependency edges should be traversed
     :return: a list of Dependency objects representing the transitive set of dependencies that should
             be on the class path for something depending on `names`
     :rtype: list[ClasspathDependency]
@@ -11349,6 +11363,8 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             return False
         if dst in roots:
             return True
+        if not includeOptionalDependencies and edge and getattr(edge.src, 'is_optional_dependency', lambda _dep: False)(dst):
+            return False
         if edge and edge.src.isJARDistribution() and edge.kind in (DEP_STANDARD, DEP_BUILD):
             if isinstance(edge.src.suite, BinarySuite) or not preferProjects:
                 return dst.isJARDistribution()
@@ -11407,13 +11423,13 @@ def _entries_to_classpath(cpEntries, resolve=True, includeBootClasspath=False, j
     return os.pathsep.join(cp)
 
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False, forBuild=False):
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False, forBuild=False, includeOptionalDependencies=False):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
     then all registered dependencies are used.
     """
-    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects, forBuild=forBuild)
+    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects, forBuild=forBuild, includeOptionalDependencies=includeOptionalDependencies)
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
@@ -11421,7 +11437,8 @@ def classpath_and_modulepath_args(names=None, cp_prefix=None, cp_suffix=None, jd
     """
     Get the classpath and modulepath arguments for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
-    can be used to transitively exclude dependencies from the final result.
+    can be used to transitively exclude dependencies from the final result. Optional dependency edges
+    are not traversed unless they are roots.
     """
     entries = classpath_entries(names=names)
     if exclude_names:
@@ -11474,7 +11491,8 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, e
     """
     Get the VM arguments (classpath, modulepath and system properties) for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
-    can be used to transitively exclude dependencies from the final result.
+    can be used to transitively exclude dependencies from the final result. Optional dependency edges
+    are not traversed unless they are roots.
     """
     entries = classpath_entries(names=names)
     if exclude_names:
@@ -17491,7 +17509,7 @@ def classpath_cli(args):
     parser.add_argument('--resolve', action='store_true', help='Download libraries if they are not yet downloaded.')
     parser.add_argument('dependencies', nargs=ONE_OR_MORE, help='root distributions to include on the classpath')
     parsed = parser.parse_args(args)
-    cpEntries = classpath_entries(names=parsed.dependencies, forBuild=parsed.for_build)
+    cpEntries = classpath_entries(names=parsed.dependencies, forBuild=parsed.for_build, includeOptionalDependencies=parsed.for_build)
     cp = _entries_to_classpath(cpEntries=cpEntries, unique=True, resolve=parsed.resolve)
     if parsed.lines:
         for e in cp.split(os.pathsep):
