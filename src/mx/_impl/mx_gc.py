@@ -25,6 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 #
 import argparse
+import glob
 import os
 import re
 
@@ -260,6 +261,83 @@ def _gc_layout_dists(suite, parsed_args):
                 archive_dir = os.path.join(dist_dir, "dists")
                 candidates.update({os.path.join(archive_dir, x): unknown_archives.get(x) for x in _listdir(archive_dir) if x in unknown_archives.keys()})
     return [CollectionCandidate(full_path, unknown_dists.get(dist), _get_size_in_bytes(full_path)) for full_path, dist in candidates.items()]
+
+
+@mx.command('mx', 'gc-cache')
+def gc_cache(args):
+    """ Garbage collect mx cache entries."""
+
+    parser = argparse.ArgumentParser(
+        prog='mx gc-cache',
+        description='''Garbage collect entries in the mx download cache.
+        By default, it collects cache entries not referenced by the current configuration (see `--keep-current`).
+        The cache directory defaults to ~/.mx/cache and can be overridden with MX_CACHE_DIR.
+        ''')
+    _gc_collect_generic(args, parser, _gc_cache_entries)
+
+
+def _gc_cache_entry_name(path, cache_dir):
+    if not path:
+        return None
+    cache_dir = os.path.realpath(cache_dir)
+    path = os.path.realpath(path)
+    try:
+        if os.path.commonpath([cache_dir, path]) != cache_dir:
+            return None
+    except ValueError:
+        return None
+    rel_path = os.path.relpath(path, cache_dir)
+    if rel_path == os.curdir:
+        return None
+    return rel_path.split(os.sep)[0]
+
+
+def _gc_current_cache_entries(cache_dir):
+    entries = set()
+    for dep in mx.dependencies():
+        for attr in ('path', 'sourcePath', 'extract_path'):
+            entry = _gc_cache_entry_name(getattr(dep, attr, None), cache_dir)
+            if entry:
+                entries.add(entry)
+    entries.update(_gc_current_fetch_jdk_cache_entries(cache_dir))
+    return entries
+
+
+def _gc_current_fetch_jdk_cache_entries(cache_dir):
+    entries = set()
+    out = mx.LinesOutputCapture()
+    mx.run_mx(["fetch-jdk", "--list-cache-paths"], suite=mx.primary_suite(), out=out, quiet=True)
+    for pattern in out.lines:
+        for path in glob.glob(pattern):
+            if os.path.islink(path):
+                continue
+            entry = _gc_cache_entry_name(path, cache_dir)
+            if entry:
+                entries.add(entry)
+    return entries
+
+
+def _gc_cache_entries(parsed_args):
+    """Returns a list of entries in the mx download cache."""
+    cache_dir = mx._cache_dir()
+    if not os.path.isdir(cache_dir):
+        return []
+
+    current_entries = _gc_current_cache_entries(cache_dir) if parsed_args.keep_current else set()
+    result = []
+    for entry in os.listdir(cache_dir):
+        try:
+            if entry in current_entries:
+                continue
+            full_path = os.path.join(cache_dir, entry)
+            if os.path.islink(full_path):
+                continue
+            modtime = datetime.fromtimestamp(os.path.getmtime(full_path))
+            size = _get_size_in_bytes(full_path)
+            result.append(CollectionCandidate(full_path, modtime, size))
+        except FileNotFoundError:
+            continue
+    return result
 
 
 @mx.command('mx', 'gc-jdks')
