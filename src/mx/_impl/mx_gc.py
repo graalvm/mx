@@ -264,7 +264,7 @@ def _gc_layout_dists(suite, parsed_args):
 
 @mx.command('mx', 'gc-jdks')
 def gc_jdks(args):
-    """ Garbage collect mx distributions."""
+    """ Garbage collect JDKs downloaded by mx fetch-jdk."""
 
     parser = argparse.ArgumentParser(prog='mx gc-jdks', description='''Garbage collect JDKs downloaded by mx fetch-jdk.
         By default, it collects all JDKs not referenced in common.json (see `--keep-current`).
