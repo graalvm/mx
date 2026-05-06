@@ -305,8 +305,27 @@ def _gc_current_cache_entries(cache_dir):
 
 def _gc_current_fetch_jdk_cache_entries(cache_dir):
     entries = set()
-    out = mx.LinesOutputCapture()
-    mx.run_mx(["fetch-jdk", "--list-cache-paths"], suite=mx.primary_suite(), out=out, quiet=True)
+
+    class FetchJdkOutputCapture(object):
+        def __init__(self):
+            self.lines = []
+
+        def log(self, msg, **kwargs):
+            if msg is not None:
+                self.lines.extend(str(msg).rstrip().split(os.linesep))
+
+    previous_log_task = mx.getLogTask()
+    out = FetchJdkOutputCapture()
+    try:
+        mx.setLogTask(out)
+        try:
+            mx.command_function("fetch-jdk")(["--list-cache-paths"])
+        except SystemExit as e:
+            if e.code not in (None, 0):
+                raise
+    finally:
+        mx.setLogTask(previous_log_task)
+
     for pattern in out.lines:
         for path in glob.glob(pattern):
             if os.path.islink(path):

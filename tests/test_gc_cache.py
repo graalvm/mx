@@ -106,14 +106,19 @@ class GcCacheTest(unittest.TestCase):
             stale_entry.mkdir()
             (stale_entry / "labsjdk.tar.gz").write_text("old-jdk", encoding="utf-8")
 
-            def fake_run_mx(args, **kwargs):
-                self.assertEqual(["fetch-jdk", "--list-cache-paths"], args)
-                kwargs["out"](str(cache_dir / "labsjdk-ce-21-jvmci-23.1-b33_*") + "\n")
-                return 0
+            def fake_command_function(name):
+                self.assertEqual("fetch-jdk", name)
+
+                def fake_fetch_jdk(args):
+                    self.assertEqual(["--list-cache-paths"], args)
+                    orig_mx.log(str(cache_dir / "labsjdk-ce-21-jvmci-23.1-b33_*"))
+                    raise SystemExit(0)
+
+                return fake_fetch_jdk
 
             with monkeypatch_attr(orig_mx, "_CACHE_DIR", str(cache_dir)):
                 with monkeypatch_attr(orig_mx, "dependencies", lambda: []):
-                    with monkeypatch_attr(orig_mx, "run_mx", fake_run_mx):
+                    with monkeypatch_attr(orig_mx, "command_function", fake_command_function):
                         candidates = mx_gc._gc_cache_entries(Namespace(keep_current=True))
 
         candidate_paths = {pathlib.Path(candidate.path).name for candidate in candidates}
