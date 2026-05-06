@@ -46,6 +46,8 @@
   - `major`: reserved for high-impact backward-incompatible changes (usually unchanged).
   - `minor`: bump when a PR adds a new feature that did not exist before.
   - `bugfix`: bump when a PR fixes existing features.
+  - Keep the `src/mx/mx_version.py` bump in its own commit so branch rebases can resolve version conflicts cleanly.
+- When invoking another mx command from Python code in-process, prefer `mx.command_function("<command>")([...])` over `mx.run_mx([...])` unless subprocess isolation is intentional.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Files explicitly state **“DO NOT WRITE IMPLEMENTATION CODE HERE.”** in several `src/mx_*.py` modules — put real logic under `src/mx/_impl/`.
