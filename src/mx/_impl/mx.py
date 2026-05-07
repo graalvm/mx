@@ -2293,6 +2293,9 @@ class Suite(object):
         pd = attrs.pop('platformDependent', False)
         platformDependent = bool(os_arch) or pd
         testDistribution = attrs.pop('testDistribution', None)
+        deploy = attrs.pop('deploy', True)
+        if not isinstance(deploy, bool):
+            abort('Attribute "deploy" must be a boolean', context)
         path = attrs.pop('path', None)
         layout = attrs.pop('layout', None)
 
@@ -2360,6 +2363,7 @@ class Suite(object):
                                 javaCompliance, platformDependent, theLicense, maven=maven,
                                 stripConfigFileNames=stripConfigFileNames, stripMappingFileNames=stripMappingFileNames,
                                 testDistribution=testDistribution, manifestEntries=manifestEntries, **attrs)
+        d.deploy = deploy
         d._orig_attrs = orig_attrs
         self.dists.append(d)
         return d

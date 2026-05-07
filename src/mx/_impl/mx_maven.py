@@ -973,6 +973,7 @@ def _deploy_binary(args, suite):
         return f'{suite.vc.parent(suite.vc_dir)}-SNAPSHOT'
 
     dists = suite.dists
+    dists = [d for d in dists if _is_deployable_dist(d)]
     if args.only:
         only = args.only.split(',')
         dists = [d for d in dists if d.name in only or d.qualifiedName() in only]
@@ -1225,7 +1226,12 @@ def _match_tags(dist, tags):
 def _file_name_match(dist, names):
     return any(fnmatch.fnmatch(dist.name, n) or fnmatch.fnmatch(dist.qualifiedName(), n) for n in names)
 
+def _is_deployable_dist(dist):
+    return getattr(dist, 'deploy', True) is not False
+
 def _dist_matcher(dist, tags, all_distributions, only, skip, all_distribution_types):
+    if not _is_deployable_dist(dist):
+        return False
     if tags is not None and not _match_tags(dist, tags):
         return False
     if all_distributions:
@@ -1239,6 +1245,8 @@ def _dist_matcher(dist, tags, all_distributions, only, skip, all_distribution_ty
     return getattr(dist, 'maven', False) and not dist.is_test_distribution()
 
 def _dist_matcher_all(dist, tags, only, skip):
+    if not _is_deployable_dist(dist):
+        return False
     if tags is not None and not _match_tags(dist, tags):
         return False
     if only is not None:
