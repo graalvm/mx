@@ -25,6 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+import argparse
 import importlib
 import pathlib
 import sys
@@ -33,6 +34,7 @@ import unittest
 
 from contextlib import contextmanager
 from argparse import Namespace
+from datetime import datetime
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
@@ -52,6 +54,38 @@ def monkeypatch_attr(obj, name, value):
 
 
 class GcCacheTest(unittest.TestCase):
+    def _parse_older_than(self, value):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--older-than", action=mx_gc.TimeAction)
+        return parser.parse_args(["--older-than", value]).older_than
+
+    def test_older_than_accepts_absolute_time(self):
+        self.assertEqual(datetime(2026, 5, 7, 13, 14, 15), self._parse_older_than("2026-05-07T13:14:15"))
+
+    def test_older_than_accepts_relative_units(self):
+        class FixedDatetime(datetime):
+            @classmethod
+            def today(cls):
+                return cls(2026, 5, 7, 13, 14, 15)
+
+        test_cases = [
+            ("1minute", datetime(2026, 5, 7, 13, 13, 15)),
+            ("2minutes", datetime(2026, 5, 7, 13, 12, 15)),
+            ("1day", datetime(2026, 5, 6, 13, 14, 15)),
+            ("2days", datetime(2026, 5, 5, 13, 14, 15)),
+            ("1week", datetime(2026, 4, 30, 13, 14, 15)),
+            ("2weeks", datetime(2026, 4, 23, 13, 14, 15)),
+            ("1month", datetime(2026, 4, 7, 13, 14, 15)),
+            ("2months", datetime(2026, 3, 8, 13, 14, 15)),
+            ("1year", datetime(2025, 5, 7, 13, 14, 15)),
+            ("2years", datetime(2024, 5, 7, 13, 14, 15)),
+        ]
+
+        with monkeypatch_attr(mx_gc, "datetime", FixedDatetime):
+            for value, expected in test_cases:
+                with self.subTest(value=value):
+                    self.assertEqual(expected, self._parse_older_than(value))
+
     def test_keep_current_excludes_entries_referenced_by_dependencies(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir) / "cache"

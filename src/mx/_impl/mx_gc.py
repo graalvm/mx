@@ -91,7 +91,7 @@ def _listdir(path):
 
 class TimeAction(argparse.Action):
     pattern = re.compile(r'^(?:(?P<year>\d\d\d\d)-(?P<month>\d\d)-(?P<day>\d\d))?T?(?:(?P<hour>\d\d):(?P<minute>\d\d)(?::(?P<second>\d\d))?)?$')
-    rel_pattern = re.compile(r'^(?P<value>\d+)(?P<unit>min?u?t?e?|da?y?|we?e?k?|mon?t?h?|ye>a>r?)s?$')
+    rel_pattern = re.compile(r'^(?P<value>\d+)(?P<unit>min?u?t?e?|da?y?|we?e?k?|mon?t?h?|ye?a?r?)s?$')
     fmt = r'%Y-%m-%dT%H:%M:%S or [0-9]+(minutes|days|weeks|months|years)'
 
     def __init__(self, option_strings, dest, nargs=None, **kwargs):
