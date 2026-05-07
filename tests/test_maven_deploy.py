@@ -74,7 +74,9 @@ class _MockSuite:
 
 
 class _MockDistribution:
-    def __init__(self, name, deps=None, excluded_libs=None, optional_dependencies=None, maven=True, suite=None, deploy=True):
+    def __init__(
+        self, name, deps=None, excluded_libs=None, optional_dependencies=None, maven=True, suite=None, deploy=True
+    ):
         self.name = name
         self.deps = deps or []
         self.excludedLibs = excluded_libs or []
@@ -262,7 +264,8 @@ class DeployDistributionMatcherTest(unittest.TestCase):
 
 class BatchedMavenDeployIntegrationTest(unittest.TestCase):
     def test_run_batched_maven_deploy_deploys_multiple_artifacts_to_file_repository(self):
-        self.assertIsNotNone(shutil.which("mvn"), "requires Maven")
+        if shutil.which("mvn") is None:
+            self.skipTest("requires Maven")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = pathlib.Path(tmpdir)
