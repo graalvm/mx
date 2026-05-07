@@ -74,12 +74,13 @@ class _MockSuite:
 
 
 class _MockDistribution:
-    def __init__(self, name, deps=None, excluded_libs=None, optional_dependencies=None, maven=True, suite=None):
+    def __init__(self, name, deps=None, excluded_libs=None, optional_dependencies=None, maven=True, suite=None, deploy=True):
         self.name = name
         self.deps = deps or []
         self.excludedLibs = excluded_libs or []
         self.optionalDependencies = optional_dependencies or []
         self.maven = maven
+        self.deploy = deploy
         self.suite = suite or _MockSuite()
         self.theLicense = []
         self.description = name
@@ -171,6 +172,92 @@ class MavenOptionalDependencyPomTest(unittest.TestCase):
             for dependency in root.findall("./m:dependencies/m:dependency", namespace)
         }
         self.assertEqual({"required-dist": None, "optional-dist": "true", "optional-lib": "true"}, dependencies)
+
+
+class DeployDistributionMatcherTest(unittest.TestCase):
+    def test_suite_loader_applies_deploy_to_custom_distribution(self):
+        class CustomDistribution:
+            kwargs = None
+
+            def __init__(
+                self,
+                suite,
+                name,
+                deps,
+                excluded_libs,
+                platform_dependent,
+                the_license,
+                testDistribution=None,
+                layout=None,
+                path=None,
+                **kwargs,
+            ):
+                self.suite = suite
+                self.name = name
+                CustomDistribution.kwargs = kwargs
+
+        Extensions = type("Extensions", (), {"CustomDistribution": CustomDistribution})
+
+        class Compatibility(_MockMxCompatibility):
+            def licenseAttribute(self):
+                return "license"
+
+        class Suite:
+            mxDir = "."
+            extensions = Extensions()
+
+            def __init__(self):
+                self.dists = []
+
+            def getMxCompatibility(self):
+                return Compatibility()
+
+        suite = Suite()
+
+        dist = orig_mx.Suite._load_distribution(
+            suite,
+            "CUSTOM_DIST",
+            {
+                "class": "CustomDistribution",
+                "deploy": False,
+            },
+        )
+
+        self.assertFalse(dist.deploy)
+        self.assertNotIn("deploy", CustomDistribution.kwargs)
+
+    def test_deploy_false_excludes_maven_deploy_distribution(self):
+        dist = _MockDistribution("SKIP_ME", deploy=False)
+
+        self.assertFalse(
+            orig_mx_maven._dist_matcher(
+                dist,
+                tags=None,
+                all_distributions=False,
+                only=None,
+                skip=None,
+                all_distribution_types=False,
+            )
+        )
+
+    def test_deploy_false_excludes_all_maven_deploy_distributions(self):
+        dist = _MockDistribution("SKIP_ME", deploy=False)
+
+        self.assertFalse(
+            orig_mx_maven._dist_matcher(
+                dist,
+                tags=None,
+                all_distributions=True,
+                only=None,
+                skip=None,
+                all_distribution_types=True,
+            )
+        )
+
+    def test_deploy_false_excludes_custom_artifact_deploy_distribution(self):
+        dist = _MockDistribution("SKIP_ME", deploy=False)
+
+        self.assertFalse(orig_mx_maven._dist_matcher_all(dist, tags=None, only=["SKIP_ME"], skip=None))
 
 
 class BatchedMavenDeployIntegrationTest(unittest.TestCase):
