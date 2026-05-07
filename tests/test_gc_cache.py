@@ -86,6 +86,26 @@ class GcCacheTest(unittest.TestCase):
                 with self.subTest(value=value):
                     self.assertEqual(expected, self._parse_older_than(value))
 
+    def test_older_than_accepts_relative_unit_short_forms(self):
+        class FixedDatetime(datetime):
+            @classmethod
+            def today(cls):
+                return cls(2026, 5, 7, 13, 14, 15)
+
+        test_cases = [
+            ("10mi", datetime(2026, 5, 7, 13, 4, 15)),
+            ("10min", datetime(2026, 5, 7, 13, 4, 15)),
+            ("1d", datetime(2026, 5, 6, 13, 14, 15)),
+            ("1w", datetime(2026, 4, 30, 13, 14, 15)),
+            ("3mo", datetime(2026, 2, 6, 13, 14, 15)),
+            ("1y", datetime(2025, 5, 7, 13, 14, 15)),
+        ]
+
+        with monkeypatch_attr(mx_gc, "datetime", FixedDatetime):
+            for value, expected in test_cases:
+                with self.subTest(value=value):
+                    self.assertEqual(expected, self._parse_older_than(value))
+
     def test_keep_current_excludes_entries_referenced_by_dependencies(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir) / "cache"
