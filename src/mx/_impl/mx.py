@@ -2738,12 +2738,7 @@ class SourceSuite(Suite):
         _release = self.is_release_from_suite()
         if _release is not None:
             return _release
-        if self.vc:
-            _version = self._get_early_suite_dict_property('version')
-            if _version:
-                return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
-            else:
-                _release = self.vc.is_release_from_tags(self.vc_dir, self.name)
+        _release = self.is_release_from_tags()
         if _release is not None:
             return _release
         return False
@@ -2751,14 +2746,23 @@ class SourceSuite(Suite):
     def is_release_from_suite(self):
         return self._get_early_suite_dict_property('release')
 
+    def is_release_from_tags(self):
+        if not self.vc:
+            return None
+        _version = self._get_early_suite_dict_property('version')
+        if _version:
+            return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
+        else:
+            return self.vc.is_release_from_tags(self.vc_dir, self.name)
+
     def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
         if snapshotSuffix not in self._releaseVersion:
             _version = self.release_version_from_suite(snapshotSuffix=snapshotSuffix)
-            if not _version and self.vc:
-                _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
+            if not _version:
+                _version = self.release_version_from_tags(snapshotSuffix=snapshotSuffix)
             if not _version:
                 _version = f"unknown-{platform.node()}-{time.strftime('%Y-%m-%d_%H-%M-%S_%Z')}"
             self._releaseVersion[snapshotSuffix] = _version
@@ -2770,6 +2774,11 @@ class SourceSuite(Suite):
             if not self.is_release_from_suite():
                 _version = _version + '-' + snapshotSuffix
         return _version
+
+    def release_version_from_tags(self, snapshotSuffix='dev'):
+        if not self.vc:
+            return None
+        return self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm
