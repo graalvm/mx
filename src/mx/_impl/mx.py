@@ -2738,13 +2738,15 @@ class SourceSuite(Suite):
         _release = self.is_release_from_suite()
         if _release is not None:
             return _release
-        if not self.vc:
-            return False
-        _version = self._get_early_suite_dict_property('version')
-        if _version:
-            return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
-        else:
-            return self.vc.is_release_from_tags(self.vc_dir, self.name)
+        if self.vc:
+            _version = self._get_early_suite_dict_property('version')
+            if _version:
+                return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
+            else:
+                _release = self.vc.is_release_from_tags(self.vc_dir, self.name)
+        if _release is not None:
+            return _release
+        return False
 
     def is_release_from_suite(self):
         return self._get_early_suite_dict_property('release')
