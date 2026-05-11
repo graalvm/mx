@@ -9202,7 +9202,9 @@ class VC(object, metaclass=ABCMeta):
         :rtype: bool
         """
         _release_version = self.release_version_from_tags(vcdir=vcdir, prefix=prefix) #pylint: disable=assignment-from-no-return
-        return _release_version and re.match(r'^[0-9]+[0-9.]+$', _release_version)
+        if _release_version:
+            return bool(re.match(r'^[0-9]+[0-9.]+$', _release_version))
+        return None
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
