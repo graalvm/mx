@@ -1967,9 +1967,11 @@ class Suite(object):
             'urlrewrites',
             'scm',
             'version',
+            'version_from',
             'externalProjects',
             'groupId',
             'release',
+            'release_from',
             'ignore_suite_commit_info',
             'capture_suite_commit_info',
             'spotbugs'
@@ -2005,6 +2007,17 @@ class Suite(object):
 
         if unknown:
             abort(self.suite_py() + ' defines unsupported suite attribute: ' + ', '.join(unknown))
+
+        suite_name = d.get('name', self.name)
+        for attr, concrete_attr in [('version_from', 'version'), ('release_from', 'release')]:
+            if attr in d and concrete_attr in d:
+                abort(f"In suite '{suite_name}': '{concrete_attr}' and '{attr}' can not be both set", context=self)
+            if attr in d:
+                from_suite = d[attr]
+                if not isinstance(from_suite, str) or not from_suite:
+                    abort(f"In suite '{suite_name}': '{attr}' must be a non-empty string", context=self)
+                if from_suite == suite_name or from_suite == self.name:
+                    abort(f"In suite '{suite_name}': '{attr}' must not refer to the suite itself", context=self)
 
         self.suiteDict = d
         self._preloaded_suite_dict = None
@@ -2744,6 +2757,9 @@ class SourceSuite(Suite):
         return False
 
     def is_release_from_suite(self):
+        delegated_release = self._get_delegated_suite_dict_property('release_from', 'release')
+        if delegated_release is not None:
+            return delegated_release
         return self._get_early_suite_dict_property('release')
 
     def is_release_from_tags(self):
@@ -2769,7 +2785,9 @@ class SourceSuite(Suite):
         return self._releaseVersion[snapshotSuffix]
 
     def release_version_from_suite(self, snapshotSuffix='dev'):
-        _version = self._get_early_suite_dict_property('version')
+        _version = self._get_delegated_suite_dict_property('version_from', 'version')
+        if _version is None:
+            _version = self._get_early_suite_dict_property('version')
         if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
             if not self.is_release_from_suite():
                 _version = _version + '-' + snapshotSuffix
@@ -2779,6 +2797,18 @@ class SourceSuite(Suite):
         if not self.vc:
             return None
         return self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
+
+    def _get_delegated_suite_dict_property(self, from_attr, concrete_attr):
+        from_suite = self._get_early_suite_dict_property(from_attr)
+        if from_suite is None:
+            return None
+        target_suite = suite(from_suite, fatalIfMissing=False, context=self)
+        if target_suite is None:
+            abort(f"In suite '{self.name}': '{from_attr}' refers to unknown suite '{from_suite}'", context=self)
+        value = target_suite._get_early_suite_dict_property(concrete_attr)
+        if value is None or (concrete_attr == 'version' and not value):
+            abort(f"In suite '{self.name}': '{from_attr}' refers to suite '{from_suite}' but it does not define a concrete '{concrete_attr}' attribute", context=self)
+        return value
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm
