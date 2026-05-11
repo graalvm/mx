@@ -213,6 +213,9 @@ Delegation can be transitive: mx asks the target source suite for its effective 
 The final suite in the chain may define the concrete attribute itself, or derive the value from its VCS tags in the same way it would for its own release metadata.
 If mx detects a delegation cycle, it aborts with an error that shows the delegation chain.
 
+The value can also start with `tag:` to derive release metadata from this suite's VCS tags using a custom tag prefix.
+For example, `"version_from": "tag:foo"` and `"release_from": "tag:foo"` look for tags matching `foo-<number>(.<number>)*` instead of tags prefixed with the suite name.
+
 ### `outputRoot`
 
 Overrides where mx places build output for the suite when an alternate output root is in effect.

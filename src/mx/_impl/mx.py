@@ -2016,7 +2016,9 @@ class Suite(object):
                 from_suite = d[attr]
                 if not isinstance(from_suite, str) or not from_suite:
                     abort(f"In suite '{suite_name}': '{attr}' must be a non-empty string", context=self)
-                if from_suite == suite_name or from_suite == self.name:
+                if from_suite == 'tag:':
+                    abort(f"In suite '{suite_name}': '{attr}' must specify a non-empty tag prefix", context=self)
+                if not from_suite.startswith('tag:') and (from_suite == suite_name or from_suite == self.name):
                     abort(f"In suite '{suite_name}': '{attr}' must not refer to the suite itself", context=self)
 
         self.suiteDict = d
@@ -2757,19 +2759,21 @@ class SourceSuite(Suite):
         return False
 
     def is_release_from_suite(self, delegation_chain=None):
+        tag_prefix = self._get_delegated_tag_prefix('release_from')
+        if tag_prefix is not None:
+            return self.is_release_from_tags(tag_prefix=tag_prefix)
         delegated_release = self._get_delegated_suite_value('release_from', lambda s, chain: s.is_release(delegation_chain=chain), delegation_chain)
         if delegated_release is not None:
             return delegated_release
         return self._get_early_suite_dict_property('release')
 
-    def is_release_from_tags(self):
+    def is_release_from_tags(self, tag_prefix=None):
         if not self.vc:
             return None
         _version = self._get_early_suite_dict_property('version')
-        if _version:
+        if _version and tag_prefix is None:
             return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
-        else:
-            return self.vc.is_release_from_tags(self.vc_dir, self.name)
+        return self.vc.is_release_from_tags(self.vc_dir, tag_prefix or self.name)
 
     def release_version(self, snapshotSuffix='dev', delegation_chain=None):
         """
@@ -2786,6 +2790,9 @@ class SourceSuite(Suite):
         return _version
 
     def release_version_from_suite(self, snapshotSuffix='dev', delegation_chain=None):
+        tag_prefix = self._get_delegated_tag_prefix('version_from')
+        if tag_prefix is not None:
+            return self.release_version_from_tags(snapshotSuffix=snapshotSuffix, tag_prefix=tag_prefix)
         _version = self._get_delegated_suite_value(
             'version_from', lambda s, chain: s.release_version(snapshotSuffix=snapshotSuffix, delegation_chain=chain), delegation_chain
         )
@@ -2797,17 +2804,23 @@ class SourceSuite(Suite):
                 _version = _version + '-' + snapshotSuffix
         return _version
 
-    def release_version_from_tags(self, snapshotSuffix='dev'):
+    def release_version_from_tags(self, snapshotSuffix='dev', tag_prefix=None):
         if not self.vc:
             return None
-        return self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
+        return self.vc.release_version_from_tags(self.vc_dir, tag_prefix or self.name, snapshotSuffix=snapshotSuffix)
+
+    def _get_delegated_tag_prefix(self, from_attr):
+        from_value = self._get_early_suite_dict_property(from_attr)
+        if isinstance(from_value, str) and from_value.startswith('tag:'):
+            return from_value[len('tag:'):]
+        return None
 
     def _get_delegated_suite_value(self, from_attr, get_value, delegation_chain):
         delegation_chain = [] if delegation_chain is None else list(delegation_chain)
         if self.name in delegation_chain:
             abort(f"In suite '{self.name}': '{from_attr}' creates a delegation cycle: {' -> '.join(delegation_chain + [self.name])}", context=self)
         from_suite = self._get_early_suite_dict_property(from_attr)
-        if from_suite is None:
+        if from_suite is None or from_suite.startswith('tag:'):
             return None
         target_suite = suite(from_suite, fatalIfMissing=False, context=self)
         if target_suite is None:
