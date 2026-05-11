@@ -2744,11 +2744,11 @@ class SourceSuite(Suite):
         """
         return self.vc.isDirty(self.vc_dir, abortOnError=abortOnError)
 
-    def is_release(self):
+    def is_release(self, allow_delegation=True):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
-        _release = self.is_release_from_suite()
+        _release = self.is_release_from_suite(allow_delegation=allow_delegation)
         if _release is not None:
             return _release
         _release = self.is_release_from_tags()
@@ -2756,10 +2756,11 @@ class SourceSuite(Suite):
             return _release
         return False
 
-    def is_release_from_suite(self):
-        delegated_release = self._get_delegated_suite_dict_property('release_from', 'release')
-        if delegated_release is not None:
-            return delegated_release
+    def is_release_from_suite(self, allow_delegation=True):
+        if allow_delegation:
+            delegated_release = self._get_delegated_suite_value('release_from', lambda s: s.is_release(allow_delegation=False))
+            if delegated_release is not None:
+                return delegated_release
         return self._get_early_suite_dict_property('release')
 
     def is_release_from_tags(self):
@@ -2771,25 +2772,32 @@ class SourceSuite(Suite):
         else:
             return self.vc.is_release_from_tags(self.vc_dir, self.name)
 
-    def release_version(self, snapshotSuffix='dev'):
+    def release_version(self, snapshotSuffix='dev', allow_delegation=True):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
-        if snapshotSuffix not in self._releaseVersion:
-            _version = self.release_version_from_suite(snapshotSuffix=snapshotSuffix)
-            if not _version:
-                _version = self.release_version_from_tags(snapshotSuffix=snapshotSuffix)
-            if not _version:
-                _version = f"unknown-{platform.node()}-{time.strftime('%Y-%m-%d_%H-%M-%S_%Z')}"
+        # The cache key does not include allow_delegation; bypass it when delegation is disabled.
+        if allow_delegation and snapshotSuffix in self._releaseVersion:
+            return self._releaseVersion[snapshotSuffix]
+        _version = self.release_version_from_suite(snapshotSuffix=snapshotSuffix, allow_delegation=allow_delegation)
+        if not _version:
+            _version = self.release_version_from_tags(snapshotSuffix=snapshotSuffix)
+        if not _version:
+            _version = f"unknown-{platform.node()}-{time.strftime('%Y-%m-%d_%H-%M-%S_%Z')}"
+        if allow_delegation:
             self._releaseVersion[snapshotSuffix] = _version
-        return self._releaseVersion[snapshotSuffix]
+        return _version
 
-    def release_version_from_suite(self, snapshotSuffix='dev'):
-        _version = self._get_delegated_suite_dict_property('version_from', 'version')
-        if _version is None:
-            _version = self._get_early_suite_dict_property('version')
+    def release_version_from_suite(self, snapshotSuffix='dev', allow_delegation=True):
+        if allow_delegation:
+            _version = self._get_delegated_suite_value(
+                'version_from', lambda s: s.release_version(snapshotSuffix=snapshotSuffix, allow_delegation=False)
+            )
+            if _version is not None:
+                return _version
+        _version = self._get_early_suite_dict_property('version')
         if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
-            if not self.is_release_from_suite():
+            if not self.is_release_from_suite(allow_delegation=allow_delegation):
                 _version = _version + '-' + snapshotSuffix
         return _version
 
@@ -2798,17 +2806,16 @@ class SourceSuite(Suite):
             return None
         return self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
 
-    def _get_delegated_suite_dict_property(self, from_attr, concrete_attr):
+    def _get_delegated_suite_value(self, from_attr, get_value):
         from_suite = self._get_early_suite_dict_property(from_attr)
         if from_suite is None:
             return None
         target_suite = suite(from_suite, fatalIfMissing=False, context=self)
         if target_suite is None:
             abort(f"In suite '{self.name}': '{from_attr}' refers to unknown suite '{from_suite}'", context=self)
-        value = target_suite._get_early_suite_dict_property(concrete_attr)
-        if value is None or (concrete_attr == 'version' and not value):
-            abort(f"In suite '{self.name}': '{from_attr}' refers to suite '{from_suite}' but it does not define a concrete '{concrete_attr}' attribute", context=self)
-        return value
+        if not target_suite.isSourceSuite():
+            abort(f"In suite '{self.name}': '{from_attr}' refers to suite '{target_suite.name}' but it is not a source suite", context=self)
+        return get_value(target_suite)
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm

@@ -209,8 +209,9 @@ For example, a language suite can delegate to the `sdk` suite:
 ```
 
 `version_from` cannot be used together with `version`, and `release_from` cannot be used together with `release`.
-Delegation is one hop only: the target suite must define the concrete attribute being requested.
-That is, `version_from` requires the target suite to define `version`, and `release_from` requires the target suite to define `release`; mx does not follow another `version_from` or `release_from` on the target suite.
+Delegation is one hop only: mx asks the target source suite for its effective release metadata with delegation disabled.
+The target suite may define the concrete attribute itself, or derive the value from its VCS tags in the same way it would for its own release metadata.
+mx does not follow another `version_from` or `release_from` on the target suite.
 
 ### `outputRoot`
 
