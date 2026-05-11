@@ -209,9 +209,9 @@ For example, a language suite can delegate to the `sdk` suite:
 ```
 
 `version_from` cannot be used together with `version`, and `release_from` cannot be used together with `release`.
-Delegation is one hop only: mx asks the target source suite for its effective release metadata with delegation disabled.
-The target suite may define the concrete attribute itself, or derive the value from its VCS tags in the same way it would for its own release metadata.
-mx does not follow another `version_from` or `release_from` on the target suite.
+Delegation can be transitive: mx asks the target source suite for its effective release metadata, and that suite may delegate to another source suite.
+The final suite in the chain may define the concrete attribute itself, or derive the value from its VCS tags in the same way it would for its own release metadata.
+If mx detects a delegation cycle, it aborts with an error that shows the delegation chain.
 
 ### `outputRoot`
 

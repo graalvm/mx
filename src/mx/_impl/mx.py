@@ -2744,11 +2744,11 @@ class SourceSuite(Suite):
         """
         return self.vc.isDirty(self.vc_dir, abortOnError=abortOnError)
 
-    def is_release(self, allow_delegation=True):
+    def is_release(self, delegation_chain=None):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
-        _release = self.is_release_from_suite(allow_delegation=allow_delegation)
+        _release = self.is_release_from_suite(delegation_chain=delegation_chain)
         if _release is not None:
             return _release
         _release = self.is_release_from_tags()
@@ -2756,11 +2756,10 @@ class SourceSuite(Suite):
             return _release
         return False
 
-    def is_release_from_suite(self, allow_delegation=True):
-        if allow_delegation:
-            delegated_release = self._get_delegated_suite_value('release_from', lambda s: s.is_release(allow_delegation=False))
-            if delegated_release is not None:
-                return delegated_release
+    def is_release_from_suite(self, delegation_chain=None):
+        delegated_release = self._get_delegated_suite_value('release_from', lambda s, chain: s.is_release(delegation_chain=chain), delegation_chain)
+        if delegated_release is not None:
+            return delegated_release
         return self._get_early_suite_dict_property('release')
 
     def is_release_from_tags(self):
@@ -2772,32 +2771,29 @@ class SourceSuite(Suite):
         else:
             return self.vc.is_release_from_tags(self.vc_dir, self.name)
 
-    def release_version(self, snapshotSuffix='dev', allow_delegation=True):
+    def release_version(self, snapshotSuffix='dev', delegation_chain=None):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
-        # The cache key does not include allow_delegation; bypass it when delegation is disabled.
-        if allow_delegation and snapshotSuffix in self._releaseVersion:
+        if snapshotSuffix in self._releaseVersion:
             return self._releaseVersion[snapshotSuffix]
-        _version = self.release_version_from_suite(snapshotSuffix=snapshotSuffix, allow_delegation=allow_delegation)
+        _version = self.release_version_from_suite(snapshotSuffix=snapshotSuffix, delegation_chain=delegation_chain)
         if not _version:
             _version = self.release_version_from_tags(snapshotSuffix=snapshotSuffix)
         if not _version:
             _version = f"unknown-{platform.node()}-{time.strftime('%Y-%m-%d_%H-%M-%S_%Z')}"
-        if allow_delegation:
-            self._releaseVersion[snapshotSuffix] = _version
+        self._releaseVersion[snapshotSuffix] = _version
         return _version
 
-    def release_version_from_suite(self, snapshotSuffix='dev', allow_delegation=True):
-        if allow_delegation:
-            _version = self._get_delegated_suite_value(
-                'version_from', lambda s: s.release_version(snapshotSuffix=snapshotSuffix, allow_delegation=False)
-            )
-            if _version is not None:
-                return _version
+    def release_version_from_suite(self, snapshotSuffix='dev', delegation_chain=None):
+        _version = self._get_delegated_suite_value(
+            'version_from', lambda s, chain: s.release_version(snapshotSuffix=snapshotSuffix, delegation_chain=chain), delegation_chain
+        )
+        if _version is not None:
+            return _version
         _version = self._get_early_suite_dict_property('version')
         if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
-            if not self.is_release_from_suite(allow_delegation=allow_delegation):
+            if not self.is_release_from_suite(delegation_chain=delegation_chain):
                 _version = _version + '-' + snapshotSuffix
         return _version
 
@@ -2806,7 +2802,10 @@ class SourceSuite(Suite):
             return None
         return self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
 
-    def _get_delegated_suite_value(self, from_attr, get_value):
+    def _get_delegated_suite_value(self, from_attr, get_value, delegation_chain):
+        delegation_chain = [] if delegation_chain is None else list(delegation_chain)
+        if self.name in delegation_chain:
+            abort(f"In suite '{self.name}': '{from_attr}' creates a delegation cycle: {' -> '.join(delegation_chain + [self.name])}", context=self)
         from_suite = self._get_early_suite_dict_property(from_attr)
         if from_suite is None:
             return None
@@ -2815,7 +2814,7 @@ class SourceSuite(Suite):
             abort(f"In suite '{self.name}': '{from_attr}' refers to unknown suite '{from_suite}'", context=self)
         if not target_suite.isSourceSuite():
             abort(f"In suite '{self.name}': '{from_attr}' refers to suite '{target_suite.name}' but it is not a source suite", context=self)
-        return get_value(target_suite)
+        return get_value(target_suite, delegation_chain + [self.name])
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm
