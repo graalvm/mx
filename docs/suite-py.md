@@ -198,6 +198,24 @@ It is separate from the `version` field used inside suite imports.
 
 Declares whether the suite should be treated as a release suite when an explicit `version` is present.
 
+### `version_from` and `release_from`
+
+These fields let a suite reuse release metadata from another loaded suite instead of repeating literal values.
+For example, a language suite can delegate to the `sdk` suite:
+
+```python
+"version_from": "sdk",
+"release_from": "sdk",
+```
+
+`version_from` cannot be used together with `version`, and `release_from` cannot be used together with `release`.
+Delegation can be transitive: mx asks the target source suite for its effective release metadata, and that suite may delegate to another source suite.
+The final suite in the chain may define the concrete attribute itself, or derive the value from its VCS tags in the same way it would for its own release metadata.
+If mx detects a delegation cycle, it aborts with an error that shows the delegation chain.
+
+The value can also start with `tag:` to derive release metadata from this suite's VCS tags using a custom tag prefix.
+For example, `"version_from": "tag:foo"` and `"release_from": "tag:foo"` look for tags matching `foo-<number>(.<number>)*` instead of tags prefixed with the suite name.
+
 ### `outputRoot`
 
 Overrides where mx places build output for the suite when an alternate output root is in effect.
