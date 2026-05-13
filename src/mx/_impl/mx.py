@@ -2008,18 +2008,17 @@ class Suite(object):
         if unknown:
             abort(self.suite_py() + ' defines unsupported suite attribute: ' + ', '.join(unknown))
 
-        suite_name = d.get('name', self.name)
         for attr, concrete_attr in [('version_from', 'version'), ('release_from', 'release')]:
             if attr in d and concrete_attr in d:
-                abort(f"In suite '{suite_name}': '{concrete_attr}' and '{attr}' can not be both set", context=self)
+                abort(f"In suite '{self.name}': '{concrete_attr}' and '{attr}' can not be both set", context=self)
             if attr in d:
                 from_suite = d[attr]
                 if not isinstance(from_suite, str) or not from_suite:
-                    abort(f"In suite '{suite_name}': '{attr}' must be a non-empty string", context=self)
+                    abort(f"In suite '{self.name}': '{attr}' must be a non-empty string", context=self)
                 if from_suite == 'tag:':
-                    abort(f"In suite '{suite_name}': '{attr}' must specify a non-empty tag prefix", context=self)
-                if not from_suite.startswith('tag:') and (from_suite == suite_name or from_suite == self.name):
-                    abort(f"In suite '{suite_name}': '{attr}' must not refer to the suite itself", context=self)
+                    abort(f"In suite '{self.name}': '{attr}' must specify a non-empty tag prefix", context=self)
+                if not from_suite.startswith('tag:') and from_suite == self.name:
+                    abort(f"In suite '{self.name}': '{attr}' must not refer to the suite itself", context=self)
 
         self.suiteDict = d
         self._preloaded_suite_dict = None
@@ -2771,9 +2770,10 @@ class SourceSuite(Suite):
         if not self.vc:
             return None
         _version = self._get_early_suite_dict_property('version')
-        if _version and tag_prefix is None:
-            return f'{self.name}-{_version}' in self.vc.parent_tags(self.vc_dir)
-        return self.vc.is_release_from_tags(self.vc_dir, tag_prefix or self.name)
+        tag_prefix = tag_prefix or self.name
+        if _version:
+            return f'{tag_prefix}-{_version}' in self.vc.parent_tags(self.vc_dir)
+        return self.vc.is_release_from_tags(self.vc_dir, tag_prefix)
 
     def release_version(self, snapshotSuffix='dev', delegation_chain=None):
         """
@@ -2816,7 +2816,7 @@ class SourceSuite(Suite):
         return None
 
     def _get_delegated_suite_value(self, from_attr, get_value, delegation_chain):
-        delegation_chain = [] if delegation_chain is None else list(delegation_chain)
+        delegation_chain = delegation_chain or []
         if self.name in delegation_chain:
             abort(f"In suite '{self.name}': '{from_attr}' creates a delegation cycle: {' -> '.join(delegation_chain + [self.name])}", context=self)
         from_suite = self._get_early_suite_dict_property(from_attr)
