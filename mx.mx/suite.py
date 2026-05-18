@@ -938,7 +938,8 @@ suite = {
           "aarch64" : {
             "version" : "1.12.1",
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-winarm64.zip"],
-            "digest": "sha512:b1826c422a677f47f9f7e001672ce831791b092e4f1cd84ddf2ea067781c31aa8246f26e91dd66300c23ffa77a8ea29910c48ccf7e4235ff20bccc2d2b6e247b"
+            "digest": "sha512:b1826c422a677f47f9f7e001672ce831791b092e4f1cd84ddf2ea067781c31aa8246f26e91dd66300c23ffa77a8ea29910c48ccf7e4235ff20bccc2d2b6e247b",
+            "embeddedEdition": "ignore",
           }
         },
         "solaris" : {
