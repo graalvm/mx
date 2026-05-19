@@ -2344,7 +2344,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 host_vm = vm.host_vm()
                 assert host_vm
             dims = {
-                "vm": vm.name(),
+                "vm": "server" if vm.name() == "crema" else vm.name(),
                 "host-vm": host_vm.name() if host_vm else vm.name(),
                 "host-vm-config": self.host_vm_config_name(host_vm, vm),
                 "guest-vm": vm.name() if host_vm else "none",
