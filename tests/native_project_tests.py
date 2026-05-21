@@ -15,7 +15,7 @@ def test_source_discovery_ignores_file_names():
         source_dir = os.path.join(tmpdir, "src")
         os.makedirs(source_dir)
         pathlib.Path(source_dir, ".DS_Store").touch()
-        pathlib.Path(source_dir, ".swp").touch()
+        pathlib.Path(source_dir, "foo.swp").touch()
         pathlib.Path(source_dir, "library.c").touch()
         pathlib.Path(source_dir, "notes.txt").touch()
 
@@ -50,11 +50,13 @@ def test_unsupported_default_native_sources_error_message_reports_paths():
     previous_abort = orig_mx_native.mx.abort
     orig_mx_native.mx.abort = abort
     try:
-        project = SimpleNamespace(_source={"files": {"": ["src/README"], ".txt": ["src/notes.txt"]}})
+        project = SimpleNamespace(_source={"files": {"": ["src/README", "src/.swp"], ".txt": ["src/notes.txt"]}})
         try:
             orig_mx_native.DefaultNativeProject.generate_manifest_for_task(project, None, None, None)
         except AbortRaised as e:
-            assert str(e) == "Unsupported source files for default native project: src/README, src/notes.txt"
+            assert (
+                str(e) == "Unsupported source files for default native project: src/.swp, src/README, src/notes.txt"
+            ), e
         else:
             assert False, "expected unsupported source files to abort"
     finally:

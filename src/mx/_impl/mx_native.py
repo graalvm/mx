@@ -102,7 +102,8 @@ class lazy_class_default(object):  # pylint: disable=invalid-name
             return vars(self).setdefault(self.init.__name__, self.init(owner))
 
 
-_ignored_source_file_names = frozenset(['.DS_Store', '.swp'])
+_ignored_source_file_names = frozenset(['.DS_Store'])
+_ignored_source_file_extensions = frozenset(['.swp'])
 
 
 _default_native_project_supported_source_file_extensions = frozenset(['.h', '.hpp', '.c', '.cc', '.cpp', '.S'])
@@ -775,6 +776,8 @@ class NinjaProject(MultitargetProject):
                         continue
                     grouping[os.path.splitext(f)[1]].append(os.path.join(rel_root, f))
                 for ext in grouping:
+                    if ext in _ignored_source_file_extensions:
+                        continue
                     source_files[ext] += grouping[ext]
 
         return dict(tree=source_tree, files=source_files)
