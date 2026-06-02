@@ -185,6 +185,17 @@ def _spotbugs(parsed_args, args, spotbugsArgs, suite, projectsToTest, spotbugsVe
         xmlDoc.element('Bug', attributes={'pattern' : 'RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE'})
         xmlDoc.close('Match')
 
+        # SpotBugs can report assertion side effects for synthetic constructor captures and
+        # ordinary field assignments (https://github.com/spotbugs/spotbugs/issues/3483).
+        # These rules are disabled until such time there is a SpotBugs release
+        # that does not generate these false positives.
+        xmlDoc.open('Match')
+        xmlDoc.element('Bug', attributes={'pattern' : 'ASE_ASSERTION_WITH_SIDE_EFFECT'})
+        xmlDoc.close('Match')
+        xmlDoc.open('Match')
+        xmlDoc.element('Bug', attributes={'pattern' : 'ASE_ASSERTION_WITH_SIDE_EFFECT_METHOD'})
+        xmlDoc.close('Match')
+
         for cls in ignoredClasses:
             xmlDoc.open('Match')
             xmlDoc.element('Class', attributes={'name' : '~' + cls + '.*'})
