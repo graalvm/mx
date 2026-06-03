@@ -904,6 +904,8 @@ environment variables:
         self.add_argument('--jmods-dir', action='store', help="path to directory containing jmods which are added to --module-path when compiling "
                                 "module-info.java for a distribution's module. The default is JAVA_HOME/jmods. Specify NO_JMODS to indicate "
                                 "JAVA_HOME is a JEP 493-enabled JDK (i.e. has no jmods).", metavar='<path>')
+        self.add_argument('--patch-jdk-module', action='append', dest='jdk_module_patches', metavar='<module>=<path>', default=[],
+                          help='patch a JDK module for mx Java launches, JDK module discovery, and Java source compilation')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars to be used instead of default versions')
@@ -7770,6 +7772,8 @@ class JavacLikeCompiler(JavaCompiler):
 
             required_modules = set()
             if compliance >= '9':
+                patch_modules = {module for module, _ in self.jdk.jdk_module_patches}
+                javacArgs += self.jdk.jdk_module_patch_args()
                 exports = {}
                 compat = project.suite.getMxCompatibility()
                 if compat.enhanced_module_usage_info():
@@ -7798,6 +7802,7 @@ class JavacLikeCompiler(JavaCompiler):
                 if required_modules is not None:
                     concealed = parse_requiresConcealed_attribute(self.jdk, getattr(project, 'requiresConcealed', None), {}, None, project)
                     required_modules.update((m for m in concealed if m not in jdk_modules_overridden_on_classpath))
+                    required_modules.update(patch_modules)
 
                 addExportArgs(project, exports, '', self.jdk, required_modules)
 
@@ -11784,6 +11789,62 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
         return [], args
 
 
+def jdk_module_patches():
+    """
+    Gets the configured JDK module patches as ``(module, path)`` pairs.
+    """
+    patches = OrderedDict()
+    for spec in getattr(_opts, 'jdk_module_patches', []) or []:
+        if '=' not in spec:
+            abort('JDK module patch must be specified as <module>=<path>: ' + spec)
+        module, patch_path = spec.split('=', 1)
+        module = module.strip()
+        if not module:
+            abort('JDK module patch has an empty module name: ' + spec)
+        if not patch_path:
+            abort('JDK module patch has an empty path for module ' + module)
+        patch_path = realpath(os.path.expanduser(os_expandvars(patch_path)))
+        if not exists(patch_path):
+            abort('JDK module patch path does not exist for module ' + module + ': ' + patch_path)
+        previous = patches.get(module)
+        if previous and previous != patch_path:
+            abort('JDK module ' + module + ' is patched more than once: ' + previous + ', ' + patch_path)
+        patches[module] = patch_path
+    return tuple(patches.items())
+
+
+def _jdk_module_patch_args(patches):
+    patches = tuple(patches)
+    if not patches:
+        return []
+    return ['--add-modules=' + ','.join(module for module, _ in patches)] + [
+        '--patch-module=' + module + '=' + patch_path for module, patch_path in patches
+    ]
+
+
+def _jdk_module_patch_signature(patches):
+    def path_signature(p):
+        if isdir(p):
+            latest_mtime = 0
+            entry_count = 0
+            total_size = 0
+            for root, dirs, files in os.walk(p):
+                for name in itertools.chain(dirs, files):
+                    entry = join(root, name)
+                    try:
+                        stat_result = os.stat(entry)
+                    except OSError:
+                        continue
+                    latest_mtime = max(latest_mtime, int(stat_result.st_mtime_ns))
+                    total_size += stat_result.st_size
+                    entry_count += 1
+            return f'dir:{p}:{entry_count}:{total_size}:{latest_mtime}'
+        stat_result = os.stat(p)
+        return f'file:{p}:{stat_result.st_size}:{int(stat_result.st_mtime_ns)}'
+
+    return os.linesep.join(module + '=' + path_signature(patch_path) for module, patch_path in patches)
+
+
 def _format_commands():
     msg = '\navailable commands:\n'
     commands = _mx_commands.commands()
@@ -12502,6 +12563,8 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
             commands.append('-v')
     if get_opts().strip_jars:
         commands.append('--strip-jars')
+    for module, patch_path in jdk_module_patches():
+        commands += ['--patch-jdk-module', module + '=' + patch_path]
     if _opts.version_conflict_resolution != 'suite':
         commands += ['--version-conflict-resolution', _opts.version_conflict_resolution]
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
@@ -13083,6 +13146,10 @@ class JDKConfig(Comparable):
         self.version = VersionSpec(version)
         ver = self.version.parts[1] if self.version.parts[0] == 1 else self.version.parts[0]
         self.javaCompliance = JavaCompliance(ver)
+        self.jdk_module_patches = jdk_module_patches()
+        if self.jdk_module_patches and self.javaCompliance < JavaCompliance(9):
+            abort('--patch-jdk-module requires a JDK with module support')
+        self.java_args += self.jdk_module_patch_args()
 
         self.debug_args = java_debug_args()
 
@@ -13188,6 +13255,9 @@ class JDKConfig(Comparable):
         if addDefaultArgs:
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args
         return args
+
+    def jdk_module_patch_args(self):
+        return _jdk_module_patch_args(self.jdk_module_patches)
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, command_mapper_hooks=None, on_timeout=None):
         cmd = self.generate_java_command(args, addDefaultArgs=addDefaultArgs)
@@ -13312,6 +13382,9 @@ class JDKConfig(Comparable):
             cache = join(ensure_dir_exists(join(primary_suite().get_output_root(), '.jdk' + str(self.version))), 'listmodules')
             cache_source = cache + '.source'
             isJDKImage = exists(jdkModules)
+            cache_source_content = self.home
+            if self.jdk_module_patches:
+                cache_source_content += os.linesep + _jdk_module_patch_signature(self.jdk_module_patches)
 
             def _use_cache():
                 if not isJDKImage:
@@ -13322,7 +13395,7 @@ class JDKConfig(Comparable):
                     return False
                 with open(cache_source) as fp:
                     source = fp.read()
-                    if source != self.home:
+                    if source != cache_source_content:
                         return False
                 if TimeStampFile(jdkModules).isNewerThan(cache) or TimeStampFile(__file__).isNewerThan(cache):
                     return False
@@ -13332,10 +13405,10 @@ class JDKConfig(Comparable):
                 addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
                 out = LinesOutputCapture()
                 app = join(_mx_home, 'java', 'ListModules.java')
-                run([self.java, addExportsArg, '-Xint', app], out=out)
+                run([self.java] + self.jdk_module_patch_args() + [addExportsArg, '-Xint', app], out=out)
                 lines = out.lines
                 if isJDKImage:
-                    for dst, content in [(cache_source, self.home), (cache, '\n'.join(lines))]:
+                    for dst, content in [(cache_source, cache_source_content), (cache, '\n'.join(lines))]:
                         try:
                             with open(dst, 'w') as fp:
                                 fp.write(content)
