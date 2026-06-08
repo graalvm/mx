@@ -177,6 +177,12 @@ def mx_benchmark_compatibility():
     return mx.primary_suite().getMxCompatibility()
 
 
+def _parse_comma_separated_arg(value: Optional[str]) -> List[str]:
+    if value is None:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
 def ensure_command_is_available(command: str, context: str):
     if shutil.which(command) is None:
         mx.abort("Aborting: please install '%s' %s" % (command, context))
@@ -917,6 +923,24 @@ class BenchmarkSuite(object):
         :rtype: list[str]
         """
         return []
+
+    def get_metric_name_filters(self) -> tuple[List[str], List[str]]:
+        """Returns configured benchmark-wide metric-name include/exclude filters."""
+        include = _parse_comma_separated_arg(bm_exec_context().get_opt("include_metrics"))
+        exclude = _parse_comma_separated_arg(bm_exec_context().get_opt("exclude_metrics"))
+        return include, exclude
+
+    def global_post_processors(self) -> List[DataPointsPostProcessor]:
+        """Returns benchmark-wide post-processors injected by the base framework."""
+        include, exclude = self.get_metric_name_filters()
+        if include and exclude:
+            raise ValueError("Options '--include-metrics' and '--exclude-metrics' cannot be used together!")
+        post_processors = []
+        if include:
+            post_processors.append(MetricNameIncludePostProcessor(include))
+        if exclude:
+            post_processors.append(MetricNameExcludePostProcessor(exclude))
+        return post_processors
 
     def suiteDimensions(self) -> DataPoint:
         """Returns context specific dimensions that will be integrated in the measurement
@@ -1991,6 +2015,26 @@ class DataPointsAverageProducerWithOutlierRemoval(AverageValueProducerDataPoints
         return super().calculate_aggregate_value(dps_without_outliers)
 
 
+class MetricNameIncludePostProcessor(DataPointsPostProcessor):
+    """Keeps only datapoints whose ``metric.name`` is present in the configured allowlist."""
+
+    def __init__(self, metric_names: Iterable[str]):
+        self._metric_names = set(metric_names)
+
+    def process_datapoints(self, datapoints: DataPoints) -> DataPoints:
+        return [dp for dp in datapoints if dp.get("metric.name") in self._metric_names]
+
+
+class MetricNameExcludePostProcessor(DataPointsPostProcessor):
+    """Drops datapoints whose ``metric.name`` is present in the configured denylist."""
+
+    def __init__(self, metric_names: Iterable[str]):
+        self._metric_names = set(metric_names)
+
+    def process_datapoints(self, datapoints: DataPoints) -> DataPoints:
+        return [dp for dp in datapoints if dp.get("metric.name") not in self._metric_names]
+
+
 class StdOutBenchmarkSuite(BenchmarkSuite):
     """Convenience suite for benchmarks that need to parse standard output.
 
@@ -2081,7 +2125,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
     def post_processors(self) -> List[DataPointsPostProcessor]:
         """Returns the suite's post-processors (should be overridden by subclasses that require datapoints post-processing)."""
-        return []
+        return self.global_post_processors()
 
     def post_process_datapoints(self, datapoints: DataPoints) -> DataPoints:
         """Post-processes datapoints obtained during a benchmark run by cycling through the post-processors defined for the bench suite."""
@@ -4632,6 +4676,12 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file. Takes precedence over the keys defined in MX_BENCHMARK_EXTRAS in case of duplicates.")
         parser.add_argument(
+            "--include-metrics", default=None,
+            help="Comma-separated allowlist of metric.name values to keep in the final benchmark datapoints. If omitted, all datapoints are included. Cannot be used together with --exclude-metrics.")
+        parser.add_argument(
+            "--exclude-metrics", default=None,
+            help="Comma-separated denylist of metric.name values to remove from the final benchmark datapoints. Cannot be used together with --include-metrics.")
+        parser.add_argument(
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
@@ -4739,6 +4789,8 @@ class BenchmarkExecutor(object):
                 for config in dispatcher.dispatch():
                     with ConstantContextValueManager("benchmarks", config.benchmarks), \
                           ConstantContextValueManager("bm_suite_args", config.bm_suite_args), \
+                          ConstantContextValueManager("include_metrics", config.mx_benchmark_args.include_metrics), \
+                          ConstantContextValueManager("exclude_metrics", config.mx_benchmark_args.exclude_metrics), \
                           ConstantContextValueManager("fork_info", config.fork_info):
                         benchmarks = bm_exec_context().get("benchmarks")
                         bm_suite_args = bm_exec_context().get("bm_suite_args")
