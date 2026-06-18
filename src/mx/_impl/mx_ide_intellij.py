@@ -35,7 +35,7 @@ import sys
 # TODO use defusedexpat?
 import re
 import glob
-from argparse import ArgumentParser, REMAINDER
+from argparse import ArgumentParser, REMAINDER, SUPPRESS
 from os.path import join, basename, dirname, exists, isdir, realpath
 from io import StringIO
 from dataclasses import dataclass
@@ -81,8 +81,11 @@ def intellijinit_cli(args):
     parser.add_argument('--import-inner-classes', action='store_true', dest='import_inner_classes', help='Configure auto-import to insert inner class imports.')
     parser.add_argument('--on-save-actions', action='store_true', dest='on_save_actions', help='Generate On Save Actions: checkstyle format and optimize imports.')
     parser.add_argument('--mx-distributions', action='store_true', dest='mx_distributions', help='Generate Ant powered build of mx distributions (generated Ant scripts delegate to `mx archive {DIST}, bundled Ant plugin must be enabled in IntelliJ).')
+    parser.add_argument('--refresh-only', action='store_true', dest='refresh_only', help=SUPPRESS)
+    parser.add_argument('--no-fsck-projects', action='store_false', dest='do_fsck_projects', help=SUPPRESS)
     parser.add_argument('args', nargs=REMAINDER, metavar='...')
-
+    if args and args[0] == '--':
+        args = args[1:]
     extra_args = os.environ.get('MX_INTELLIJINIT_DEFAULTS', '').split()
     if extra_args:
         mx.log("Applying extra arguments from MX_INTELLIJINIT_DEFAULTS environment variable")
