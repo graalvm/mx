@@ -405,7 +405,13 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     if all_ides or mx_ide == 'netbeans':
         mx_ide_netbeans.netbeansinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'intellij':
-        mx_ide_intellij.intellijinit(mx_ide_intellij.IntellijConfig(args=args.remainder, refresh_only=refreshOnly, do_fsck_projects=False, python_projects=args.pythonProjects))
+        intellij_args = list(args.remainder)
+        if refreshOnly:
+            intellij_args.append('--refresh-only')
+        if not args.pythonProjects:
+            intellij_args.append('--no-python-projects')
+        intellij_args.append('--no-fsck-projects')
+        mx_ide_intellij.intellijinit_cli(intellij_args)
     skip_fsck = os.environ.get('MX_IDEINIT_SKIP_FSCK', '').lower() in ('1', 'true', 'yes')
     if not refreshOnly and not skip_fsck:
         fsckprojects([])
