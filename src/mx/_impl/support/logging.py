@@ -43,7 +43,7 @@ __all__ = [
     "setLogTask",
 ]
 
-import sys, signal, threading
+import sys, signal, threading, re
 import traceback
 from typing import Any, NoReturn, Optional
 
@@ -60,6 +60,22 @@ _ansi_color_table = {
     "magenta": "35",
     "cyan": "36",
 }
+
+# Match ANSI CSI escape sequences:
+#  - \033
+#    ESC, the byte that starts ANSI terminal control sequences.
+#  - \[
+#    A literal [ after ESC, so together this is ESC [, the CSI introducer.
+#  - [0-?]*
+#    Zero or more parameter bytes.
+#    This covers digits and separators like ;, which is what color codes use, for example 31;1.
+#  - [ -/]*
+#    Zero or more intermediate bytes.
+#    These are less common, but valid in CSI sequences.
+#  - [@-~]
+#    The final byte that terminates the control sequence and identifies the command.
+#    For colors, this is usually m.
+_ansi_escape_pattern = re.compile(r"\033\[[0-?]*[ -/]*[@-~]")
 
 _logTask = threading.local()
 
@@ -234,6 +250,40 @@ def colorize(msg: Optional[str], color="red", bright=True, stream=sys.stderr) ->
         if supports_colors(stream):
             return color_on + msg + "\033[0m"
     return msg
+
+
+def _pad_and_truncate_for_terminal(msg: str, columns: int) -> str:
+    if columns <= 0:
+        return ""
+
+    rendered = []
+    saw_escape_sequence = False
+    visible_columns = 0
+    index = 0
+
+    while index < len(msg) and visible_columns < columns:
+        match = _ansi_escape_pattern.search(msg, index)
+        plain_text_end = match.start() if match else len(msg)
+        remaining_columns = columns - visible_columns
+        visible_chunk_end = min(plain_text_end, index + remaining_columns)
+
+        if visible_chunk_end > index:
+            rendered.append(msg[index:visible_chunk_end])
+            visible_columns += visible_chunk_end - index
+            index = visible_chunk_end
+
+        if match is None or index < plain_text_end or visible_columns >= columns:
+            break
+
+        rendered.append(match.group(0))
+        saw_escape_sequence = True
+        index = match.end()
+
+    if index < len(msg) and saw_escape_sequence:
+        rendered.append("\033[0m")
+
+    rendered.append(" " * (columns - visible_columns))
+    return "".join(rendered)
 
 
 def warn(msg: str, context=None) -> None:
