@@ -915,6 +915,11 @@ suite = {
             "digest": "sha512:5f23099cac6d9e852c2368930ecf0eb859afc17aeba48cbcba844ecb7a020e30aae2f637186544d780a1319162a4b4dc8b230996f19ce0b4f1aeb61be6a56653"
           }
         },
+        "freebsd" : {
+          "<others>" : {
+            "optional" : True
+          }
+        },
         "darwin" : {
           "amd64" : {
             "version" : "1.10.2",
@@ -984,6 +989,11 @@ suite = {
             "optional": True,
           }
         },
+        "freebsd": {
+          "<others>": {
+            "optional": True,
+          },
+        },
         "darwin": {
           "amd64": {
             "digest": "sha512:3e49b1dd6b3240b6f3653914a2288bedbb5ad88e6476b704c3d055bafa4cbe7ec6f556a7dbc086f18b07ef29d89949bc4d9b8485aa62106c92475c62df2e9395",
@@ -1015,6 +1025,11 @@ suite = {
             "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.26.0-linux-aarch64.tar.gz"],
             "digest": "sha512:28e43a059b9025e5696cc415c45ebb33717f2973260e199940136ad3258cfbff3e7740e205193026da8f62c9d3aab6b1f054ae9e7db2cbe0b395fc874a836fa6",
           },
+          "<others>": {
+            "optional": True,
+          },
+        },
+        "freebsd": {
           "<others>": {
             "optional": True,
           },
@@ -1259,6 +1274,11 @@ suite = {
           "loongarch64" : {
             "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=loongarch64", "-std=gnu99"],
           }
+        },
+        "freebsd": {
+            "<others>": {
+                "ignore": "freebsd is not supported",
+            },
         },
         "darwin": {
             "<others>": {

@@ -709,6 +709,7 @@ def _matching_jdk_defs(source, jdk_defs, jdk_id_selector, jdk_def_guard):
 def _default_system_jdks_dir():
     locations = {
         "darwin": '/Library/Java/JavaVirtualMachines',
+        "freebsd": '/usr/local/openjdk',
         "linux": '/usr/lib/jvm',
         "solaris": '/usr/jdk/instances',
         "windows": r'C:\Program Files\Java'

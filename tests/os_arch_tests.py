@@ -1,4 +1,5 @@
 import mx
+import sys
 
 
 def test_os_arch():
@@ -67,7 +68,20 @@ def test_arch():
         assert config == {"a": "foo", "b": "baz"}
 
 
+def test_freebsd_platform():
+    original_platform = sys.platform
+    try:
+        sys.platform = "freebsd15"
+        assert mx.get_os() == "freebsd"
+        assert mx.is_freebsd()
+        assert mx.add_lib_suffix(mx.add_lib_prefix("foo")) == "libfoo.so"
+        assert mx.add_static_lib_suffix(mx.add_static_lib_prefix("foo")) == "libfoo.a"
+    finally:
+        sys.platform = original_platform
+
+
 def tests():
     test_os_arch()
     test_os()
     test_arch()
+    test_freebsd_platform()

@@ -32,6 +32,7 @@ __all__ = [
     "get_os_variant",
     "is_continuous_integration",
     "is_darwin",
+    "is_freebsd",
     "is_linux",
     "is_openbsd",
     "is_sunos",
@@ -55,6 +56,10 @@ def is_darwin() -> bool:
 
 def is_linux() -> bool:
     return sys.platform.startswith("linux")
+
+
+def is_freebsd() -> bool:
+    return sys.platform.startswith("freebsd")
 
 
 def is_openbsd() -> bool:
@@ -81,6 +86,8 @@ def get_os() -> str:
         return "darwin"
     elif is_linux():
         return "linux"
+    elif is_freebsd():
+        return "freebsd"
     elif is_openbsd():
         return "openbsd"
     elif is_sunos():

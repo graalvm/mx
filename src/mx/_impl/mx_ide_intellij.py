@@ -150,7 +150,7 @@ def intellijinit(config: IntellijConfig):
 def intellij_read_sdks():
     sdks = {}
     # https://www.jetbrains.com/help/idea/2023.2/directories-used-by-the-ide-to-store-settings-caches-plugins-and-logs.html
-    if mx.is_linux() or mx.is_openbsd() or mx.is_sunos():
+    if mx.is_linux() or mx.is_freebsd() or mx.is_openbsd() or mx.is_sunos():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml")) + \

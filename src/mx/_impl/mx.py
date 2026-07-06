@@ -373,7 +373,7 @@ from .support.logging import abort, abort_or_warn, colorize, log, logv, logvv, l
 from .support.options import _opts, _opts_parsed_deferrables
 from .support.path import _safe_path, lstat
 from .support.processes import _addSubprocess, _check_output_str, _currentSubprocesses, _is_process_alive, _kill_process, _removeSubprocess, _waitWithTimeout, waitOn
-from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_linux, is_openbsd, is_sunos, is_windows
+from .support.system import get_os, get_os_variant, is_continuous_integration, is_cygwin, is_darwin, is_freebsd, is_linux, is_openbsd, is_sunos, is_windows
 from .support.timestampfile import TimeStampFile
 from .mx_repo_suite import (  # pylint: disable=unused-import
     _RepoSuiteDiscovery,
@@ -12813,7 +12813,7 @@ def add_lib_prefix(name):
     """
     Adds the platform specific library prefix to a name
     """
-    if is_darwin() or is_linux() or is_openbsd() or is_sunos():
+    if is_darwin() or is_linux() or is_freebsd() or is_openbsd() or is_sunos():
         return 'lib' + name
     return name
 
@@ -12826,7 +12826,7 @@ def add_lib_suffix(name):
     """
     if is_windows():
         return name + '.dll'
-    if is_linux() or is_openbsd() or is_sunos():
+    if is_linux() or is_freebsd() or is_openbsd() or is_sunos():
         return name + '.so'
     if is_darwin():
         return name + '.dylib'
@@ -12838,7 +12838,7 @@ def add_static_lib_suffix(name):
     """
     if is_windows():
         return name + '.lib'
-    if is_linux() or is_openbsd() or is_sunos() or is_darwin():
+    if is_linux() or is_freebsd() or is_openbsd() or is_sunos() or is_darwin():
         return name + '.a'
     return name
 
@@ -12848,7 +12848,7 @@ def add_debug_lib_suffix(name):
     """
     if is_windows():
         return name + '.pdb'
-    if is_linux() or is_openbsd() or is_sunos():
+    if is_linux() or is_freebsd() or is_openbsd() or is_sunos():
         return name + '.debuginfo'
     if is_darwin():
         return name + '.dylib.dSYM'

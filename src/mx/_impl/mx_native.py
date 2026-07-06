@@ -1061,7 +1061,7 @@ class DefaultNativeProject(NinjaProject):
                 windows=['-MD'],
             ).get(mx.get_os(), ['-fPIC'])
 
-        if mx.is_linux() or mx.is_darwin():
+        if mx.is_linux() or mx.is_freebsd() or mx.is_darwin():
             # Do not leak host paths via dwarf debuginfo
             def add_debug_prefix(prefix_dir):
                 def quote(path):
