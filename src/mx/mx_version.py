@@ -1,2 +1,2 @@
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = "7.83.3"  # GR-76977
+version = "7.84.0"  # GR-77488 Add support for custom Maven repository URLs.
