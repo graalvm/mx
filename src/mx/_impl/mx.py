@@ -10145,7 +10145,7 @@ class GitConfig(VC):
 
     def parent_tags(self, vcdir):
         try:
-            return _check_output_str(['git', 'tag', '--list', '--points-at', 'HEAD'], cwd=vcdir).strip().split('\r\n')
+            return _check_output_str(['git', 'tag', '--list', '--points-at', 'HEAD'], cwd=vcdir).strip().splitlines()
         except subprocess.CalledProcessError as e:
             abort('git tag failed: ' + str(e))
 
