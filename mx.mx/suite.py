@@ -913,6 +913,9 @@ suite = {
             "version" : "1.10.2",
             "urls" : ["https://lafo.ssw.jku.at/pub/graal-external-deps/ninja-{version}-linux-amd64-musl.zip"],
             "digest": "sha512:5f23099cac6d9e852c2368930ecf0eb859afc17aeba48cbcba844ecb7a020e30aae2f637186544d780a1319162a4b4dc8b230996f19ce0b4f1aeb61be6a56653"
+          },
+          "<others>" : {
+            "optional" : True
           }
         },
         "darwin" : {
@@ -1107,6 +1110,54 @@ suite = {
       },
       "licence": "EPL-2.0",
     },
+
+    "ZIG_TOOLCHAIN" : {
+      "version" : "0.17.0-dev.690+c5a61e899",
+      "urlbase" : "https://ziglang.org/builds",
+      # "packedResource" : True,
+      "os_arch" : {
+        "linux" : {
+          "amd64" : {
+            "urls" : ["{urlbase}/zig-x86_64-linux-{version}.tar.xz"],
+            "digest" : "sha512:26a50fe1733da38aace61b909217faa68bc91c6a3a8be1dea3e39182b6c9dae40f49acf57f4c42e4781a68922f2730911c600c8e2e0cee8f6c46bdfc7332940a",
+          },
+          "aarch64" : {
+            "urls" : ["{urlbase}/zig-aarch64-linux-{version}.tar.xz"],
+            "digest" : "sha512:8c4d9111e18c0f09e52278ffd8f0340c38f1320c363408dbbd6f3e36eb71c98a1af4d17e8cd4d192f3e8472389df041270fabf07c29f0e0ca66d596afa04101f",
+          },
+          "riscv64": {
+            "urls" : ["{urlbase}/zig-riscv64-linux-{version}.tar.xz"],
+            "digest" : "sha512:6abde983053d068508cdadbc9e29cca6c9d4f25d1390fcd8dfe1d1c42353780bc5174612193fd28a2d02e7f22c0f53c74d00662dc9411bd05b4837ecb9c4900b",
+          },
+        },
+        "darwin" : {
+          "amd64" : {
+            "urls" : ["{urlbase}/zig-x86_64-macos-{version}.tar.xz"],
+            "digest" : "sha512:18d7c3da9061e5bef98257cf89b222acc051e4d252ef7b9450122136cc065d50659dce8cf5cd72bfd05f6e8fe4f1ae48f1b780d21f3e69bb293eca04d8583573",
+          },
+          "aarch64" : {
+            "urls" : ["{urlbase}/zig-aarch64-macos-{version}.tar.xz"],
+            "digest" : "sha512:f4f27c8269f8deb7fe767bd13d582a52bd34caca753c13cb35b3c416db95bcb77537abff98a6069ec1ded497f8dc6ab182a7124e439c67a9d8d1388d9cc465fd",
+          }
+        },
+        "windows" : {
+          "amd64" : {
+            "urls" : ["{urlbase}/zig-x86_64-windows-{version}.zip"],
+            "digest" : "sha512:134fd1ba16eb9a27bc4ef72628a175296a761b4a4c44641b31574ca35ebb8bdebf1c6de8b27e8aa256fc08e73443d3b244aaf7542b2ec62cf79a6a4f4ac5f9d0",
+          },
+          "aarch64" : {
+            "urls" : ["{urlbase}/zig-aarch64-windows-{version}.zip"],
+            "digest" : "sha512:e1af2076e2d597cc56a10a0c7ba09a6b4e82c03d788fac0cb311642ef1fb14237a0e3645b37947a0d710d3cf535dcdc550b6ef554a66cb17e7729a3dfc4d5f05",
+          }
+        },
+        "<others>": {
+          "<others>": {
+            "optional": True,
+          }
+        },
+      },
+      "license" : "MIT",
+    },
   },
 
   "licenses" : {
@@ -1153,7 +1204,6 @@ suite = {
   },
 
   "projects" : {
-
     "com.oracle.mxtool.jmh_1_21" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
@@ -1278,6 +1328,11 @@ suite = {
       "template": "ninja-toolchains/gcc.ninja_template",
       "output_file": "gcc.ninja_template",
     },
+    "com.oracle.zig.ninja.toolchain": {
+      "class": "NinjaToolchainTemplate",
+      "template": "ninja-toolchains/zig.ninja_template",
+      "output_file": "zig.ninja_template",
+    },
     "com.oracle.msvc.ninja.toolchain": {
       "class": "NinjaToolchainTemplate",
       "template": "ninja-toolchains/msvc.ninja_template",
@@ -1325,6 +1380,87 @@ suite = {
       "graalCompilerSourceEdition": "ignore",
     },
 
+    "ZIG_NINJA_TOOLCHAIN": {
+      "native": True,
+      "platformDependent": False,
+      "description": "ninja rules for a zig toolchain found on the PATH",
+      "layout": {
+        "toolchain.ninja": "dependency:com.oracle.zig.ninja.toolchain",
+      },
+      "maven": False,
+      "graalCompilerSourceEdition": "ignore",
+    },
+
+    "ZIG_DIR": {
+        "native": True,
+        "platformDependent": False,
+        "description": "zig binaries",
+        "layout": {
+          "./": "extracted-dependency:ZIG_TOOLCHAIN/zig-*/**",
+        },
+        "maven": False,
+        "graalCompilerSourceEdition": "ignore",
+    },
+
+    "ZIG_BUNDLED_NINJA_TOOLCHAIN": {
+      "native": True,
+      "platformDependent": False,
+      "description": "ninja rules for a zig toolchain bundled",
+      "os": {
+        "linux": {
+          "layout": {
+            "toolchain.ninja": {
+              "source_type": "string",
+              "value": '''
+ZIG=<path:ZIG_DIR>/zig
+include <ninja-toolchain:ZIG_NINJA_TOOLCHAIN>
+'''
+            },
+          },
+          "dependencies": [
+            "ZIG_DIR",
+            "ZIG_NINJA_TOOLCHAIN",
+          ],
+        },
+        "darwin": {
+          "layout": {
+            "toolchain.ninja": {
+              "source_type": "string",
+              "value": '''
+ZIG=<path:ZIG_DIR>/zig
+include <ninja-toolchain:ZIG_NINJA_TOOLCHAIN>
+'''
+            },
+          },
+          "dependencies": [
+            "ZIG_DIR",
+            "ZIG_NINJA_TOOLCHAIN",
+          ],
+        },
+        "windows": {
+          "layout": {
+            "toolchain.ninja": {
+              "source_type": "string",
+              "value": '''
+ZIG=<path:ZIG_DIR>\\zig
+include <ninja-toolchain:ZIG_NINJA_TOOLCHAIN>
+'''
+            },
+          },
+          "dependencies": [
+            "ZIG_DIR",
+            "ZIG_NINJA_TOOLCHAIN",
+          ],
+        },
+      },
+      "dependencies": [
+        "ZIG_DIR",
+        "ZIG_NINJA_TOOLCHAIN",
+      ],
+      "maven": False,
+      "graalCompilerSourceEdition": "ignore",
+    },
+
     "MSVC_NINJA_TOOLCHAIN": {
       "native": True,
       "platformDependent": False,
@@ -1346,23 +1482,8 @@ suite = {
           # all defaults (host compiler, host os/arch/libc, no variant)
         },
       },
-      "os_arch": {
-        "<others>": {
-          "<others>": {
-            "layout": {
-              "./": "extracted-dependency:GCC_NINJA_TOOLCHAIN",
-            },
-            "asm_requires_cpp": False,
-          },
-        },
-        "windows": {
-          "<others>": {
-            "layout": {
-              "./": "extracted-dependency:MSVC_NINJA_TOOLCHAIN",
-            },
-            "asm_requires_cpp": True,
-          },
-        },
+      "layout": {
+          "./": "extracted-dependency:ZIG_BUNDLED_NINJA_TOOLCHAIN",
       },
       "maven": False,
       "graalCompilerSourceEdition": "ignore",
