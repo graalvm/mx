@@ -1,2 +1,2 @@
 # The version must be updated for every PR (checked in CI) and the comment should reflect the PR's issue
-version = "7.84.0"  # GR-77488 Add support for custom Maven repository URLs.
+version = "7.84.1"  # GR-70013 Support ECJ builds with Java 25.

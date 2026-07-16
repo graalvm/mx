@@ -13620,11 +13620,13 @@ def _resolve_ecj_jar(jdk, java_project_compliance, java_project_preview_needed, 
             min_jdt_version = VersionSpec('3.27')
 
     if java_project_compliance and java_project_compliance >= '26':
-        # GR-70013
+        # GR-77654
         abort(f'ECJ for java project compliance version "{java_project_compliance}" not configured.')
     elif java_project_preview_needed and java_project_preview_needed >= '21':
         # ECJ does not have sufficient support for preview features
         return None
+    elif java_project_compliance and java_project_compliance >= '25':
+        min_jdt_version = VersionSpec('3.46')
     elif java_project_compliance and java_project_compliance >= '24':
         min_jdt_version = VersionSpec('3.43')
     elif java_project_compliance and java_project_compliance >= '22':
