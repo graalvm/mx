@@ -1097,13 +1097,24 @@ suite = {
       "licence": "EPL-2.0",
     },
 
-    # compatible version for JDK 24..25
+    # compatible version for JDK 24
     "ECJ_3.43": {
       "digest": "sha512:06d8974af46d81f7a03c257b54fb5854a9b9ba8ab2733db4946745142e07e7dc3e69ea864d4b011230ffb8f92243503d7ffb6ac2ddf9b747c1bbc155c55fb583",
       "maven": {
         "groupId": "org.eclipse.jdt",
         "artifactId": "ecj",
         "version": "3.43.0",
+      },
+      "licence": "EPL-2.0",
+    },
+
+    # compatible version for JDK 25
+    "ECJ_3.46": {
+      "digest": "sha512:0b2c799e20dbdd074272faf2aed454186f0ad25759c09963350bceea8e9bec0ad9a04693115401cab6a1c9122b94aba6d79d741eef2e003a4149b2fe00f6f158",
+      "maven": {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "ecj",
+        "version": "3.46.0",
       },
       "licence": "EPL-2.0",
     },
