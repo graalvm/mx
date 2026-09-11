@@ -145,6 +145,15 @@ suite = {
       "digest": "sha512:4365f4bbfeca6f61c4d27f89c5bb6aa2fcc88dab3eab4e26a97ddbc6cfc6c2a0a67949b9e3417e43851fb92e04e639b7eb19c8c00c91ddfca9f1a6df4ec7deef",
     },
 
+    "SIGTEST_2_7" : {
+      "maven": {
+        "groupId": "jakarta.tck",
+        "artifactId": "sigtest-maven-plugin",
+        "version": "2.7",
+      },
+      "digest": "sha512:3b1f28b810ba3adfe36811a3d061b3d3fcf7559680502cc52f5753b881e8be3d3f198296c913ac79bc10bdc1213451ef71eb71d6cc78baadd90e4a39a55a149b",
+    },
+
     "CODESNIPPET-DOCLET_1.0" : {
       "maven" : {
         "groupId" : "org.apidesign.javadoc",

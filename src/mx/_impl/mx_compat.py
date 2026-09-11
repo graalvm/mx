@@ -3,7 +3,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2015, 2026, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -858,6 +858,14 @@ class MxCompatibility7680(MxCompatibility7660):
 
     def spotbugs_suite_default(self):
         return False
+
+class MxCompatibility7860(MxCompatibility7680):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("7.86.0")
+
+    def get_sigtest_jar(self):
+        return mx.library('SIGTEST_2_7').get_path(resolve=True)
 
 def minVersion():
     _ensureCompatLoaded()
