@@ -1106,7 +1106,8 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         return '"' + p.replace('\\', '\\\\').replace(' ', '\\ ')  + '"'
 
                     javac_args = ['-d', safe_path_arg(dest_dir)]
-                    modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]
+                    modulepath_jars = []
+                    upgrade_modulepath_jars = []
                     # TODO we should rather use the right JDK
                     javac_args += ['-target', version if version != 'common' else '9', '-source', version if version != 'common' else '9']
 
@@ -1114,10 +1115,21 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                     # that override non-upgradeable modules in the source JDK (e.g. org.graalvm.sdk is part of a
                     # GraalVM JDK). This means --module-path needs to contain the jmods for the JDK modules.
                     use_jmods = not (mx.get_opts().jmods_dir and mx.get_opts().jmods_dir == 'NO_JMODS')
+                    jdk_module_names = {m.name for m in jdk.get_modules()}
+                    for m in modulepath:
+                        if m.jarpath:
+                            if not use_jmods and m.name in jdk_module_names:
+                                upgrade_modulepath_jars.append(m.jarpath)
+                            else:
+                                modulepath_jars.append(m.jarpath)
                     if use_jmods:
                         javac_args.append('--system=none')
                     if requires_clean:
-                        javac_args.append('--limit-modules=' + ','.join(requires_clean.keys()))
+                        limit_modules = list(requires_clean.keys())
+                        for module, _ in jdk.jdk_module_patches:
+                            if module not in requires_clean:
+                                limit_modules.append(module)
+                        javac_args.append('--limit-modules=' + ','.join(limit_modules))
                     jdk_jmods = (mx.get_opts().jmods_dir or join(jdk.home, 'jmods'))
                     if use_jmods and not exists(jdk_jmods):
                         mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
@@ -1125,6 +1137,12 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
                     if modulepath_jars:
                         javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
+                    if upgrade_modulepath_jars:
+                        javac_args.append('--upgrade-module-path=' + safe_path_arg(os.pathsep.join(upgrade_modulepath_jars)))
+                    if jdk.jdk_module_patches:
+                        javac_args.append('--add-modules=' + ','.join(module for module, _ in jdk.jdk_module_patches))
+                        for module, patch_path in jdk.jdk_module_patches:
+                            javac_args.append('--patch-module=' + module + '=' + safe_path_arg(patch_path))
 
                     if concealedRequires:
                         for module, packages in concealedRequires.items():
