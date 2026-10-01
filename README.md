@@ -477,6 +477,28 @@ ws
             └── <project>
 ```
 
+### Transferring platform-dependent layouts
+
+Use `mx archive-pd-layouts <archive-path>` to export platform-dependent layout directories and
+`mx restore-pd-layouts <archive-path>` to restore them before a multi-platform build.
+By default, the exporter labels the archive with the host OS and architecture and includes all
+exportable layout directories. For separately built ABI variants, you can override that identity
+and restrict the exported distributions:
+
+```bash
+mx --multitarget=linux-amd64-musl-swcfi archive-pd-layouts \
+    --platform-id=linux-amd64-musl-swcfi --only=LANGUAGE_NATIVE_RESOURCES,LANGUAGE_VERSIONS_RES resources.tgz
+```
+
+`--platform-id` labels the existing output; it does not build it or select a toolchain.
+Build each variant separately first. Each selected distribution must list the platform ID in its
+`platforms` attribute and have an existing output directory. Do not combine export with
+`--multi-platform-layout-directories`, which unions outputs from several builds.
+The ID must contain hyphen-separated lowercase alphanumeric or underscore components.
+After restoration, include the ID in `--multi-platform-layout-directories` when building the final
+archive. Variant-dependent resource paths must be distinct; conflicting contents at the same path
+are rejected by the layout union.
+
 ### Unit testing with Junit <a name="junit"></a>
 
 The `unittest` command supports running Junit tests in `mx` suites.
