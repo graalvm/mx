@@ -637,10 +637,11 @@ def _run_mx_suite_tests():
     java_argument_file_test.tests()
     native_project_tests.tests()
 
-    from tests import code_owners_tests, stoml_tests, eclipseformat_tests
+    from tests import code_owners_tests, stoml_tests, eclipseformat_tests, intellij_tests
     code_owners_tests.tests()
     stoml_tests.tests()
     eclipseformat_tests.tests()
+    intellij_tests.tests()
 
     from tests import test_maven_projects, repo_root_suites_tests
     test_maven_projects.tests()

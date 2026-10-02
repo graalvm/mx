@@ -69,6 +69,72 @@ class IntellijConfig:
     args: ... = None
 
 
+def _intellij_suite_import_order(root_suite_name, visited_suites, suite_imports):
+    """Returns visited suites in dependency post-order."""
+    ordered_suites = []
+    visited = set()
+
+    def visit(suite_name):
+        if suite_name in visited:
+            return
+        visited.add(suite_name)
+        for imported_name in suite_imports.get(suite_name, ()):
+            if imported_name in visited_suites:
+                visit(imported_name)
+        ordered_suites.append(visited_suites[suite_name])
+
+    visit(root_suite_name)
+    return ordered_suites
+
+
+def _intellij_is_importer(importing_suite, imported_suite, suite_imports):
+    pending = list(suite_imports.get(importing_suite.name, ()))
+    visited = set()
+    while pending:
+        imported_name = pending.pop()
+        if imported_name == imported_suite.name:
+            return True
+        if imported_name not in visited:
+            visited.add(imported_name)
+            pending.extend(suite_imports.get(imported_name, ()))
+    return False
+
+
+def _intellij_format_eclipse_provenance(source_suite, source):
+    if source_suite is None:
+        return f"mx defaults ({os.path.relpath(source, mx._mx_suite.dir)})"
+    return f"{source_suite.name} ({os.path.relpath(source, source_suite.dir)})"
+
+
+def _intellij_write_eclipse_settings(out, sources, prefixes, suite_imports, warn):
+    properties = {}
+    for source_suite, source in sources:
+        print('# Source:', source, file=out)
+        with open(source, encoding='utf-8') as fileName:
+            for line in fileName:
+                if any(line.startswith(prefix) for prefix in prefixes):
+                    property_line = line.strip()
+                    print(property_line, file=out)
+                    property_name, separator, value = property_line.partition('=')
+                    if separator:
+                        previous_values = properties.setdefault(property_name, [])
+                        previous = next(
+                            (previous for previous in reversed(previous_values)
+                             if previous[0] is not None and _intellij_is_importer(source_suite, previous[0], suite_imports)),
+                            None,
+                        ) if source_suite is not None else None
+                        if (previous and previous[0] is not None and source_suite is not None
+                                and previous[1] != value):
+                            old_provenance = _intellij_format_eclipse_provenance(previous[0], previous[2])
+                            new_provenance = _intellij_format_eclipse_provenance(source_suite, source)
+                            warn(
+                                f"IntelliJ preference property '{property_name}' is overridden: "
+                                f"old value {previous[1]!r} from {old_provenance}; "
+                                f"new value {value!r} from {new_provenance}"
+                            )
+                        previous_values.append((source_suite, value, source))
+
+
 @mx.command('mx', 'intellijinit', props=mx.SUITE_DISPATCH_ROOT_SUITES_PROPS)
 def intellijinit_cli(args):
     """(re)generate Intellij project configurations"""
@@ -406,9 +472,11 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
     # Import ci directories
     visited_suites = {s.name: s}
+    suite_imports = {}
 
     # visitor function for visit imports
     def collect_suites(importing_suite, suite_import):
+        suite_imports.setdefault(importing_suite.name, []).append(suite_import.name)
         if suite_import.name not in visited_suites:
             imported_suite = mx.suite(suite_import.name)
             visited_suites[suite_import.name] = imported_suite
@@ -854,33 +922,40 @@ def _intellij_suite(s, declared_modules, referenced_modules, sdks, module_files_
 
         if config.java_modules:
             # Eclipse formatter config
-            corePrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
-            uiPrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
+            eclipse_settings_order = _intellij_suite_import_order(s.name, visited_suites, suite_imports)
+
+            def collect_eclipse_settings_sources(settings_name):
+                # Apply imported suite settings first so the importing suite overrides them.
+                sources = []
+                seen = set()
+                default_source = os.path.abspath(join(mx._mx_suite.dir, 'eclipse-settings', settings_name))
+                for suite in eclipse_settings_order:
+                    for source in suite.eclipse_settings_sources().get(settings_name, []):
+                        if source not in seen:
+                            seen.add(source)
+                            source_suite = None if source == default_source else suite
+                            sources.append((source_suite, source))
+                return sources
+
+            corePrefsSources = collect_eclipse_settings_sources('org.eclipse.jdt.core.prefs')
+            uiPrefsSources = collect_eclipse_settings_sources('org.eclipse.jdt.ui.prefs')
             if corePrefsSources:
                 miscXml = mx.XMLDoc()
                 miscXml.open('project', attributes={'version' : '4'})
                 out = StringIO()
                 print('# GENERATED -- DO NOT EDIT', file=out)
-                for source in corePrefsSources:
-                    print('# Source:', source, file=out)
-                    with open(source, encoding='utf-8') as fileName:
-                        for line in fileName:
-                            if line.startswith('org.eclipse.jdt.core.formatter.'):
-                                print(line.strip(), file=out)
+                _intellij_write_eclipse_settings(out, corePrefsSources, ('org.eclipse.jdt.core.formatter.',), suite_imports, mx.warn)
                 formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
                 mx.update_file(formatterConfigFile, out.getvalue())
                 importConfigFile = None
                 if uiPrefsSources:
                     out = StringIO()
                     print('# GENERATED -- DO NOT EDIT', file=out)
-                    for source in uiPrefsSources:
-                        print('# Source:', source, file=out)
-                        with open(source, encoding='utf-8') as fileName:
-                            for line in fileName:
-                                if line.startswith('org.eclipse.jdt.ui.importorder') \
-                                        or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
-                                        or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
-                                    print(line.strip(), file=out)
+                    _intellij_write_eclipse_settings(out, uiPrefsSources, (
+                        'org.eclipse.jdt.ui.importorder',
+                        'org.eclipse.jdt.ui.ondemandthreshold',
+                        'org.eclipse.jdt.ui.staticondemandthreshold',
+                    ), suite_imports, mx.warn)
                     importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
                     mx.update_file(importConfigFile, out.getvalue())
                 miscXml.open('component', attributes={'name' : 'EclipseCodeFormatterProjectSettings'})
