@@ -279,6 +279,7 @@ org.eclipse.jdt.core.formatter.insert_space_after_comma_in_multiple_field_declar
 org.eclipse.jdt.core.formatter.insert_space_after_comma_in_multiple_local_declarations=insert
 org.eclipse.jdt.core.formatter.insert_space_after_comma_in_parameterized_type_reference=insert
 org.eclipse.jdt.core.formatter.insert_space_after_comma_in_superinterfaces=insert
+org.eclipse.jdt.core.formatter.insert_space_after_comma_in_switch_case_expressions=insert
 org.eclipse.jdt.core.formatter.insert_space_after_comma_in_type_arguments=insert
 org.eclipse.jdt.core.formatter.insert_space_after_comma_in_type_parameters=insert
 org.eclipse.jdt.core.formatter.insert_space_after_ellipsis=insert
