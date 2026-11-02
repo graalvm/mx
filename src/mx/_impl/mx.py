@@ -6206,7 +6206,11 @@ Common causes:
         """
         resolved = {}
         for destination, source in self._walk_layout():
-            resolved.setdefault(destination, []).append({k: v for k, v in source.items() if k != '_str_'})
+            # `_str_` describes sources in errors and archive entries, so it is not layout data.
+            resolved_source = {k: v for k, v in source.items() if k != '_str_'}
+            if destination not in resolved:
+                resolved[destination] = []
+            resolved[destination].append(resolved_source)
         return LayoutDistribution._layout_to_stable_str(resolved)
 
     def _persisted_layout_file(self):
