@@ -6191,11 +6191,27 @@ Common causes:
 
     def _persist_layout(self):
         saved_layout_file = self._persisted_layout_file()
-        current_layout = LayoutDistribution._layout_to_stable_str(self.layout)
+        current_layout = self._resolved_layout_str()
         ensure_dir_exists(dirname(saved_layout_file))
         # newline='' means no translation takes place
         with open(saved_layout_file, 'w', encoding='utf-8', newline='') as fp:
             fp.write(current_layout)
+
+    def _resolved_layout_str(self):
+        """
+        A stable string representation of the layout with path and string substitutions applied,
+        used to detect that the layout changed. The layout as declared is not enough for that:
+        the value of a substitution can change without the declaration changing, e.g. a
+        `string:<version>` source when the suite version changes.
+        """
+        resolved = {}
+        for destination, source in self._walk_layout():
+            # `_str_` describes sources in errors and archive entries, so it is not layout data.
+            resolved_source = {k: v for k, v in source.items() if k != '_str_'}
+            if destination not in resolved:
+                resolved[destination] = []
+            resolved[destination].append(resolved_source)
+        return LayoutDistribution._layout_to_stable_str(resolved)
 
     def _persisted_layout_file(self):
         return join(self.suite.get_mx_output_dir(self.platformDependent), 'savedLayouts', self.name)
@@ -6211,7 +6227,7 @@ Common causes:
 
     def _check_persisted_layout(self):
         saved_layout_file = self._persisted_layout_file()
-        current_layout = LayoutDistribution._layout_to_stable_str(self.layout)
+        current_layout = self._resolved_layout_str()
         saved_layout = ""
         if exists(saved_layout_file):
             # newline='' means universal newlines mode is enabled, but line endings are returned to the caller untranslated.
