@@ -1027,11 +1027,11 @@ suite = {
       "os_arch": {
         "linux": {
           "amd64": {
-            "urls": ["https://graalvm.oraclecorp.com/ci-legacy/slavefiles/graal-external-deps/eclipse-4.36.0-linux-amd64.tar.gz", "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-linux-amd64.tar.gz"],
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-linux-amd64.tar.gz"],
             "digest": "sha512:317a1aa89277159ee3bfdfbdbb41bcb85086b63b9d10a3c027286713e211c90894e862d5389a77b595a65977f5d0d856bdce4b354a5f6ba1c7c3834c02480e07",
           },
           "aarch64": {
-            "urls": ["https://graalvm.oraclecorp.com/ci-legacy/slavefiles/graal-external-deps/eclipse-4.36.0-linux-aarch64.tar.gz", "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-linux-aarch64.tar.gz"],
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-linux-aarch64.tar.gz"],
             "digest": "sha512:6b3597ac2329c65fb10871c24fc469e9ebe86047753717a900afae8d0aa346e072133f86c096cb0bb1d16baedb62e99d8ac3816759fb633265aa1659a3da62fb",
           },
           "<others>": {
@@ -1045,7 +1045,7 @@ suite = {
         },
         "darwin": {
           "aarch64": {
-            "urls": ["https://graalvm.oraclecorp.com/ci-legacy/slavefiles/graal-external-deps/eclipse-4.36.0-darwin-aarch64.tar.gz", "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-darwin-aarch64.tar.gz"],
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-darwin-aarch64.tar.gz"],
             "digest": "sha512:4f8ad7724c061ea2ea0852693ba1da371cb4e470ffea9a6aa2ecc10c8144ee6fe589bbafa878ccf59ca9b4ed3845888fc9a053565e830fd80547b2732f78c47d",
           },
           "<others>": {
@@ -1054,7 +1054,7 @@ suite = {
         },
         "windows": {
           "amd64": {
-            "urls": ["https://graalvm.oraclecorp.com/ci-legacy/slavefiles/graal-external-deps/eclipse-4.36.0-windows-amd64.tar.gz", "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-windows-amd64.tar.gz"],
+            "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/eclipse-4.36.0-windows-amd64.tar.gz"],
             "digest": "sha512:fe4596264a52ea47625895663473ae181d69627f4102ac7200c7e77a48e451982d0409f045b34848363c8a6056c5e9fbafece92a7d7f838fa7524500edb5b435",
           },
         },
