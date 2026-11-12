@@ -391,6 +391,18 @@ from .mx_repo_suite import (  # pylint: disable=unused-import
 from . import mx_suite_version_conflicts
 
 
+def _tar_extraction_kwargs():
+    """Select an explicit tar extraction policy when supported.
+
+    Python 3.12 introduced the filter argument, also backported to older releases.
+    Selecting 'tar' avoids Red Hat's RuntimeWarning about safer extraction defaults
+    for exploits including CVE-2007-4559, while permitting toolchain symlinks with
+    absolute targets. Detect support rather than checking the Python version so
+    older Python installations without the filter API remain supported.
+    """
+    return {'filter': 'tar'} if hasattr(tarfile, 'tar_filter') else {}
+
+
 _mx_commands = MxCommands("mx")
 
 import builtins                            # pylint: disable=unused-import,no-name-in-module
@@ -5329,7 +5341,7 @@ class AbstractTARDistribution(AbstractDistribution):
             output = self.get_output()
             with tarfile.open(tarfilename, 'r:') as tar:
                 logv(f'Extracting {tarfilename} to {output}')
-                tar.extractall(output)
+                tar.extractall(output, **_tar_extraction_kwargs())
         return tarfilename
 
     def prePush(self, f):
@@ -5996,13 +6008,13 @@ class LayoutDistribution(AbstractDistribution):
                                 else:
                                     original_name = tarinfo.name
                                     tarinfo.name = new_name
-                                    tf.extract(tarinfo, unarchiver_dest_directory)
+                                    tf.extract(tarinfo, unarchiver_dest_directory, **_tar_extraction_kwargs())
                                     tarinfo.name = original_name
                                     archiver.add_link(tarinfo.linkname, arcname, provenance)
                             else:
                                 original_name = tarinfo.name
                                 tarinfo.name = new_name
-                                tf.extract(tarinfo, unarchiver_dest_directory)
+                                tf.extract(tarinfo, unarchiver_dest_directory, **_tar_extraction_kwargs())
                                 tarinfo.name = original_name
                                 archiver.add(extracted_file, arcname, provenance)
                                 if tarinfo.isdir():
@@ -8457,7 +8469,7 @@ class TarExtractor(Extractor):
         return ar.getnames()
 
     def _extractall(self, ar, dst):
-        return ar.extractall(dst)
+        return ar.extractall(dst, **_tar_extraction_kwargs())
 
 
 class ZipExtractor(Extractor):
