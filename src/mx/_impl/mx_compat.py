@@ -102,6 +102,10 @@ class MxCompatibility500(object):
         """
         return False
 
+    def accepts_legacy_unittest_list_options(self):
+        """Accept the legacy `--blacklist` and `--whitelist` flags and their parser namespace aliases."""
+        return True
+
     def excludeDisableJavaDebuggging(self):
         """
         Excludes the misspelled class name.

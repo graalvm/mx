@@ -679,8 +679,11 @@ def unittest(args, test_report_tags=None):
 
     parser.add_argument('--include-list', help='run testcases specified in <file> only', metavar='<file>')
     parser.add_argument('--exclude-list', help='run all testcases not specified in <file>', metavar='<file>')
-    parser.add_argument('--whitelist', dest='include_list', help=SUPPRESS, metavar='<file>')  # legacy name for --include-list
-    parser.add_argument('--blacklist', dest='exclude_list', help=SUPPRESS, metavar='<file>')  # legacy name for --exclude-list
+    primary_suite = mx.primary_suite()
+    legacy_list_options = primary_suite is None or primary_suite.getMxCompatibility().accepts_legacy_unittest_list_options()
+    if legacy_list_options:
+        parser.add_argument('--whitelist', dest='include_list', help=SUPPRESS, metavar='<file>')  # legacy name for --include-list
+        parser.add_argument('--blacklist', dest='exclude_list', help=SUPPRESS, metavar='<file>')  # legacy name for --exclude-list
     parser.add_argument('--verbose', help='enable verbose JUnit output', dest='JUnitVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--force-classpath', help='forces all jars on the classpath', dest='JUnitForceClassPath', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
@@ -714,7 +717,8 @@ def unittest(args, test_report_tags=None):
         usage = usage[len('usage: '):]
     parser.usage = usage + ' [test filters...] [VM options...]'
 
-    args, parsed_args = parse_split_args(args, parser, "--", namespace=_UnittestNamespace())
+    namespace = _UnittestNamespace() if legacy_list_options else None
+    args, parsed_args = parse_split_args(args, parser, "--", namespace=namespace)
 
     # Remove junit_args values from parsed_args
     for a in junit_arg_actions:

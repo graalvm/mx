@@ -120,3 +120,26 @@ class UnittestOptionsTest(unittest.TestCase):
                         self.assertIsNotNone(filters["exclude_list"][0].fullmatch("other.SecondTest"))
                         self.assertNotIn("whitelist", filters)
                         self.assertNotIn("blacklist", filters)
+
+    def test_suite_action_has_only_canonical_attributes_when_legacy_options_are_disabled(self):
+        seen = []
+
+        class InspectOptions(Action):
+            def __call__(self, parser, namespace, values, option_string=None):
+                seen.append(namespace)
+
+        suite = Mock()
+        suite.getMxCompatibility.return_value.accepts_legacy_unittest_list_options.return_value = False
+        with patch.object(mx_unittest.mx, "primary_suite", return_value=suite), patch.object(
+            mx_unittest, "_extra_unittest_arguments", []
+        ), patch.object(mx_unittest, "_unittest") as run:
+            mx_unittest.add_unittest_argument("--inspect-options", nargs=0, action=InspectOptions)
+            mx_unittest.unittest(["--inspect-options"])
+            run.assert_called_once()
+
+        self.assertEqual(len(seen), 1)
+        namespace = seen[0]
+        self.assertIsNone(namespace.include_list)
+        self.assertIsNone(namespace.exclude_list)
+        self.assertFalse(hasattr(namespace, "whitelist"))
+        self.assertFalse(hasattr(namespace, "blacklist"))
