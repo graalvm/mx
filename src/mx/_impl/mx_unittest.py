@@ -48,7 +48,7 @@ import fnmatch
 import os
 import re
 import tempfile
-from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action, SUPPRESS
 from os.path import exists, join, basename, isdir, isabs
 from pathlib import Path
 
@@ -655,8 +655,10 @@ def unittest(args, test_report_tags=None):
           epilog=unittestHelpSuffix,
         )
 
-    parser.add_argument('--blacklist', help='run all testcases not specified in <file>', metavar='<file>')
-    parser.add_argument('--whitelist', help='run testcases specified in <file> only', metavar='<file>')
+    parser.add_argument('--include-list', dest='whitelist', help='run testcases specified in <file> only', metavar='<file>')
+    parser.add_argument('--exclude-list', dest='blacklist', help='run all testcases not specified in <file>', metavar='<file>')
+    parser.add_argument('--whitelist', help=SUPPRESS, metavar='<file>')  # legacy name for --include-list
+    parser.add_argument('--blacklist', help=SUPPRESS, metavar='<file>')  # legacy name for --exclude-list
     parser.add_argument('--verbose', help='enable verbose JUnit output', dest='JUnitVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--force-classpath', help='forces all jars on the classpath', dest='JUnitForceClassPath', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
