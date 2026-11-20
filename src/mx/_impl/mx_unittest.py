@@ -48,7 +48,7 @@ import fnmatch
 import os
 import re
 import tempfile
-from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action, SUPPRESS
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action, Namespace, SUPPRESS
 from os.path import exists, join, basename, isdir, isabs
 from pathlib import Path
 
@@ -456,7 +456,7 @@ def add_unittest_argument(*args, **kwargs):
 
 _junit_wrapper_main_class = 'com.oracle.mxtool.junit.MxJUnitWrapper'
 
-def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitelist=None, regex=None, suite=None, **extra_args):
+def _unittest(args, annotations, junit_args, prefixCp="", exclude_list=None, include_list=None, regex=None, suite=None, **extra_args):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -510,7 +510,7 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             mx.run_java(vmArgs + [mainClass] + mainClassArgs, jdk=jdk)
         vmLauncher = _VMLauncher('default VM launcher', _run_vm, jdk)
     try:
-        _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, mx.suite(suite) if suite else None)
+        _run_tests(args, harness, vmLauncher, annotations, testfile, exclude_list, include_list, regex, mx.suite(suite) if suite else None)
     finally:
         if os.environ.get('MX_TESTFILE') is None:
             os.remove(testfile)
@@ -577,7 +577,7 @@ def is_strictly_positive(value):
     return value
 
 
-def parse_split_args(args, parser, delimiter):
+def parse_split_args(args, parser, delimiter, *, namespace=None):
     """
     Parses arguments potentially separated by a delimiter, e.g., ``[mx options] -- [VM options]``.
     The options preceding the delimiter are parsed with the supplied argparse parser. That is,
@@ -587,6 +587,7 @@ def parse_split_args(args, parser, delimiter):
     :param list args: a list of arguments to parse.
     :param parser: an argparse parser that can recognize any argument preceding the delimiter.
     :param str delimiter: the delimiter separating the arguments.
+    :param namespace: an optional argparse namespace in which to store parsed arguments.
     :return: a tuple consisting of the args not parsed by the parser (i.e. either the args after
             the delimiter or the args not recognized by the parser if no delimiter is present)
             and the parsed argument structure returned by argparse.
@@ -606,13 +607,34 @@ def parse_split_args(args, parser, delimiter):
             break
         args_before_delimiter.append(arg)
 
+    parse_kwargs = {} if namespace is None else {'namespace': namespace}
     if delimiter_found:
         # all arguments before '--' must be recognized
-        parsed_args = parser.parse_args(args_before_delimiter)
+        parsed_args = parser.parse_args(args_before_delimiter, **parse_kwargs)
     else:
         # parse all known arguments
-        parsed_args, args_copy = parser.parse_known_args(args_before_delimiter)
+        parsed_args, args_copy = parser.parse_known_args(args_before_delimiter, **parse_kwargs)
     return args_copy, parsed_args
+
+
+class _UnittestNamespace(Namespace):
+    # Suite-defined argparse actions can still read and write the old attributes.
+    @property
+    def whitelist(self):
+        return self.include_list
+
+    @whitelist.setter
+    def whitelist(self, value):
+        self.include_list = value
+
+    @property
+    def blacklist(self):
+        return self.exclude_list
+
+    @blacklist.setter
+    def blacklist(self, value):
+        self.exclude_list = value
+
 
 @mx.command(suite_name="mx",
             command_name='unittest',
@@ -655,10 +677,10 @@ def unittest(args, test_report_tags=None):
           epilog=unittestHelpSuffix,
         )
 
-    parser.add_argument('--include-list', dest='whitelist', help='run testcases specified in <file> only', metavar='<file>')
-    parser.add_argument('--exclude-list', dest='blacklist', help='run all testcases not specified in <file>', metavar='<file>')
-    parser.add_argument('--whitelist', help=SUPPRESS, metavar='<file>')  # legacy name for --include-list
-    parser.add_argument('--blacklist', help=SUPPRESS, metavar='<file>')  # legacy name for --exclude-list
+    parser.add_argument('--include-list', help='run testcases specified in <file> only', metavar='<file>')
+    parser.add_argument('--exclude-list', help='run all testcases not specified in <file>', metavar='<file>')
+    parser.add_argument('--whitelist', dest='include_list', help=SUPPRESS, metavar='<file>')  # legacy name for --include-list
+    parser.add_argument('--blacklist', dest='exclude_list', help=SUPPRESS, metavar='<file>')  # legacy name for --exclude-list
     parser.add_argument('--verbose', help='enable verbose JUnit output', dest='JUnitVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--force-classpath', help='forces all jars on the classpath', dest='JUnitForceClassPath', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
@@ -692,24 +714,24 @@ def unittest(args, test_report_tags=None):
         usage = usage[len('usage: '):]
     parser.usage = usage + ' [test filters...] [VM options...]'
 
-    args, parsed_args = parse_split_args(args, parser, "--")
+    args, parsed_args = parse_split_args(args, parser, "--", namespace=_UnittestNamespace())
 
     # Remove junit_args values from parsed_args
     for a in junit_arg_actions:
         parsed_args.__dict__.pop(a.dest)
 
-    if parsed_args.whitelist:
+    if parsed_args.include_list:
         try:
-            with open(parsed_args.whitelist) as fp:
-                parsed_args.whitelist = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
+            with open(parsed_args.include_list) as fp:
+                parsed_args.include_list = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
         except IOError:
-            mx.log('warning: could not read whitelist: ' + parsed_args.whitelist)
-    if parsed_args.blacklist:
+            mx.log('warning: could not read include list: ' + parsed_args.include_list)
+    if parsed_args.exclude_list:
         try:
-            with open(parsed_args.blacklist) as fp:
-                parsed_args.blacklist = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
+            with open(parsed_args.exclude_list) as fp:
+                parsed_args.exclude_list = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
         except IOError:
-            mx.log('warning: could not read blacklist: ' + parsed_args.blacklist)
+            mx.log('warning: could not read exclude list: ' + parsed_args.exclude_list)
 
     if '-JUnitEnableTiming' not in junit_args:
         junit_args.append('-JUnitEnableTiming')

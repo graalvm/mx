@@ -27,9 +27,11 @@
 
 import importlib
 import io
+import os
 import sys
 import tempfile
 import unittest
+from argparse import Action
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -52,6 +54,8 @@ class UnittestOptionsTest(unittest.TestCase):
 
     def test_filter_option_aliases(self):
         candidates = {"example.FirstTest": "example", "other.SecondTest": "other"}
+        launcher = Mock()
+        launcher.jdk.return_value.javaCompliance = "25"
         with tempfile.TemporaryDirectory() as tmpdir:
             test_list = Path(tmpdir) / "tests.txt"
             selected_tests = Path(tmpdir) / "selected.txt"
@@ -62,12 +66,57 @@ class UnittestOptionsTest(unittest.TestCase):
                 ("--exclude-list", "other.SecondTest"),
                 ("--blacklist", "other.SecondTest"),
             ):
-                with self.subTest(option=option), patch.object(mx_unittest, "_unittest") as run, patch.object(
+                with self.subTest(option=option), patch.dict(
+                    os.environ, {"MX_TESTFILE": str(selected_tests)}
+                ), patch.object(mx_unittest, "_vm_launcher", launcher), patch.object(
                     mx_unittest, "find_test_candidates", return_value=candidates
+                ), patch.object(
+                    mx_unittest, "resolve_unittest_configs", return_value=([], lambda config: config)
+                ), patch.multiple(
+                    mx_unittest.mx,
+                    build=Mock(),
+                    classpath=Mock(return_value=""),
+                    get_runtime_jvm_args=Mock(return_value=[]),
                 ):
                     mx_unittest.unittest([option, str(test_list), "--"])
-                    run.assert_called_once()
-                    args, annotations, _ = run.call_args.args
-                    mx_unittest._run_tests(args, Mock(), Mock(), annotations, selected_tests, **run.call_args.kwargs)
                     self.assertEqual(selected_tests.read_text(encoding="utf-8").splitlines(), [expected])
                     selected_tests.unlink()
+
+    def test_suite_action_can_read_and_write_legacy_attributes(self):
+        def check_aliases(namespace, include, exclude):
+            self.assertEqual(namespace.whitelist, include)
+            self.assertEqual(namespace.blacklist, exclude)
+            self.assertEqual(namespace.include_list, include)
+            self.assertEqual(namespace.exclude_list, exclude)
+
+        class OverrideFilters(Action):
+            def __call__(self, parser, namespace, values, option_string=None):
+                check_aliases(namespace, "original-include", "original-exclude")
+                namespace.whitelist, namespace.blacklist = values
+                check_aliases(namespace, *values)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            include = Path(tmpdir) / "include.txt"
+            exclude = Path(tmpdir) / "exclude.txt"
+            include.write_text("example.*Test\n", encoding="utf-8")
+            exclude.write_text("other.*Test\n", encoding="utf-8")
+            args = [
+                "--include-list",
+                "original-include",
+                "--blacklist",
+                "original-exclude",
+                "--override-filters",
+                str(include),
+                str(exclude),
+            ]
+            with patch.object(mx_unittest, "_extra_unittest_arguments", []):
+                mx_unittest.add_unittest_argument("--override-filters", nargs=2, action=OverrideFilters)
+                for suffix in ([], ["--"]):
+                    with self.subTest(suffix=suffix), patch.object(mx_unittest, "_unittest") as run:
+                        mx_unittest.unittest(args + suffix)
+                        run.assert_called_once()
+                        filters = run.call_args.kwargs
+                        self.assertIsNotNone(filters["include_list"][0].fullmatch("example.FirstTest"))
+                        self.assertIsNotNone(filters["exclude_list"][0].fullmatch("other.SecondTest"))
+                        self.assertNotIn("whitelist", filters)
+                        self.assertNotIn("blacklist", filters)
