@@ -295,7 +295,7 @@ def find_test_candidates(annotations, suite, jdk, buildCacheDir='unittest'):
     return candidates
 
 
-def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
+def _run_tests(args, harness, vmLauncher, annotations, testfile, exclude_list, include_list, regex, suite):
     vmArgs, tests = mx.extract_VM_args(args)
     for t in tests:
         if t.startswith('-'):
@@ -303,13 +303,13 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     candidates = find_test_candidates(annotations, suite, vmLauncher.jdk())
     classes, depsContainingTests = _filter_test_candidates(candidates, tests)
 
-    full_ignorelist = blacklist or []
+    full_ignorelist = exclude_list or []
     full_ignorelist += _global_ignore_globs
     if full_ignorelist:
         classes = [c for c in classes if not any((glob.match(c) for glob in full_ignorelist))]
 
-    if whitelist:
-        classes = [c for c in classes if any((glob.match(c) for glob in whitelist))]
+    if include_list:
+        classes = [c for c in classes if any((glob.match(c) for glob in include_list))]
 
     if regex:
         classes = [c for c in classes if re.search(regex, c)]
