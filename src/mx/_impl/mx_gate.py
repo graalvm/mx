@@ -647,8 +647,9 @@ def _run_mx_suite_tests():
     test_maven_projects.tests()
     repo_root_suites_tests.tests()
 
-    from tests import test_gc_cache, test_git_parent_cache, test_maven_deploy, test_mergetool, test_multiplatform
+    from tests import test_gc_cache, test_git_cache_negotiation, test_git_parent_cache, test_maven_deploy, test_mergetool, test_multiplatform
     _run_unittest_module(test_gc_cache)
+    _run_unittest_module(test_git_cache_negotiation)
     _run_unittest_module(test_git_parent_cache)
     _run_unittest_module(test_maven_deploy)
     _run_unittest_module(test_mergetool)
