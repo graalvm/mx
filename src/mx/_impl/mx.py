@@ -9951,6 +9951,7 @@ class HgConfig(VC):
 
 class GitConfig(VC):
     has_git = None
+    _fetch_negotiation_tip_supported = None
     """
     Encapsulates access to Git (git)
     """
@@ -10268,7 +10269,8 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 log("Fetch from " + url + " into cache " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True, include_tags=False)
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True, include_tags=False,
+                            negotiation_tip='refs/remotes/' + hashed_url + '/*')
             cmd += ['--no-checkout', '--shared', '--origin', 'cache',
                     '-c', 'gc.auto=0',
                     '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*',
@@ -10280,7 +10282,8 @@ class GitConfig(VC):
             if self.object_cache_mode:
                 cache = self._local_cache_repo()
                 log("Fetch from " + url + " into cache " + cache)
-                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*', prune=True, lock=True)
+                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*', prune=True, lock=True,
+                            negotiation_tip='refs/remotes/' + hashed_url + '/*')
                 cmd += ['--reference', cache]
                 if self.object_cache_mode == 'dissociated':
                     cmd += ['--dissociate']
@@ -10337,7 +10340,18 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False, include_tags=True):
+    @staticmethod
+    def _supports_fetch_negotiation_tip():
+        if GitConfig._fetch_negotiation_tip_supported is None:
+            # Probe the option, not the version: some Apple Git versions lack it.
+            # Short help exits with status 129 even when Git supports the option.
+            help_output = subprocess.run(['git', 'fetch', '-h'], stdout=subprocess.PIPE,
+                                         stderr=subprocess.STDOUT, text=True, check=False).stdout
+            GitConfig._fetch_negotiation_tip_supported = '--negotiation-tip' in help_output
+        return GitConfig._fetch_negotiation_tip_supported
+
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False, include_tags=True,
+               negotiation_tip=None):
         try:
             cmd = ['git', 'fetch']
             if not _opts.verbose:
@@ -10348,6 +10362,10 @@ class GitConfig(VC):
                 cmd.append('--prune')
             if not include_tags:
                 cmd.append('--no-tags')
+            if negotiation_tip is not None and self._supports_fetch_negotiation_tip():
+                # A shared cache contains unrelated histories. Negotiate only from this
+                # repository's refs, including when the glob matches no refs yet.
+                cmd.append('--negotiation-tip=' + negotiation_tip)
             if repository:
                 cmd.append(repository)
             if refspec:
