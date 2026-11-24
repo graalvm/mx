@@ -456,7 +456,25 @@ def add_unittest_argument(*args, **kwargs):
 
 _junit_wrapper_main_class = 'com.oracle.mxtool.junit.MxJUnitWrapper'
 
+def _accepts_legacy_unittest_list_options():
+    primary_suite = mx.primary_suite()
+    return primary_suite is None or primary_suite.getMxCompatibility().accepts_legacy_unittest_list_options()
+
+
+def _resolve_legacy_unittest_list(extra_args, old_name, new_name, value):
+    if old_name not in extra_args:
+        return value
+    if not _accepts_legacy_unittest_list_options():
+        raise TypeError(f"_unittest() no longer accepts '{old_name}'; use '{new_name}' instead")
+    legacy_value = extra_args[old_name]
+    if value is not None and legacy_value is not None:
+        raise TypeError(f"_unittest() received both '{old_name}' and '{new_name}'")
+    return legacy_value if value is None else value
+
+
 def _unittest(args, annotations, junit_args, prefixCp="", exclude_list=None, include_list=None, regex=None, suite=None, **extra_args):
+    exclude_list = _resolve_legacy_unittest_list(extra_args, 'blacklist', 'exclude_list', exclude_list)
+    include_list = _resolve_legacy_unittest_list(extra_args, 'whitelist', 'include_list', include_list)
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -679,8 +697,7 @@ def unittest(args, test_report_tags=None):
 
     parser.add_argument('--include-list', help='run testcases specified in <file> only', metavar='<file>')
     parser.add_argument('--exclude-list', help='run all testcases not specified in <file>', metavar='<file>')
-    primary_suite = mx.primary_suite()
-    legacy_list_options = primary_suite is None or primary_suite.getMxCompatibility().accepts_legacy_unittest_list_options()
+    legacy_list_options = _accepts_legacy_unittest_list_options()
     if legacy_list_options:
         parser.add_argument('--whitelist', dest='include_list', help=SUPPRESS, metavar='<file>')  # legacy name for --include-list
         parser.add_argument('--blacklist', dest='exclude_list', help=SUPPRESS, metavar='<file>')  # legacy name for --exclude-list

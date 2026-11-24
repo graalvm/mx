@@ -143,3 +143,33 @@ class UnittestOptionsTest(unittest.TestCase):
         self.assertIsNone(namespace.exclude_list)
         self.assertFalse(hasattr(namespace, "whitelist"))
         self.assertFalse(hasattr(namespace, "blacklist"))
+
+    def test_runner_forwards_legacy_filter_keywords(self):
+        exclude = ["excluded"]
+        include = ["included"]
+        launcher = Mock()
+        with patch.object(mx_unittest.mx, "primary_suite", return_value=None), patch.dict(
+            os.environ, {"MX_TESTFILE": "unused.txt"}
+        ), patch.object(mx_unittest, "_vm_launcher", launcher), patch.object(
+            mx_unittest, "_run_tests"
+        ) as run, patch.multiple(
+            mx_unittest.mx, build=Mock(), classpath=Mock(return_value="")
+        ):
+            mx_unittest._unittest([], [], [], blacklist=exclude, whitelist=include, suite_option=True)
+            run.assert_called_once()
+            self.assertIs(run.call_args.args[5], exclude)
+            self.assertIs(run.call_args.args[6], include)
+
+    def test_runner_rejects_conflicting_filter_keywords(self):
+        with patch.object(mx_unittest.mx, "primary_suite", return_value=None):
+            for old, new in (("blacklist", "exclude_list"), ("whitelist", "include_list")):
+                with self.subTest(old=old), self.assertRaisesRegex(TypeError, f"both '{old}' and '{new}'"):
+                    mx_unittest._unittest([], [], [], **{old: [], new: []})
+
+    def test_runner_rejects_legacy_filter_keywords_when_disabled(self):
+        suite = Mock()
+        suite.getMxCompatibility.return_value.accepts_legacy_unittest_list_options.return_value = False
+        with patch.object(mx_unittest.mx, "primary_suite", return_value=suite):
+            for old, new in (("blacklist", "exclude_list"), ("whitelist", "include_list")):
+                with self.subTest(old=old), self.assertRaisesRegex(TypeError, f"'{old}'; use '{new}' instead"):
+                    mx_unittest._unittest([], [], [], **{old: None})

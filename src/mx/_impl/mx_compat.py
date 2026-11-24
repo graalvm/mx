@@ -103,7 +103,7 @@ class MxCompatibility500(object):
         return False
 
     def accepts_legacy_unittest_list_options(self):
-        """Accept the legacy `--blacklist` and `--whitelist` flags and their parser namespace aliases."""
+        """Accept `--blacklist` and `--whitelist` and their legacy Python attribute and keyword names."""
         return True
 
     def excludeDisableJavaDebuggging(self):
